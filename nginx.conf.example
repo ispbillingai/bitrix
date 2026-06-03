@@ -1,0 +1,21 @@
+# Recommended: point the document root at /public so only endpoints are exposed.
+# config/, src/, db/, migrations/ then live outside the web root entirely.
+
+server {
+    listen 80;
+    server_name glue.yourcompany.com;
+    root /var/www/html/bitrix-glue/public;
+    index index.php;
+
+    location / {
+        try_files $uri $uri/ =404;
+    }
+
+    location ~ \.php$ {
+        include snippets/fastcgi-php.conf;
+        fastcgi_pass unix:/run/php/php8.1-fpm.sock;
+    }
+
+    # Never serve dotfiles or the parent app dirs.
+    location ~ /\. { deny all; }
+}

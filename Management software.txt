@@ -1,0 +1,31 @@
+1. Lead Acquisition: Automatically receive new leads from external forms, the website, and email into Bitrix24.
+2. Automatic Welcome: Automatically place the lead in the first pipeline with immediate welcome messages via email and WhatsApp.
+3. Agent Assignment: Once we manually assign the lead to an agent, the system should automatically send a message (email and WhatsApp) with the agent's profile and contact information.
+4. Activity Reminder: Automatically notify the assigned agent if the lead is not processed or moved within 2 hours of receipt.
+5. Appointment Management: Link each scheduled appointment to automatic reminders to be sent to both the agent and the customer as the event approaches.
+6. Sales Cycle and Reminders: Send the quote via Bitrix24. Since we can't automate signature verification in the Standard version, we'd like to set up a series of automatic reminders (e.g., 10 and 5 days before the deadline, and at the deadline itself) to invite the customer to sign via Bitrix24 Sign.
+7. Closing and Logistics: Upon signature (managed manually by the agent as the lead is moved), a thank-you message is automatically sent to the customer (email/WhatsApp) and the logistics department is notified to arrange delivery.
+1. Lead, Form, and Performance Management
+
+Lead Routing and Timer: Automatically insert leads from the website, trade show app, and partner email into the "To Work" pipeline. We need a timer (e.g., 3 hours): if the status doesn't change, the system should remind the assigned agent.
+
+Score Evaluation: Confirmation of the ability to manage a score evaluation (KPI) for the various tasks assigned to employees to monitor performance.
+
+Form Integration: Option to integrate external forms (e.g., Jotform) or, alternatively, use Bitrix24's native forms to completely replace those currently in use, maintaining the same functionality.
+
+2. Documents, Bitrix24 Sign, and Multi-Channel
+Tracking and Signature: Send and track and view digitally signed quotes, contracts, and invoices via Bitrix24 Sign.
+
+Email and WhatsApp Reminders: In the event of failure to sign within 15 days (or refusal), the system must send automatic recurring reminders both via email and via a WhatsApp form.
+
+WhatsApp Marketing and Bot: * Please confirm whether the WhatsApp form can be used to create mass marketing campaigns to an unlimited number of contacts.
+
+Clarifications regarding the use of the Bitrix24-managed bot with a WhatsApp form for customer support chats.
+
+Manual Control: Each automation must be able to be manually interrupted or silenced (e.g., by changing the deal status).
+
+3. Mobile Operation and Standard Plan
+
+Quotes from App: Confirmation of the ability to quickly generate quotes via the Bitrix24 mobile app, consistent with the chosen Standard plan.
+
+Trade Fair App and OCR: Confirmation that the features for the trade fair app (lead collection) are included in the Standard version, with particular reference to the function mentioned in the call for taking a business card photograph and capturing lead data via OCR/AI.

@@ -1,0 +1,16 @@
+# Real config holds secrets — never commit. Copy config.sample.php to config.php.
+/config/config.php
+
+# Composer
+/vendor/
+
+# Local logs / scratch
+/logs/*.log
+*.log
+grep.exe.stackdump
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

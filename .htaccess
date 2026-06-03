@@ -1,0 +1,9 @@
+# If the web root is the PROJECT root (not /public), this blocks direct access
+# to source, config, db, and migration files. Best practice is to point the
+# vhost docroot at /public instead — see nginx.conf.example.
+
+<FilesMatch "\.(sql|md|json|lock)$">
+    Require all denied
+</FilesMatch>
+
+RedirectMatch 403 ^/(config|src|migrations|db|vendor|\.git)(/|$)

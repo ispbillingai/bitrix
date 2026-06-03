@@ -1,0 +1,17 @@
+{
+    "name": "eldonet/bitrix24-glue",
+    "description": "Bitrix24 middleware: form intake, WhatsApp (TextMeBot) + email automation, timers and signing reminders. Thin glue around Bitrix24 Standard.",
+    "type": "project",
+    "require": {
+        "php": ">=8.1",
+        "ext-pdo": "*",
+        "ext-pdo_mysql": "*",
+        "ext-curl": "*",
+        "ext-json": "*"
+    },
+    "autoload": {
+        "psr-4": {
+            "Glue\\": "src/"
+        }
+    }
+}
