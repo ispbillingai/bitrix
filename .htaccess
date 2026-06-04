@@ -1,9 +1,35 @@
-# If the web root is the PROJECT root (not /public), this blocks direct access
-# to source, config, db, and migration files. Best practice is to point the
-# vhost docroot at /public instead — see nginx.conf.example.
+# The repo is cloned at the web root (DocumentRoot = the project folder), so this
+# routes every request into /public and hides config/, src/, db/, migrations/,
+# bin/, lang/, and the brief from the web. Clean URLs: a request to
+#   https://host/webhooks/form-intake.php
+# is served from public/webhooks/form-intake.php.
+#
+# Cleaner alternative (if you have vhost access): set DocumentRoot to the
+# project's /public folder and delete this file. See nginx.conf.example / the
+# Apache note in README.
 
-<FilesMatch "\.(sql|md|json|lock)$">
-    Require all denied
-</FilesMatch>
+# Note: no Options/Indexes directive here on purpose — those need an AllowOverride
+# class many shared hosts disable, which would 500. The rewrite below makes every
+# directory unreachable (all paths go into /public), so listing is moot.
+<IfModule mod_rewrite.c>
+    RewriteEngine On
 
-RedirectMatch 403 ^/(config|src|migrations|db|vendor|\.git)(/|$)
+    # Map everything into /public via an internal redirect. The leading-slash
+    # target makes Apache re-evaluate with REQUEST_URI now starting /public/,
+    # so the !^/public/ guard stops it after one pass (no loop). migrate.php is
+    # left at the root (guarded by ?key=).
+    RewriteCond %{REQUEST_URI} !^/public/
+    RewriteCond %{REQUEST_URI} !^/migrate\.php$
+    RewriteRule ^ /public%{REQUEST_URI} [L]
+</IfModule>
+
+# Belt-and-suspenders for hosts without mod_rewrite: block the sensitive bits.
+<IfModule !mod_rewrite.c>
+    RedirectMatch 403 ^/(config|src|migrations|db|vendor|bin|lang|\.git)(/|$)
+    <FilesMatch "\.(sql|md|json|lock)$">
+        Require all denied
+    </FilesMatch>
+    <Files "Management software.txt">
+        Require all denied
+    </Files>
+</IfModule>
