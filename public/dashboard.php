@@ -8,6 +8,7 @@ declare(strict_types=1);
  */
 require __DIR__ . '/../src/Bootstrap.php';
 
+use Glue\Auth;
 use Glue\Bootstrap;
 use Glue\Bitrix\Client;
 use Glue\Campaign\Sender;
@@ -19,6 +20,7 @@ use Glue\Reminder\Scheduler;
 use Glue\Settings;
 
 Bootstrap::init();
+Auth::ensureSeed(); // create default admin/admin on first run
 
 session_set_cookie_params(31536000, '/', '', false, true);
 session_start();
@@ -46,8 +48,16 @@ $flash = null;
 $flashType = 'ok';
 if (!isset($_SESSION['glue_auth'])) {
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['password'])) {
-        if (hash_equals((string)Config::get('dashboard.password', ''), (string)$_POST['password'])) {
+        $username = trim((string)($_POST['username'] ?? ''));
+        $user = Auth::verify($username, (string)$_POST['password']);
+        // Master fallback (config.php) so an operator is never locked out.
+        $masterPw = (string)Config::get('dashboard.password', '');
+        if (!$user && $masterPw !== '' && hash_equals($masterPw, (string)$_POST['password'])) {
+            $user = ['id' => 0, 'username' => ($username ?: 'admin'), 'role' => 'admin'];
+        }
+        if ($user) {
             $_SESSION['glue_auth'] = true;
+            $_SESSION['glue_user'] = $user;
             header('Location: ?');
             exit;
         }
@@ -115,6 +125,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $flash = ($ok ? $t('test_ok') : $t('test_fail'));
             $flashType = $ok ? 'ok' : 'err';
             $tab = 'settings';
+        } elseif ($do === 'create_user') {
+            Auth::create((string)$_POST['username'], (string)$_POST['password'], (string)($_POST['role'] ?? 'admin'));
+            $flash = $t('u_added');
+            $tab = 'users';
+        } elseif ($do === 'set_password') {
+            Auth::setPassword((int)$_POST['id'], (string)$_POST['password']);
+            $flash = $t('pw_changed');
+            $tab = 'users';
+        } elseif ($do === 'toggle_user') {
+            Auth::setActive((int)$_POST['id'], ($_POST['active'] ?? '') === '1');
+            $tab = 'users';
+        } elseif ($do === 'delete_user') {
+            if ((int)$_POST['id'] !== (int)($_SESSION['glue_user']['id'] ?? 0)) {
+                Auth::delete((int)$_POST['id']);
+                $flash = $t('u_deleted');
+            }
+            $tab = 'users';
+        } elseif ($do === 'change_my_password') {
+            $uid = (int)($_SESSION['glue_user']['id'] ?? 0);
+            if ($uid > 0) {
+                Auth::setPassword($uid, (string)$_POST['password']);
+                $flash = $t('pw_changed');
+            } else {
+                $flash = $t('pw_change_na');
+                $flashType = 'err';
+            }
+            $tab = 'users';
         }
     } catch (Throwable $e) {
         $flash = $t('test_fail') . ': ' . $e->getMessage();
@@ -136,6 +173,7 @@ switch ($tab) {
     case 'campaigns':   render_campaigns($t, $h, $pdo); break;
     case 'events':      render_events($t, $h, $pdo); break;
     case 'instructions':render_instructions($t); break;
+    case 'users':       render_users($t, $h); break;
     default:            render_overview($t, $h, $pdo, $count); break;
 }
 
@@ -154,7 +192,8 @@ function render_login(callable $t, callable $h, string $lang, ?string $err): voi
     <h1><?= $h($t('login_title')) ?></h1>
     <p class="muted"><?= $h($t('login_sub')) ?></p>
     <?php if ($err): ?><p class="err"><?= $h($err) ?></p><?php endif; ?>
-    <input type="password" name="password" placeholder="<?= $h($t('login_ph')) ?>" autofocus>
+    <input type="text" name="username" placeholder="<?= $h($t('login_user_ph')) ?>" autofocus>
+    <input type="password" name="password" placeholder="<?= $h($t('login_ph')) ?>">
     <button type="submit"><?= $h($t('login_btn')) ?></button>
   </form>
 </body></html>
@@ -165,7 +204,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
         'overview'    => 'nav_overview', 'leads' => 'nav_leads',
         'reminders'   => 'nav_reminders', 'messages' => 'nav_messages',
         'campaigns'   => 'nav_campaigns', 'events' => 'nav_events',
-        'instructions'=> 'nav_instr', 'settings' => 'nav_settings',
+        'instructions'=> 'nav_instr', 'settings' => 'nav_settings', 'users' => 'nav_users',
     ]; ?>
 <!DOCTYPE html><html lang="<?= $h($lang) ?>"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -189,6 +228,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
           <a class="<?= $lang === 'en' ? 'on' : '' ?>" href="?tab=<?= $h($tab) ?>&lang=en">EN</a>
           <a class="<?= $lang === 'it' ? 'on' : '' ?>" href="?tab=<?= $h($tab) ?>&lang=it">IT</a>
         </span>
+        <span class="muted small"><?= $h($_SESSION['glue_user']['username'] ?? '') ?></span>
         <a class="btn ghost" href="?action=logout"><?= $h($t('logout')) ?></a>
       </div>
     </header>
@@ -438,6 +478,63 @@ function render_instructions(callable $t): void {
     echo '<div class="step accent"><h3>' . htmlspecialchars($t('instr_manual_t')) . '</h3>';
     echo '<p>' . $t('instr_manual') . '</p></div>';
 }
+
+function render_users(callable $t, callable $h): void {
+    $users = \Glue\Auth::all();
+    $meId = (int)($_SESSION['glue_user']['id'] ?? 0); ?>
+    <h2><?= $h($t('users_title')) ?></h2>
+
+    <form method="post" class="card">
+      <input type="hidden" name="do" value="create_user">
+      <h3><?= $h($t('u_add')) ?></h3>
+      <div class="row">
+        <label class="fld"><span><?= $h($t('u_username')) ?></span><input name="username" required></label>
+        <label class="fld"><span><?= $h($t('u_password')) ?></span><input name="password" required></label>
+        <label class="fld"><span><?= $h($t('u_role')) ?></span>
+          <select name="role"><option value="admin">admin</option><option value="agent">agent</option></select></label>
+      </div>
+      <button class="btn"><?= $h($t('u_create')) ?></button>
+    </form>
+
+    <table><thead><tr>
+      <th><?= $h($t('u_username')) ?></th><th><?= $h($t('u_role')) ?></th><th><?= $h($t('u_active')) ?></th>
+      <th><?= $h($t('u_reset')) ?></th><th></th>
+    </tr></thead><tbody>
+    <?php foreach ($users as $u): $id = (int)$u['id']; ?>
+      <tr>
+        <td><?= $h($u['username']) ?><?php if ($id === $meId): ?> <span class="muted small"><?= $h($t('u_you')) ?></span><?php endif; ?></td>
+        <td><?= $h($u['role']) ?></td>
+        <td>
+          <form method="post" class="inline"><input type="hidden" name="do" value="toggle_user">
+            <input type="hidden" name="id" value="<?= $id ?>">
+            <input type="hidden" name="active" value="<?= $u['active'] ? '0' : '1' ?>">
+            <button class="btn tiny ghost"><?= $u['active'] ? $h($t('u_disable')) : $h($t('u_enable')) ?></button>
+          </form>
+        </td>
+        <td>
+          <form method="post" class="inline"><input type="hidden" name="do" value="set_password">
+            <input type="hidden" name="id" value="<?= $id ?>">
+            <input name="password" placeholder="<?= $h($t('u_new_pw')) ?>" required>
+            <button class="btn tiny ghost"><?= $h($t('u_set')) ?></button>
+          </form>
+        </td>
+        <td><?php if ($id !== $meId): ?>
+          <form method="post" class="inline" onsubmit="return confirm('?')"><input type="hidden" name="do" value="delete_user">
+            <input type="hidden" name="id" value="<?= $id ?>">
+            <button class="btn tiny ghost"><?= $h($t('u_delete')) ?></button>
+          </form>
+        <?php endif; ?></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody></table>
+
+    <form method="post" class="card">
+      <input type="hidden" name="do" value="change_my_password">
+      <h3><?= $h($t('change_pw_title')) ?></h3>
+      <label class="fld"><span><?= $h($t('u_new_pw')) ?></span><input name="password" required></label>
+      <button class="btn"><?= $h($t('save')) ?></button>
+    </form>
+<?php }
 
 // ============================ ui bits ============================
 

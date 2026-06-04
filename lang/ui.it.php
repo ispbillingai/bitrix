@@ -12,9 +12,10 @@ return [
     // login
     'login_title'    => 'Bitrix24 Glue',
     'login_sub'      => 'Accedi al pannello di controllo',
+    'login_user_ph'  => 'Nome utente',
     'login_ph'       => 'Password',
     'login_btn'      => 'Accedi',
-    'login_err'      => 'Password errata',
+    'login_err'      => 'Nome utente o password errati',
 
     // nav
     'nav_overview'   => 'Panoramica',
@@ -25,6 +26,28 @@ return [
     'nav_campaigns'  => 'Campagne',
     'nav_events'     => 'Registro attività',
     'nav_instr'      => 'Istruzioni',
+    'nav_users'      => 'Utenti',
+
+    // users
+    'users_title'    => 'Utenti',
+    'u_add'          => 'Aggiungi utente',
+    'u_username'     => 'Nome utente',
+    'u_password'     => 'Password',
+    'u_role'         => 'Ruolo',
+    'u_active'       => 'Attivo',
+    'u_create'       => 'Crea utente',
+    'u_added'        => 'Utente aggiunto.',
+    'u_reset'        => 'Reimposta password',
+    'u_new_pw'       => 'Nuova password',
+    'u_set'          => 'Imposta',
+    'u_delete'       => 'Elimina',
+    'u_deleted'      => 'Utente eliminato.',
+    'u_enable'       => 'Abilita',
+    'u_disable'      => 'Disabilita',
+    'u_you'          => '(tu)',
+    'pw_changed'     => 'Password modificata.',
+    'change_pw_title'=> 'Cambia la mia password',
+    'pw_change_na'   => 'Hai effettuato l\'accesso con la password principale (config.php). Crea un utente reale per gestire le password.',
 
     // common
     'save'           => 'Salva',

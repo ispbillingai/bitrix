@@ -13,9 +13,10 @@ return [
     // login
     'login_title'    => 'Bitrix24 Glue',
     'login_sub'      => 'Sign in to the control panel',
+    'login_user_ph'  => 'Username',
     'login_ph'       => 'Password',
     'login_btn'      => 'Sign in',
-    'login_err'      => 'Wrong password',
+    'login_err'      => 'Wrong username or password',
 
     // nav
     'nav_overview'   => 'Overview',
@@ -26,6 +27,28 @@ return [
     'nav_campaigns'  => 'Campaigns',
     'nav_events'     => 'Activity log',
     'nav_instr'      => 'Instructions',
+    'nav_users'      => 'Users',
+
+    // users
+    'users_title'    => 'Users',
+    'u_add'          => 'Add user',
+    'u_username'     => 'Username',
+    'u_password'     => 'Password',
+    'u_role'         => 'Role',
+    'u_active'       => 'Active',
+    'u_create'       => 'Create user',
+    'u_added'        => 'User added.',
+    'u_reset'        => 'Reset password',
+    'u_new_pw'       => 'New password',
+    'u_set'          => 'Set',
+    'u_delete'       => 'Delete',
+    'u_deleted'      => 'User deleted.',
+    'u_enable'       => 'Enable',
+    'u_disable'      => 'Disable',
+    'u_you'          => '(you)',
+    'pw_changed'     => 'Password changed.',
+    'change_pw_title'=> 'Change my password',
+    'pw_change_na'   => 'You are signed in with the master password (config.php). Create a real user to manage passwords.',
 
     // common
     'save'           => 'Save',

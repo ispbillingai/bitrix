@@ -71,9 +71,11 @@ return [
         'sign_overdue_max_days'   => 15,  // req (part 2 #2): 15-day window
     ],
 
-    // Dashboard login (public/dashboard.php). Change this.
+    // Dashboard master/fallback password (public/dashboard.php). Real accounts
+    // live in the `users` table and are managed from the Users page; this is
+    // only a recovery login so you're never locked out. Change it.
     'dashboard' => [
-        'password' => 'change_this_password',
+        'password' => 'admin',
     ],
 
     'app' => [
