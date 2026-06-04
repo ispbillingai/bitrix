@@ -74,6 +74,17 @@ return [
     'ov_run'           => 'Run scheduler now',
     'ov_ran'           => 'Scheduler ran.',
     'ov_cron_hint'     => 'The scheduler also runs every minute via cron. Use this button to flush the queue immediately.',
+    'ov_pending_sub'   => 'waiting to send',
+    'ov_sent_sub'      => 'delivered total',
+    'ov_failed_sub'    => 'need attention',
+    'ov_leads_sub'     => 'in the pipeline',
+    'ov_campaigns_sub' => 'created',
+    'ch_messages_title'=> 'Messages — last 14 days',
+    'ch_reminders_title'=> 'Reminders by status',
+    'ov_recent'        => 'Recent activity',
+    'ov_upcoming'      => 'Upcoming reminders',
+    'lg_sent'          => 'Sent',
+    'lg_failed'        => 'Failed',
 
     // setup
     'setup_title'    => 'Settings',

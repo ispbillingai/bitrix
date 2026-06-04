@@ -208,7 +208,8 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
     ]; ?>
 <!DOCTYPE html><html lang="<?= $h($lang) ?>"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title><?= $h($t('app_title')) ?></title><?php css(); ?></head>
+<title><?= $h($t('app_title')) ?></title><?php css(); ?>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script></head>
 <body>
 <div class="shell">
   <aside class="sidebar">
@@ -239,7 +240,6 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
 function render_foot(): void { echo '</div></main></div></body></html>'; }
 
 function render_overview(callable $t, callable $h, $pdo, callable $count): void {
-    $db = true;
     $bitrixOk = ($u = (string)\Glue\Config::get('bitrix.base_url', '')) !== '' && !str_contains($u, 'CHANGE_ME');
     $waOk = (new TextMeBot())->enabled();
     $mailOk = (string)\Glue\Config::get('mail.from_email', '') !== '';
@@ -247,30 +247,132 @@ function render_overview(callable $t, callable $h, $pdo, callable $count): void 
     $sent = $count("SELECT COUNT(*) FROM messages WHERE status='sent'");
     $failed = $count("SELECT COUNT(*) FROM messages WHERE status='failed'");
     $leads = $count("SELECT COUNT(*) FROM tracked_entities");
-    $camps = $count("SELECT COUNT(*) FROM campaigns"); ?>
+    $camps = $count("SELECT COUNT(*) FROM campaigns");
+
+    // ---- chart data: messages per day, last 14 days ----
+    $days = [];
+    for ($i = 13; $i >= 0; $i--) {
+        $days[date('Y-m-d', strtotime("-$i day"))] = ['sent' => 0, 'failed' => 0];
+    }
+    $mrows = $pdo->query("SELECT DATE(created_at) d, status, COUNT(*) c FROM messages
+                          WHERE created_at >= (CURDATE() - INTERVAL 13 DAY) GROUP BY d, status")->fetchAll();
+    foreach ($mrows as $r) {
+        if (isset($days[$r['d']]) && isset($days[$r['d']][$r['status']])) {
+            $days[$r['d']][$r['status']] = (int)$r['c'];
+        }
+    }
+    $labels = array_map(fn($d) => date('M j', strtotime($d)), array_keys($days));
+    $sentSeries = array_map(fn($v) => $v['sent'], array_values($days));
+    $failSeries = array_map(fn($v) => $v['failed'], array_values($days));
+
+    // ---- reminders by status ----
+    $rstat = $pdo->query("SELECT status, COUNT(*) c FROM reminders GROUP BY status")->fetchAll(PDO::FETCH_KEY_PAIR);
+    $rOrder = ['pending', 'sent', 'skipped', 'cancelled', 'failed'];
+    $rData = array_map(fn($s) => (int)($rstat[$s] ?? 0), $rOrder);
+
+    // ---- feeds ----
+    $events = $pdo->query("SELECT * FROM events ORDER BY id DESC LIMIT 8")->fetchAll();
+    $upcoming = $pdo->query("SELECT * FROM reminders WHERE status='pending' ORDER BY due_at ASC LIMIT 8")->fetchAll();
+
+    $chart = [
+        'labels' => $labels, 'sent' => $sentSeries, 'failed' => $failSeries,
+        'rLabels' => array_map(fn($s) => ucfirst($s), $rOrder), 'rData' => $rData,
+        'tSent' => $t('lg_sent'), 'tFailed' => $t('lg_failed'),
+    ]; ?>
     <h2><?= $h($t('ov_title')) ?></h2>
+
     <div class="grid">
       <?php
-      stat_card($h, 'database', $t('st_db'), $db ? $t('configured') : $t('not_configured'), $db);
-      stat_card($h, 'link', $t('st_bitrix'), $bitrixOk ? $t('configured') : $t('not_configured'), $bitrixOk);
-      stat_card($h, 'chat', $t('st_whatsapp'), $waOk ? $t('configured') : $t('not_configured'), $waOk);
-      stat_card($h, 'mail', $t('st_mail'), $mailOk ? $t('configured') : $t('not_configured'), $mailOk);
+      num_card($h, 'clock', $t('ov_pending'), $pending, $t('ov_pending_sub'));
+      num_card($h, 'send', $t('ov_sent'), $sent, $t('ov_sent_sub'));
+      num_card($h, 'alert', $t('ov_failed'), $failed, $t('ov_failed_sub'));
+      num_card($h, 'users', $t('ov_leads'), $leads, $t('ov_leads_sub'));
+      num_card($h, 'mega', $t('ov_campaigns'), $camps, $t('ov_campaigns_sub'));
       ?>
     </div>
-    <div class="grid">
-      <?php
-      num_card($h, 'clock', $t('ov_pending'), $pending);
-      num_card($h, 'send', $t('ov_sent'), $sent);
-      num_card($h, 'alert', $t('ov_failed'), $failed);
-      num_card($h, 'users', $t('ov_leads'), $leads);
-      num_card($h, 'mega', $t('ov_campaigns'), $camps);
-      ?>
+
+    <div class="cols c-2-1">
+      <div class="panel">
+        <div class="panel-h"><h3><?= svg('messages') ?><?= $h($t('ch_messages_title')) ?></h3></div>
+        <div class="chart-wrap"><canvas id="chMsg"></canvas></div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h3><?= svg('reminders') ?><?= $h($t('ch_reminders_title')) ?></h3></div>
+        <div class="chart-wrap sm"><canvas id="chRem"></canvas></div>
+      </div>
     </div>
-    <form method="post" class="inline">
-      <input type="hidden" name="do" value="run_scheduler">
-      <button class="btn"><?= $h($t('ov_run')) ?></button>
-      <span class="muted small"><?= $h($t('ov_cron_hint')) ?></span>
-    </form>
+
+    <div class="cols c-1-1">
+      <div class="panel">
+        <div class="panel-h"><h3><?= svg('events') ?><?= $h($t('ov_recent')) ?></h3>
+          <a class="btn ghost tiny" href="?tab=events"><?= $h($t('filter_all')) ?></a></div>
+        <div class="feed">
+          <?php if (!$events): ?><div class="empty"><?= $h($t('none_yet')) ?></div><?php endif; ?>
+          <?php foreach ($events as $e): ?>
+            <div class="feed-row">
+              <div class="feed-ic"><?= svg(feed_icon($e['source'])) ?></div>
+              <div class="feed-main"><b><?= $h($e['event_type']) ?></b>
+                <div class="meta"><?= $h($e['source']) ?><?= $e['entity_type'] ? ' · ' . $h($e['entity_type']) . ' ' . $h($e['entity_id']) : '' ?></div></div>
+              <div class="feed-time"><?= $h(short_time($e['created_at'])) ?></div>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-h"><h3><?= svg('clock') ?><?= $h($t('ov_upcoming')) ?></h3>
+          <a class="btn ghost tiny" href="?tab=reminders"><?= $h($t('filter_all')) ?></a></div>
+        <div class="feed">
+          <?php if (!$upcoming): ?><div class="empty"><?= $h($t('none_yet')) ?></div><?php endif; ?>
+          <?php foreach ($upcoming as $r): ?>
+            <div class="feed-row">
+              <div class="feed-ic"><?= svg('clock') ?></div>
+              <div class="feed-main"><b><?= $h($r['rule_key']) ?></b>
+                <div class="meta"><?= $h($r['recipient_type']) ?> · <?= $h($r['channel']) ?> · #<?= $h($r['bitrix_id']) ?></div></div>
+              <div class="feed-time"><?= $h($r['due_at']) ?></div>
+            </div>
+          <?php endforeach; ?>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel" style="margin-bottom:16px">
+      <div class="panel-h"><h3><?= svg('settings') ?><?= $h($t('ov_status')) ?></h3>
+        <form method="post" class="inline" style="margin:0"><input type="hidden" name="do" value="run_scheduler">
+          <button class="btn ghost tiny"><?= $h($t('ov_run')) ?></button></form></div>
+      <div class="grid" style="margin-bottom:0">
+        <?php
+        stat_card($h, 'database', $t('st_db'), $t('configured'), true);
+        stat_card($h, 'link', $t('st_bitrix'), $bitrixOk ? $t('configured') : $t('not_configured'), $bitrixOk);
+        stat_card($h, 'chat', $t('st_whatsapp'), $waOk ? $t('configured') : $t('not_configured'), $waOk);
+        stat_card($h, 'mail', $t('st_mail'), $mailOk ? $t('configured') : $t('not_configured'), $mailOk);
+        ?>
+      </div>
+    </div>
+
+    <script>
+    (function(){
+      const d = <?= json_encode($chart, JSON_UNESCAPED_UNICODE) ?>;
+      const css = getComputedStyle(document.documentElement);
+      const c = n => css.getPropertyValue(n).trim();
+      const grid = 'rgba(255,255,255,.06)', muted = c('--muted');
+      Chart.defaults.color = muted; Chart.defaults.font.family = 'Inter, sans-serif';
+      new Chart(document.getElementById('chMsg'), {
+        type:'bar',
+        data:{labels:d.labels,datasets:[
+          {label:d.tSent,data:d.sent,backgroundColor:c('--green'),borderRadius:5,maxBarThickness:26},
+          {label:d.tFailed,data:d.failed,backgroundColor:c('--red'),borderRadius:5,maxBarThickness:26}]},
+        options:{maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:12,padding:16}}},
+          scales:{x:{grid:{display:false},border:{display:false}},
+                  y:{beginAtZero:true,ticks:{precision:0},grid:{color:grid},border:{display:false}}}}
+      });
+      new Chart(document.getElementById('chRem'), {
+        type:'doughnut',
+        data:{labels:d.rLabels,datasets:[{data:d.rData,borderWidth:0,
+          backgroundColor:[c('--amber'),c('--green'),c('--muted'),c('--red'),'#7c5cff']}]},
+        options:{maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'right',labels:{boxWidth:12,padding:12}}}}
+      });
+    })();
+    </script>
 <?php }
 
 function render_setup(callable $t, callable $h, callable $cfg): void {
@@ -542,9 +644,27 @@ function stat_card(callable $h, string $icon, string $label, string $val, bool $
     echo '<div class="tile"><div class="tile-top">' . svg($icon) . '<span class="small">' . $h($label) . '</span></div>'
         . '<span class="badge ' . ($ok ? 'ok' : 'no') . '"><span class="dot"></span>' . $h($val) . '</span></div>';
 }
-function num_card(callable $h, string $icon, string $label, int $n): void {
+function num_card(callable $h, string $icon, string $label, int $n, string $sub = ''): void {
     echo '<div class="tile"><div class="tile-top">' . svg($icon) . '<span class="small">' . $h($label) . '</span></div>'
-        . '<span class="big">' . $h((string)$n) . '</span></div>';
+        . '<span class="big">' . $h((string)$n) . '</span>'
+        . ($sub !== '' ? '<div class="sub">' . $h($sub) . '</div>' : '') . '</div>';
+}
+
+/** Map an event source to a feed icon name. */
+function feed_icon(string $source): string {
+    return [
+        'form_intake'   => 'leads',
+        'bitrix_event'  => 'link',
+        'scheduler'     => 'clock',
+        'campaign'      => 'mega',
+        'appointment'   => 'reminders',
+    ][$source] ?? 'events';
+}
+
+/** Compact timestamp for the activity feed. */
+function short_time(?string $dt): string {
+    $ts = $dt ? strtotime($dt) : false;
+    return $ts ? date('M j, H:i', $ts) : (string)$dt;
 }
 
 /** Inline line-icons (no external lib). 18px, stroke = currentColor. */
@@ -580,104 +700,111 @@ function fld(callable $h, string $name, string $label, $value, string $hint = ''
 function css(): void { ?>
 <style>
 :root{
-  --bg:#0b1120;--bg2:#0e1729;--panel:#141d31;--panel2:#1b2742;--line:#26324d;--line2:#30405f;
-  --txt:#e6edf7;--muted:#8a97ad;--accent:#6366f1;--accent2:#a855f7;
-  --green:#34d399;--green-bg:rgba(52,211,153,.12);--red:#f87171;--red-bg:rgba(248,113,113,.12);
-  --amber:#fbbf24;--shadow:0 10px 30px -12px rgba(0,0,0,.6);--radius:14px;
+  --bg:#0e131c;--surface:#161c28;--surface2:#1c2533;--line:#28303f;--line2:#39435a;
+  --txt:#e7ecf4;--muted:#8b95a7;--accent:#5b6cff;--accent-soft:rgba(91,108,255,.14);
+  --green:#3fb868;--green-bg:rgba(63,184,104,.13);--red:#e5616e;--red-bg:rgba(229,97,110,.13);
+  --amber:#d9a40a;--amber-bg:rgba(217,164,10,.13);--radius:12px;
 }
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:'Inter',system-ui,sans-serif;color:var(--txt);font-size:14px;line-height:1.5;
-  background:radial-gradient(1200px 600px at 80% -10%,rgba(99,102,241,.10),transparent 60%),
-             radial-gradient(900px 500px at -10% 10%,rgba(168,85,247,.08),transparent 55%),var(--bg);
-  min-height:100vh;-webkit-font-smoothing:antialiased;}
+  background:var(--bg);min-height:100vh;-webkit-font-smoothing:antialiased;}
 .center{display:flex;align-items:center;justify-content:center;min-height:100vh;}
-.muted{color:var(--muted);} .small{font-size:12px;} .big{font-size:32px;font-weight:700;letter-spacing:-.02em;}
+.muted{color:var(--muted);} .small{font-size:12px;} .big{font-size:30px;font-weight:700;letter-spacing:-.02em;}
 a{color:inherit;text-decoration:none;}
-.logo{width:42px;height:42px;border-radius:12px;background:linear-gradient(135deg,var(--accent),var(--accent2));
-  display:flex;align-items:center;justify-content:center;font-weight:800;color:#fff;font-size:19px;flex:0 0 auto;
-  box-shadow:0 8px 20px -6px rgba(99,102,241,.6);}
+.logo{width:40px;height:40px;border-radius:10px;background:var(--accent);display:flex;align-items:center;
+  justify-content:center;font-weight:800;color:#fff;font-size:18px;flex:0 0 auto;}
 .shell{display:flex;min-height:100vh;}
-.sidebar{width:248px;background:linear-gradient(180deg,var(--panel),var(--bg2));border-right:1px solid var(--line);
-  padding:20px 16px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;}
-.brand{display:flex;gap:12px;align-items:center;margin:6px 6px 26px;}
-.brand strong{display:block;font-size:15px;letter-spacing:-.01em;} .brand span{display:block;line-height:1.3;margin-top:2px;}
-nav{display:flex;flex-direction:column;gap:3px;}
-nav a{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:10px;color:var(--muted);
-  font-weight:500;transition:background .15s,color .15s,transform .15s;}
-nav a svg{width:18px;height:18px;flex:0 0 auto;opacity:.85;}
-nav a:hover{background:var(--panel2);color:var(--txt);}
-nav a.active{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;
-  box-shadow:0 8px 18px -8px rgba(99,102,241,.7);}
-nav a.active svg{opacity:1;}
+.sidebar{width:244px;background:var(--surface);border-right:1px solid var(--line);
+  padding:18px 14px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;flex:0 0 auto;}
+.brand{display:flex;gap:11px;align-items:center;margin:4px 6px 22px;}
+.brand strong{display:block;font-size:15px;} .brand span{display:block;line-height:1.3;margin-top:2px;}
+nav{display:flex;flex-direction:column;gap:2px;}
+nav a{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:8px;color:var(--muted);
+  font-weight:500;transition:background .12s,color .12s;}
+nav a svg{width:18px;height:18px;flex:0 0 auto;}
+nav a:hover{background:var(--surface2);color:var(--txt);}
+nav a.active{background:var(--accent);color:#fff;}
 main{flex:1;display:flex;flex-direction:column;min-width:0;}
-.topbar{display:flex;justify-content:space-between;align-items:center;padding:16px 32px;
-  border-bottom:1px solid var(--line);background:rgba(20,29,49,.7);backdrop-filter:blur(10px);
-  position:sticky;top:0;z-index:5;}
-.crumb{font-weight:700;font-size:17px;letter-spacing:-.01em;}
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:15px 28px;
+  border-bottom:1px solid var(--line);background:var(--surface);position:sticky;top:0;z-index:5;}
+.crumb{font-weight:700;font-size:17px;}
 .actions{display:flex;gap:14px;align-items:center;}
-.langsw{display:inline-flex;background:var(--panel2);border:1px solid var(--line);border-radius:8px;padding:2px;}
+.langsw{display:inline-flex;background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:2px;}
 .langsw a{padding:4px 9px;border-radius:6px;color:var(--muted);font-weight:600;font-size:12px;}
-.langsw a.on{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;}
-.content{padding:30px 32px;max-width:1040px;width:100%;}
-h2{font-size:22px;margin-bottom:20px;letter-spacing:-.02em;} h3{font-size:15px;margin:18px 0 12px;letter-spacing:-.01em;}
-.lead{font-size:15px;color:var(--muted);margin-bottom:22px;line-height:1.65;max-width:760px;}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:16px;margin-bottom:18px;}
-.card{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);
-  border-radius:var(--radius);padding:22px;margin-bottom:18px;box-shadow:var(--shadow);}
-.tile{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);
-  border-radius:var(--radius);padding:18px;box-shadow:var(--shadow);transition:transform .15s,border-color .15s;}
-.tile:hover{transform:translateY(-2px);border-color:var(--line2);}
-.tile-top{display:flex;align-items:center;gap:10px;margin-bottom:12px;color:var(--muted);}
-.tile-top svg{width:18px;height:18px;}
-.tile .big{display:block;margin-top:8px;}
-.badge{display:inline-flex;align-items:center;gap:7px;padding:6px 11px;border-radius:999px;font-size:12.5px;font-weight:600;}
+.langsw a.on{background:var(--accent);color:#fff;}
+.content{padding:26px 28px;width:100%;}
+h2{font-size:21px;margin-bottom:18px;letter-spacing:-.01em;} h3{font-size:15px;margin:16px 0 12px;}
+.lead{font-size:15px;color:var(--muted);margin-bottom:20px;line-height:1.65;max-width:820px;}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:16px;}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:16px;}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;
+  transition:border-color .12s;}
+.tile:hover{border-color:var(--line2);}
+.tile-top{display:flex;align-items:center;gap:9px;margin-bottom:10px;color:var(--muted);}
+.tile-top svg{width:17px;height:17px;}
+.tile .big{display:block;margin-top:6px;}
+.tile .sub{font-size:12px;color:var(--muted);margin-top:4px;}
+.badge{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:7px;font-size:12.5px;font-weight:600;}
 .badge .dot{width:7px;height:7px;border-radius:50%;}
-.badge.ok{background:var(--green-bg);color:var(--green);} .badge.ok .dot{background:var(--green);box-shadow:0 0 0 3px rgba(52,211,153,.18);}
-.badge.no{background:var(--red-bg);color:var(--red);} .badge.no .dot{background:var(--red);box-shadow:0 0 0 3px rgba(248,113,113,.18);}
+.badge.ok{background:var(--green-bg);color:var(--green);} .badge.ok .dot{background:var(--green);}
+.badge.no{background:var(--red-bg);color:var(--red);} .badge.no .dot{background:var(--red);}
+/* dashboard layout */
+.cols{display:grid;gap:16px;margin-bottom:16px;}
+.cols.c-2-1{grid-template-columns:2fr 1fr;} .cols.c-1-1{grid-template-columns:1fr 1fr;}
+@media(max-width:1100px){.cols.c-2-1,.cols.c-1-1{grid-template-columns:1fr;}}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:0;}
+.panel-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
+.panel-h h3{margin:0;display:flex;align-items:center;gap:9px;} .panel-h h3 svg{width:17px;height:17px;color:var(--muted);}
+.chart-wrap{position:relative;height:240px;} .chart-wrap.sm{height:210px;}
+.feed{display:flex;flex-direction:column;gap:2px;}
+.feed-row{display:flex;align-items:center;gap:11px;padding:9px 4px;border-bottom:1px solid var(--line);}
+.feed-row:last-child{border-bottom:none;}
+.feed-ic{width:30px;height:30px;border-radius:8px;background:var(--surface2);display:flex;align-items:center;justify-content:center;color:var(--muted);flex:0 0 auto;}
+.feed-ic svg{width:15px;height:15px;}
+.feed-main{min-width:0;flex:1;} .feed-main b{font-weight:600;font-size:13.5px;} .feed-main .meta{font-size:12px;color:var(--muted);}
+.feed-time{font-size:11.5px;color:var(--muted);white-space:nowrap;}
+.empty{color:var(--muted);text-align:center;padding:26px 0;font-size:13px;}
 .fld{display:block;margin-bottom:16px;} .fld span{display:block;margin-bottom:7px;color:var(--muted);font-size:13px;font-weight:500;}
-input,select,textarea{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:var(--bg);
-  color:var(--txt);font-size:14px;outline:none;font-family:inherit;transition:border-color .15s,box-shadow .15s;}
-input:focus,select:focus,textarea:focus{border-color:var(--accent);box-shadow:0 0 0 3px rgba(99,102,241,.18);}
+input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);
+  color:var(--txt);font-size:14px;outline:none;font-family:inherit;transition:border-color .12s;}
+input:focus,select:focus,textarea:focus{border-color:var(--accent);}
 input[readonly]{color:var(--muted);cursor:pointer;}
 .fld small{display:block;margin-top:6px;font-size:12px;line-height:1.5;}
 .row{display:flex;gap:14px;flex-wrap:wrap;} .row .fld{flex:1;min-width:160px;}
-.btn{padding:11px 20px;border:none;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));
-  color:#fff;font-weight:600;cursor:pointer;font-size:14px;transition:transform .12s,box-shadow .15s,opacity .15s;
-  box-shadow:0 8px 18px -8px rgba(99,102,241,.7);}
-.btn:hover{transform:translateY(-1px);} .btn:active{transform:translateY(0);}
-.btn.ghost{background:var(--panel2);border:1px solid var(--line);color:var(--txt);box-shadow:none;}
-.btn.ghost:hover{border-color:var(--line2);background:var(--panel);}
+.btn{padding:10px 18px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-weight:600;
+  cursor:pointer;font-size:14px;transition:filter .12s;} .btn:hover{filter:brightness(1.08);}
+.btn.ghost{background:var(--surface2);border:1px solid var(--line);color:var(--txt);}
+.btn.ghost:hover{border-color:var(--line2);filter:none;background:var(--surface);}
 .btn.tiny{padding:6px 12px;font-size:12.5px;}
 .inline{display:inline-flex;gap:8px;align-items:center;margin:0 12px 10px 0;}
 .inline input{width:auto;}
-table{width:100%;border-collapse:separate;border-spacing:0;background:linear-gradient(180deg,var(--panel),var(--bg2));
-  border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;box-shadow:var(--shadow);}
-th,td{text-align:left;padding:13px 16px;border-bottom:1px solid var(--line);vertical-align:middle;}
-th{color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.06em;font-weight:600;background:rgba(0,0,0,.12);}
-tbody tr{transition:background .12s;} tbody tr:hover{background:rgba(255,255,255,.02);}
+table{width:100%;border-collapse:separate;border-spacing:0;background:var(--surface);
+  border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
+th,td{text-align:left;padding:12px 15px;border-bottom:1px solid var(--line);vertical-align:middle;}
+th{color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;font-weight:600;background:var(--surface2);}
+tbody tr:hover{background:var(--surface2);}
 tr:last-child td{border-bottom:none;}
-.pill{display:inline-block;padding:4px 11px;border-radius:999px;background:var(--panel2);font-size:12px;font-weight:600;border:1px solid var(--line);}
-.pill-pending{color:var(--amber);background:rgba(251,191,36,.1);border-color:rgba(251,191,36,.25);}
-.pill-sent{color:var(--green);background:var(--green-bg);border-color:rgba(52,211,153,.25);}
-.pill-failed,.pill-cancelled{color:var(--red);background:var(--red-bg);border-color:rgba(248,113,113,.25);}
-.flash{background:var(--green-bg);border:1px solid rgba(52,211,153,.4);color:var(--green);padding:13px 17px;
-  border-radius:10px;margin-bottom:20px;word-break:break-word;font-weight:500;}
-.flash-err{background:var(--red-bg);border-color:rgba(248,113,113,.4);color:var(--red);}
-.warn{background:rgba(251,191,36,.08);border:1px solid rgba(251,191,36,.3);color:#fcd34d;padding:13px 17px;
-  border-radius:10px;margin-bottom:20px;font-size:13px;line-height:1.55;}
-.step{background:linear-gradient(180deg,var(--panel),var(--bg2));border:1px solid var(--line);border-left:3px solid var(--accent);
-  border-radius:12px;padding:18px 22px;margin-bottom:14px;box-shadow:var(--shadow);}
-.step.accent{border-left-color:var(--accent2);} .step p{line-height:1.65;color:var(--muted);} .step b{color:var(--txt);font-weight:600;}
-.tabs{display:inline-flex;gap:4px;margin-bottom:16px;background:var(--panel2);border:1px solid var(--line);border-radius:10px;padding:3px;}
-.tabs a{padding:7px 14px;border-radius:8px;color:var(--muted);font-size:13px;font-weight:500;}
-.tabs a.on{background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;}
-.login{background:linear-gradient(180deg,var(--panel),var(--bg2));padding:40px 38px;border-radius:18px;width:360px;
-  text-align:center;border:1px solid var(--line);box-shadow:0 30px 60px -20px rgba(0,0,0,.7);}
-.login .logo{margin:0 auto 18px;width:52px;height:52px;font-size:24px;} .login h1{font-size:21px;margin-bottom:5px;letter-spacing:-.02em;}
+.pill{display:inline-block;padding:4px 10px;border-radius:7px;background:var(--surface2);font-size:12px;font-weight:600;border:1px solid var(--line);}
+.pill-pending{color:var(--amber);background:var(--amber-bg);border-color:transparent;}
+.pill-sent{color:var(--green);background:var(--green-bg);border-color:transparent;}
+.pill-failed,.pill-cancelled{color:var(--red);background:var(--red-bg);border-color:transparent;}
+.flash{background:var(--green-bg);border:1px solid var(--green);color:var(--green);padding:12px 16px;
+  border-radius:8px;margin-bottom:18px;word-break:break-word;font-weight:500;}
+.flash-err{background:var(--red-bg);border-color:var(--red);color:var(--red);}
+.warn{background:var(--amber-bg);border:1px solid var(--amber);color:var(--amber);padding:12px 16px;
+  border-radius:8px;margin-bottom:18px;font-size:13px;line-height:1.55;}
+.step{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);
+  border-radius:10px;padding:17px 21px;margin-bottom:14px;}
+.step.accent{border-left-color:var(--amber);} .step p{line-height:1.65;color:var(--muted);} .step b{color:var(--txt);font-weight:600;}
+.tabs{display:inline-flex;gap:4px;margin-bottom:16px;background:var(--surface2);border:1px solid var(--line);border-radius:9px;padding:3px;}
+.tabs a{padding:7px 14px;border-radius:7px;color:var(--muted);font-size:13px;font-weight:500;}
+.tabs a.on{background:var(--accent);color:#fff;}
+.login{background:var(--surface);padding:38px 36px;border-radius:14px;width:360px;text-align:center;border:1px solid var(--line);}
+.login .logo{margin:0 auto 18px;width:50px;height:50px;font-size:22px;} .login h1{font-size:21px;margin-bottom:5px;}
 .login input{margin:9px 0;} .login button{width:100%;margin-top:10px;}
 .err{color:var(--red);font-size:13px;margin-bottom:8px;}
-@media(max-width:760px){.sidebar{width:64px;padding:16px 8px;} .brand span,.brand strong,nav a span{display:none;}
-  .brand{justify-content:center;} nav a{justify-content:center;padding:11px;} .content{padding:20px;}}
+@media(max-width:760px){.sidebar{width:60px;padding:14px 8px;} .brand span,.brand strong,nav a span{display:none;}
+  .brand{justify-content:center;} nav a{justify-content:center;padding:11px;} .content{padding:18px;}}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <?php }

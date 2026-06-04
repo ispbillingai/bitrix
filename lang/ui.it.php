@@ -73,6 +73,17 @@ return [
     'ov_run'           => 'Esegui scheduler ora',
     'ov_ran'           => 'Scheduler eseguito.',
     'ov_cron_hint'     => 'Lo scheduler viene eseguito ogni minuto via cron. Usa questo pulsante per svuotare subito la coda.',
+    'ov_pending_sub'   => 'in attesa di invio',
+    'ov_sent_sub'      => 'consegnati in totale',
+    'ov_failed_sub'    => 'da verificare',
+    'ov_leads_sub'     => 'nella pipeline',
+    'ov_campaigns_sub' => 'create',
+    'ch_messages_title'=> 'Messaggi — ultimi 14 giorni',
+    'ch_reminders_title'=> 'Promemoria per stato',
+    'ov_recent'        => 'Attività recente',
+    'ov_upcoming'      => 'Prossimi promemoria',
+    'lg_sent'          => 'Inviati',
+    'lg_failed'        => 'Falliti',
 
     // setup
     'setup_title'    => 'Impostazioni',
