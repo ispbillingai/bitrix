@@ -71,6 +71,11 @@ return [
         'sign_overdue_max_days'   => 15,  // req (part 2 #2): 15-day window
     ],
 
+    // Dashboard login (public/dashboard.php). Change this.
+    'dashboard' => [
+        'password' => 'change_this_password',
+    ],
+
     'app' => [
         'timezone' => 'Africa/Nairobi',
         // Default message language when a lead doesn't specify one (en|it).

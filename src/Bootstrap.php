@@ -37,6 +37,15 @@ final class Bootstrap
         }
 
         Config::load(dirname(__DIR__) . '/config/config.php');
+
+        // Overlay dashboard-editable settings from the DB (if the table exists).
+        // Wrapped so a missing DB/table never blocks boot — file config stands alone.
+        try {
+            Config::applyOverlay(Settings::nested());
+        } catch (\Throwable) {
+            // ignore — settings are optional
+        }
+
         date_default_timezone_set(Config::get('app.timezone', 'UTC'));
 
         self::$done = true;

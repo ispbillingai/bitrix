@@ -33,6 +33,28 @@ final class Config
         self::$loaded = true;
     }
 
+    /**
+     * Deep-merge an overlay over the loaded config (dashboard settings win over
+     * file defaults). Scalars and lists are replaced; nested maps are merged.
+     */
+    public static function applyOverlay(array $overlay): void
+    {
+        self::$data = self::deepMerge(self::$data, $overlay);
+    }
+
+    private static function deepMerge(array $base, array $over): array
+    {
+        foreach ($over as $k => $v) {
+            if (is_array($v) && isset($base[$k]) && is_array($base[$k])
+                && array_keys($v) !== range(0, count($v) - 1)) { // assoc map, not a list
+                $base[$k] = self::deepMerge($base[$k], $v);
+            } else {
+                $base[$k] = $v;
+            }
+        }
+        return $base;
+    }
+
     /** Dot-path getter with a default. */
     public static function get(string $key, mixed $default = null): mixed
     {

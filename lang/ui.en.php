@@ -1,0 +1,167 @@
+<?php
+/**
+ * English UI strings for the dashboard (sidebar, header, forms, instructions).
+ * Separate from lang/en.php (which is customer message copy). Keys mirror ui.it.php.
+ */
+return [
+    // chrome
+    'app_title'      => 'Bitrix24 Glue',
+    'app_subtitle'   => 'Lead automation control panel',
+    'language'       => 'Language',
+    'logout'         => 'Log out',
+
+    // login
+    'login_title'    => 'Bitrix24 Glue',
+    'login_sub'      => 'Sign in to the control panel',
+    'login_ph'       => 'Password',
+    'login_btn'      => 'Sign in',
+    'login_err'      => 'Wrong password',
+
+    // nav
+    'nav_overview'   => 'Overview',
+    'nav_setup'      => 'Setup',
+    'nav_leads'      => 'Leads & Deals',
+    'nav_reminders'  => 'Reminders',
+    'nav_messages'   => 'Messages',
+    'nav_campaigns'  => 'Campaigns',
+    'nav_events'     => 'Activity log',
+    'nav_instr'      => 'Instructions',
+
+    // common
+    'save'           => 'Save',
+    'saved'          => 'Saved.',
+    'configured'     => 'Configured',
+    'not_configured' => 'Not configured',
+    'none_yet'       => 'Nothing yet.',
+    'cancel'         => 'Cancel',
+    'refresh'        => 'Refresh',
+
+    // overview
+    'ov_title'         => 'Overview',
+    'ov_status'        => 'System status',
+    'st_db'            => 'Database',
+    'st_bitrix'        => 'Bitrix24 connection',
+    'st_whatsapp'      => 'WhatsApp (TextMeBot)',
+    'st_mail'          => 'Email',
+    'ov_pending'       => 'Pending reminders',
+    'ov_sent'          => 'Messages sent',
+    'ov_failed'        => 'Messages failed',
+    'ov_leads'         => 'Leads/deals tracked',
+    'ov_campaigns'     => 'Campaigns',
+    'ov_run'           => 'Run scheduler now',
+    'ov_ran'           => 'Scheduler ran.',
+    'ov_cron_hint'     => 'The scheduler also runs every minute via cron. Use this button to flush the queue immediately.',
+
+    // setup
+    'setup_title'    => 'Setup',
+    'setup_intro'    => 'Configure the integration here. These values are stored in the database and take effect immediately — no file editing. Only the database credentials live in config.php.',
+    'sec_bitrix'     => 'Bitrix24',
+    'sec_whatsapp'   => 'WhatsApp (TextMeBot)',
+    'sec_mail'       => 'Email',
+    'sec_logistics'  => 'Logistics',
+    'sec_general'    => 'General',
+    'sec_stages'     => 'Pipeline stages',
+    'sec_cadence'    => 'Reminder timing',
+
+    'f_bitrix_url'   => 'Inbound webhook URL',
+    'f_bitrix_url_h' => 'Bitrix24 → Developer resources → Inbound webhook. Paste the full URL including the token, with a trailing slash.',
+    'f_outbound'     => 'Outbound secret',
+    'f_outbound_h'   => 'Used in the handler URL Bitrix calls. Keep it secret.',
+    'f_intake'       => 'Form intake secret',
+    'f_intake_h'     => 'Required on the form/webhook URLs below.',
+    'f_lead_new'     => 'First lead status ("To Work")',
+    'f_deal_quote'   => 'Deal stage = quote sent',
+    'f_deal_signed'  => 'Deal stage = signed/won',
+    'f_stages_h'     => 'IDs from your portal. List them with crm.status.list.',
+    'f_tmb_key'      => 'TextMeBot API key',
+    'f_tmb_key_h'    => 'From your TextMeBot account. Without it, no WhatsApp is sent.',
+    'f_from_name'    => 'Sender / company name',
+    'f_from_name_h'  => 'Shown to customers in every message as the company.',
+    'f_from_email'   => 'Sender email',
+    'f_log_email'    => 'Logistics email',
+    'f_log_phone'    => 'Logistics WhatsApp (optional, E.164)',
+    'f_default_lang' => 'Default language',
+    'f_tz'           => 'Timezone',
+
+    'test_title'     => 'Test connections',
+    'test_bitrix'    => 'Test Bitrix24',
+    'test_wa'        => 'Send test WhatsApp',
+    'test_email'     => 'Send test email',
+    'test_send'      => 'Send',
+    'test_phone_ph'  => '+39...',
+    'test_email_ph'  => 'name@example.com',
+    'test_ok'        => 'Success',
+    'test_fail'      => 'Failed',
+
+    // urls box
+    'urls_title'     => 'Your integration URLs',
+    'urls_intro'     => 'Use these when wiring Bitrix24 and your forms (Jotform / website).',
+    'url_form'       => 'Form / lead intake (POST)',
+    'url_bitrix_ev'  => 'Bitrix24 outbound webhook handler',
+    'url_appt'       => 'Appointment intake (POST)',
+    'url_campaign'   => 'Create campaign (POST)',
+
+    // leads
+    'leads_title'    => 'Leads & Deals tracked',
+    'th_type'        => 'Type',
+    'th_bitrix_id'   => 'Bitrix ID',
+    'th_stage'       => 'Stage',
+    'th_customer'    => 'Customer',
+    'th_lang'        => 'Lang',
+    'th_received'    => 'Received',
+    'th_status'      => 'Status',
+
+    // reminders
+    'rem_title'      => 'Reminder queue',
+    'th_due'         => 'Due',
+    'th_rule'        => 'Rule',
+    'th_recipient'   => 'Recipient',
+    'th_channel'     => 'Channel',
+    'rem_cancelled'  => 'Reminder cancelled.',
+    'filter_pending' => 'Pending',
+    'filter_all'     => 'All',
+
+    // messages
+    'msg_title'      => 'Message outbox',
+    'th_time'        => 'Time',
+    'th_subject'     => 'Subject',
+
+    // campaigns
+    'camp_title'     => 'Campaigns',
+    'camp_new'       => 'New campaign',
+    'camp_name'      => 'Name',
+    'camp_channel'   => 'Channel',
+    'camp_subject'   => 'Subject (email only)',
+    'camp_body'      => 'Message ({name} and {company} allowed)',
+    'camp_recipients'=> 'Recipients (one per line: phone or email)',
+    'camp_create'    => 'Create & queue',
+    'camp_created'   => 'Campaign queued.',
+    'th_total'       => 'Total',
+    'th_sent'        => 'Sent',
+    'th_failed'      => 'Failed',
+    'camp_warn'      => 'Note: TextMeBot uses one WhatsApp number — large blasts risk a ban. For true mass marketing use the official WhatsApp Business API.',
+
+    // events
+    'ev_title'       => 'Activity log',
+    'th_source'      => 'Source',
+    'th_event'       => 'Event',
+    'th_entity'      => 'Entity',
+
+    // instructions (prose)
+    'instr_title'    => 'Instructions',
+    'instr_intro'    => 'This system sits between your forms/website and Bitrix24. It captures leads, sends WhatsApp + email automatically, runs the reminder timers Bitrix Standard can\'t, and notifies logistics when a deal is signed. Follow these steps in order.',
+    'instr_s1_t'     => '1. Connect Bitrix24 (inbound)',
+    'instr_s1'       => 'In Bitrix24 go to <b>Developer resources → Other → Inbound webhook</b>. Tick the <b>crm</b> and <b>user</b> scopes. Copy the webhook URL (it ends with a token) and paste it into <b>Setup → Bitrix24 → Inbound webhook URL</b>, keeping the trailing slash. Click <b>Test Bitrix24</b> — it should say Success.',
+    'instr_s2_t'     => '2. Let Bitrix24 notify us (outbound)',
+    'instr_s2'       => 'In Bitrix24 go to <b>Developer resources → Other → Outbound webhook</b>. Set the handler URL to the “Bitrix24 outbound webhook handler” shown on the Setup page (it already includes your secret). Subscribe to the events <b>ONCRMLEADUPDATE, ONCRMDEALADD, ONCRMDEALUPDATE</b>. This is what triggers the agent-profile message, the inactivity silence, the signing reminders and the thank-you/logistics steps.',
+    'instr_s3_t'     => '3. Add your WhatsApp key',
+    'instr_s3'       => 'Paste your <b>TextMeBot API key</b> in Setup → WhatsApp and Save. Use <b>Send test WhatsApp</b> to your own number to confirm it works. Until this is set, the system still creates leads and queues messages, but nothing is delivered on WhatsApp.',
+    'instr_s4_t'     => '4. Point your forms at us',
+    'instr_s4'       => 'In Jotform (or your website form) add a webhook/POST to the “Form / lead intake” URL on the Setup page. Map fields named <b>name, phone, email</b> (aliases like telefono/messaggio also work). Add an optional <b>lang</b> field (en/it) to message each customer in their language; otherwise the default language is used.',
+    'instr_s5_t'     => '5. Set the pipeline stage IDs',
+    'instr_s5'       => 'In Setup → Pipeline stages, enter the status/stage IDs from your portal: the first lead status (“To Work”), the stage that means “quote sent” (starts the signing reminders) and the “signed/won” stage (sends the thank-you and notifies logistics). You can list IDs in Bitrix with crm.status.list.',
+    'instr_s6_t'     => '6. Go live',
+    'instr_s6'       => 'Fill the sender/company name and the logistics email. Make sure the cron line for the scheduler is installed (it sends the queued messages every minute). Watch the <b>Activity log</b> and <b>Messages</b> tabs to see everything flowing. Any automation can be silenced at any time simply by moving the deal to another stage.',
+    'instr_manual_t' => 'Stopping an automation',
+    'instr_manual'   => 'Every timed reminder is cancelled automatically when the agent moves the lead/deal out of the stage it was waiting on. So to silence a reminder, just change the stage in Bitrix24 — no action needed here.',
+];
