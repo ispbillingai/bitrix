@@ -18,7 +18,7 @@ return [
 
     // nav
     'nav_overview'   => 'Panoramica',
-    'nav_setup'      => 'Configurazione',
+    'nav_settings'   => 'Impostazioni',
     'nav_leads'      => 'Lead e Trattative',
     'nav_reminders'  => 'Promemoria',
     'nav_messages'   => 'Messaggi',
@@ -52,8 +52,8 @@ return [
     'ov_cron_hint'     => 'Lo scheduler viene eseguito ogni minuto via cron. Usa questo pulsante per svuotare subito la coda.',
 
     // setup
-    'setup_title'    => 'Configurazione',
-    'setup_intro'    => 'Configura qui l\'integrazione. Questi valori sono salvati nel database e hanno effetto immediato — nessuna modifica ai file. Solo le credenziali del database restano in config.php.',
+    'setup_title'    => 'Impostazioni',
+    'setup_intro'    => 'Configura qui l\'integrazione — Bitrix, WhatsApp, email e tutto il resto. Questi valori sono salvati nel database e hanno effetto immediato, sostituendo config.php. Solo le credenziali del database e la password del pannello restano in config.php.',
     'sec_bitrix'     => 'Bitrix24',
     'sec_whatsapp'   => 'WhatsApp (TextMeBot)',
     'sec_mail'       => 'Email',
@@ -77,6 +77,12 @@ return [
     'f_from_name'    => 'Nome mittente / azienda',
     'f_from_name_h'  => 'Mostrato ai clienti in ogni messaggio come azienda.',
     'f_from_email'   => 'Email mittente',
+    'f_smtp_h'       => 'SMTP (opzionale) — lascia vuoto per usare la posta integrata del server. Compila per inviare tramite la tua casella.',
+    'f_smtp_host'    => 'Host SMTP',
+    'f_smtp_port'    => 'Porta SMTP',
+    'f_smtp_user'    => 'Utente SMTP',
+    'f_smtp_pass'    => 'Password SMTP',
+    'f_smtp_secure'  => 'Sicurezza (tls/ssl)',
     'f_log_email'    => 'Email logistica',
     'f_log_phone'    => 'WhatsApp logistica (opzionale, E.164)',
     'f_default_lang' => 'Lingua predefinita',

@@ -19,7 +19,7 @@ return [
 
     // nav
     'nav_overview'   => 'Overview',
-    'nav_setup'      => 'Setup',
+    'nav_settings'   => 'Settings',
     'nav_leads'      => 'Leads & Deals',
     'nav_reminders'  => 'Reminders',
     'nav_messages'   => 'Messages',
@@ -53,8 +53,8 @@ return [
     'ov_cron_hint'     => 'The scheduler also runs every minute via cron. Use this button to flush the queue immediately.',
 
     // setup
-    'setup_title'    => 'Setup',
-    'setup_intro'    => 'Configure the integration here. These values are stored in the database and take effect immediately — no file editing. Only the database credentials live in config.php.',
+    'setup_title'    => 'Settings',
+    'setup_intro'    => 'Configure the integration here — Bitrix, WhatsApp, email and everything else. These values are stored in the database and take effect immediately, replacing config.php. Only the database credentials and the dashboard password stay in config.php.',
     'sec_bitrix'     => 'Bitrix24',
     'sec_whatsapp'   => 'WhatsApp (TextMeBot)',
     'sec_mail'       => 'Email',
@@ -78,6 +78,12 @@ return [
     'f_from_name'    => 'Sender / company name',
     'f_from_name_h'  => 'Shown to customers in every message as the company.',
     'f_from_email'   => 'Sender email',
+    'f_smtp_h'       => 'SMTP (optional) — leave blank to use the server\'s built-in mail. Fill in to send via your mailbox.',
+    'f_smtp_host'    => 'SMTP host',
+    'f_smtp_port'    => 'SMTP port',
+    'f_smtp_user'    => 'SMTP user',
+    'f_smtp_pass'    => 'SMTP password',
+    'f_smtp_secure'  => 'Security (tls/ssl)',
     'f_log_email'    => 'Logistics email',
     'f_log_phone'    => 'Logistics WhatsApp (optional, E.164)',
     'f_default_lang' => 'Default language',

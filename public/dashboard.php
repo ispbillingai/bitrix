@@ -70,6 +70,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 'bitrix.deal_stage_quote', 'bitrix.deal_stage_signed',
                 'app.intake_secret', 'app.default_lang', 'app.timezone',
                 'textmebot.api_key', 'mail.from_name', 'mail.from_email',
+                'mail.smtp.host', 'mail.smtp.port', 'mail.smtp.user', 'mail.smtp.pass', 'mail.smtp.secure',
                 'logistics.email', 'logistics.phone',
             ];
             $pairs = [];
@@ -103,17 +104,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         } elseif ($do === 'test_bitrix') {
             $me = (new Client())->call('profile');
             $flash = $t('test_ok') . ': ' . ($me['NAME'] ?? '') . ' ' . ($me['LAST_NAME'] ?? '') . ' (' . ($me['ID'] ?? '?') . ')';
-            $tab = 'setup';
+            $tab = 'settings';
         } elseif ($do === 'test_whatsapp') {
             $ok = (new Notifier())->whatsapp((string)$_POST['to'], 'Bitrix24 Glue — test ✅');
             $flash = ($ok ? $t('test_ok') : $t('test_fail'));
             $flashType = $ok ? 'ok' : 'err';
-            $tab = 'setup';
+            $tab = 'settings';
         } elseif ($do === 'test_email') {
             $ok = (new Notifier())->email((string)$_POST['to'], 'Bitrix24 Glue test', '<p>Bitrix24 Glue — test ✅</p>');
             $flash = ($ok ? $t('test_ok') : $t('test_fail'));
             $flashType = $ok ? 'ok' : 'err';
-            $tab = 'setup';
+            $tab = 'settings';
         }
     } catch (Throwable $e) {
         $flash = $t('test_fail') . ': ' . $e->getMessage();
@@ -128,7 +129,7 @@ $cfg = fn(string $k, $d = '') => Config::get($k, $d);
 render_head($t, $h, $lang, $tab, $flash, $flashType);
 
 switch ($tab) {
-    case 'setup':       render_setup($t, $h, $cfg); break;
+    case 'settings':    render_setup($t, $h, $cfg); break;
     case 'leads':       render_leads($t, $h, $pdo); break;
     case 'reminders':   render_reminders($t, $h, $pdo); break;
     case 'messages':    render_messages($t, $h, $pdo); break;
@@ -161,9 +162,10 @@ function render_login(callable $t, callable $h, string $lang, ?string $err): voi
 
 function render_head(callable $t, callable $h, string $lang, string $tab, ?string $flash, string $flashType): void {
     $nav = [
-        'overview'    => 'nav_overview', 'setup' => 'nav_setup', 'leads' => 'nav_leads',
+        'overview'    => 'nav_overview', 'leads' => 'nav_leads',
         'reminders'   => 'nav_reminders', 'messages' => 'nav_messages',
-        'campaigns'   => 'nav_campaigns', 'events' => 'nav_events', 'instructions' => 'nav_instr',
+        'campaigns'   => 'nav_campaigns', 'events' => 'nav_events',
+        'instructions'=> 'nav_instr', 'settings' => 'nav_settings',
     ]; ?>
 <!DOCTYPE html><html lang="<?= $h($lang) ?>"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -275,6 +277,20 @@ function render_setup(callable $t, callable $h, callable $cfg): void {
       fld($h, 'mail.from_name', $t('f_from_name'), $cfg('mail.from_name'), $t('f_from_name_h'));
       fld($h, 'mail.from_email', $t('f_from_email'), $cfg('mail.from_email'));
       ?>
+      <p class="muted small"><?= $h($t('f_smtp_h')) ?></p>
+      <div class="row">
+        <?php
+        fld($h, 'mail.smtp.host', $t('f_smtp_host'), $cfg('mail.smtp.host'));
+        fld($h, 'mail.smtp.port', $t('f_smtp_port'), $cfg('mail.smtp.port'));
+        ?>
+      </div>
+      <div class="row">
+        <?php
+        fld($h, 'mail.smtp.user', $t('f_smtp_user'), $cfg('mail.smtp.user'));
+        fld($h, 'mail.smtp.pass', $t('f_smtp_pass'), $cfg('mail.smtp.pass'));
+        fld($h, 'mail.smtp.secure', $t('f_smtp_secure'), $cfg('mail.smtp.secure'));
+        ?>
+      </div>
       <h3><?= $h($t('sec_logistics')) ?></h3>
       <?php
       fld($h, 'logistics.email', $t('f_log_email'), $cfg('logistics.email'));
@@ -475,6 +491,7 @@ h2{font-size:20px;margin-bottom:16px;} h3{font-size:15px;margin:18px 0 10px;}
 input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px;background:var(--bg);color:var(--txt);font-size:14px;outline:none;font-family:inherit;}
 input:focus,select:focus,textarea:focus{border-color:var(--accent);}
 .fld small{display:block;margin-top:5px;font-size:12px;}
+.row{display:flex;gap:12px;} .row .fld{flex:1;}
 .btn{padding:10px 18px;border:none;border-radius:8px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:600;cursor:pointer;font-size:14px;}
 .btn:hover{opacity:.92;} .btn.ghost{background:transparent;border:1px solid var(--line);color:var(--txt);} .btn.tiny{padding:5px 10px;font-size:12px;}
 .inline{display:inline-flex;gap:8px;align-items:center;margin:0 14px 12px 0;}
