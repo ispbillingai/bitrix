@@ -66,9 +66,26 @@ cron: bin/scheduler.php ──► due reminders + campaign batches ──► Wha
 - **KPI, mobile quotes, Bitrix24 Sign, trade-fair OCR:** all **native Standard**
   features — no custom code; they're configured inside Bitrix24.
 
+## Languages (English + Italian)
+
+All customer/agent message copy lives in `lang/en.php` and `lang/it.php` (same
+convention as the `order` app), keyed by rule. Language is resolved **per
+recipient**, not globally:
+
+- A lead can carry a `lang` (`en`|`it`) from the form (`lang`/`language`/`lingua`
+  field); it's stored on the entity and reused for every later message to that
+  customer.
+- If a lead doesn't specify one, `app.default_lang` (default **`it`**) is used.
+- Staff notifications (agent inactivity, logistics) always use `app.default_lang`.
+- Campaigns take an optional `lang`.
+
+To edit wording, change `lang/en.php` / `lang/it.php` — no code change. Keep the
+keys identical between the two files (parity is asserted: 9 WhatsApp + 9 email).
+
 ## Layout
 
 ```
+lang/en.php  lang/it.php  message copy (WhatsApp + email), one key per rule
 config/config.sample.php   copy to config.php (gitignored) and fill in secrets
 db/schema.sql              full reference schema
 migrations/                versioned changes applied by migrate.php
@@ -136,7 +153,7 @@ curl https://<host>/index.php
 # simulate an external lead
 curl -X POST "https://<host>/webhooks/form-intake.php?secret=INTAKE_SECRET" \
   -H 'Content-Type: application/json' \
-  -d '{"name":"Jane Doe","phone":"+254700000000","email":"jane@example.com","source":"jotform"}'
+  -d '{"name":"Jane Doe","phone":"+254700000000","email":"jane@example.com","source":"jotform","lang":"it"}'
 
 # run the scheduler once to flush the welcome message
 php bin/scheduler.php

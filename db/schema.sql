@@ -33,6 +33,7 @@ CREATE TABLE IF NOT EXISTS tracked_entities (
     customer_phone VARCHAR(32) NULL,
     customer_email VARCHAR(190) NULL,
     customer_name VARCHAR(190) NULL,
+    lang CHAR(2) NOT NULL DEFAULT 'it',     -- recipient language for messages (en|it)
     received_at DATETIME NULL,              -- when it first landed (timer anchor)
     stage_changed_at DATETIME NULL,         -- last time stage_id changed
     last_synced_at DATETIME NULL,
@@ -59,6 +60,7 @@ CREATE TABLE IF NOT EXISTS reminders (
     -- moved past this stage (manual-silence: changing the deal status cancels it).
     skip_if_stage_changed_from VARCHAR(64) NULL,
     payload JSON NULL,                      -- extra template vars (appointment time, etc.)
+    lang CHAR(2) NULL,                      -- override recipient language; NULL = use entity's
     status ENUM('pending','sent','skipped','cancelled','failed') NOT NULL DEFAULT 'pending',
     attempts INT UNSIGNED NOT NULL DEFAULT 0,
     last_error TEXT NULL,
@@ -95,6 +97,7 @@ CREATE TABLE IF NOT EXISTS campaigns (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(190) NOT NULL,
     channel ENUM('whatsapp','email') NOT NULL DEFAULT 'whatsapp',
+    lang CHAR(2) NOT NULL DEFAULT 'it',
     subject VARCHAR(255) NULL,
     body MEDIUMTEXT NOT NULL,
     status ENUM('draft','running','paused','done') NOT NULL DEFAULT 'draft',

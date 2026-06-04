@@ -3,16 +3,38 @@ declare(strict_types=1);
 
 namespace Glue\Reminder;
 
+use Glue\Config;
+
 /**
- * Message bodies for each automation, in one place so non-developers can edit
- * copy. {placeholders} are filled from a vars array. Each rule has a WhatsApp
- * (plain text) and an email (subject + HTML) variant.
+ * Renders the per-rule message copy in the recipient's language. Copy lives in
+ * lang/en.php and lang/it.php (same convention as the order app's lang/*.php) so
+ * non-developers can edit wording without touching code.
  *
- * Keep this provider-agnostic: the Notifier decides channel; this only renders.
+ * Language is resolved per message (a customer's lead carries a 'lang'), not
+ * globally — different customers get different languages from the same run.
  */
 final class Templates
 {
-    /** Render "{name} hi" with $vars['name']. Unknown placeholders stay literal. */
+    /** Loaded lang arrays, cached by code. */
+    private static array $cache = [];
+
+    public static function available(): array
+    {
+        return ['en', 'it'];
+    }
+
+    /** Normalise/validate a language code, falling back to the configured default. */
+    public static function lang(?string $code): string
+    {
+        $code = strtolower(substr(trim((string)$code), 0, 2));
+        if (in_array($code, self::available(), true)) {
+            return $code;
+        }
+        $default = strtolower((string)Config::get('app.default_lang', 'it'));
+        return in_array($default, self::available(), true) ? $default : 'en';
+    }
+
+    /** Fill "{name}" style placeholders from $vars; unknown ones stay literal. */
     public static function render(string $tpl, array $vars): string
     {
         return preg_replace_callback('/\{(\w+)\}/', static function ($m) use ($vars) {
@@ -20,111 +42,35 @@ final class Templates
         }, $tpl) ?? $tpl;
     }
 
-    /** WhatsApp text for a rule_key. */
-    public static function whatsapp(string $ruleKey, array $vars): string
+    /** WhatsApp text for a rule_key in $lang. */
+    public static function whatsapp(string $ruleKey, array $vars, ?string $lang = null): string
     {
-        return self::render(self::WA[$ruleKey] ?? '{name}, we have an update for you.', $vars);
+        $strings = self::load(self::lang($lang));
+        $tpl = $strings['wa'][$ruleKey]
+            ?? self::load('en')['wa'][$ruleKey]
+            ?? '{name}, we have an update for you.';
+        return self::render($tpl, $vars);
     }
 
-    /** ['subject'=>..., 'html'=>...] for a rule_key. */
-    public static function email(string $ruleKey, array $vars): array
+    /** ['subject'=>..., 'html'=>...] for a rule_key in $lang. */
+    public static function email(string $ruleKey, array $vars, ?string $lang = null): array
     {
-        $e = self::EMAIL[$ruleKey] ?? ['subject' => 'Update', 'html' => '<p>Hello {name}.</p>'];
+        $strings = self::load(self::lang($lang));
+        $e = $strings['email'][$ruleKey]
+            ?? self::load('en')['email'][$ruleKey]
+            ?? ['subject' => 'Update', 'html' => '<p>Hello {name}.</p>'];
         return [
             'subject' => self::render($e['subject'], $vars),
             'html'    => self::render($e['html'], $vars),
         ];
     }
 
-    // --- WhatsApp templates ---------------------------------------------------
-    private const WA = [
-        'welcome' =>
-            "Hello {name}! 👋 Thanks for reaching out to {company}. "
-            . "We've received your request and a member of our team will contact you shortly.",
-
-        'agent_assigned' =>
-            "Hi {name}, your dedicated agent at {company} is *{agent_name}*. "
-            . "You can reach {agent_name} directly on {agent_phone} or {agent_email}. "
-            . "They'll be in touch soon!",
-
-        'lead_inactivity' => // sent to the AGENT
-            "⏰ Reminder: lead *{name}* (ID {bitrix_id}) has been waiting and hasn't "
-            . "been moved. Please review it in Bitrix24.",
-
-        'appointment_customer' =>
-            "Hi {name}, this is a reminder of your appointment with {company} on {when}. "
-            . "See you then!",
-
-        'appointment_agent' =>
-            "⏰ Appointment reminder: {customer_name} on {when} (deal {bitrix_id}).",
-
-        'sign_due' =>
-            "Hi {name}, your quote from {company} is ready to sign. "
-            . "Please review and sign via Bitrix24 Sign before {deadline}. "
-            . "Reply here if you need anything.",
-
-        'sign_overdue' =>
-            "Hi {name}, a friendly reminder that your quote from {company} is still "
-            . "awaiting signature. You can sign anytime via Bitrix24 Sign. "
-            . "Let us know if you'd like help.",
-
-        'thank_you' =>
-            "🎉 Thank you, {name}! We've received your signature. Your order with "
-            . "{company} is confirmed and our logistics team is arranging delivery. "
-            . "We'll keep you posted.",
-
-        'logistics_notify' => // sent to the logistics team
-            "📦 New signed deal {bitrix_id}. Customer: {name} ({customer_phone}). "
-            . "Please arrange delivery.",
-    ];
-
-    // --- Email templates ------------------------------------------------------
-    private const EMAIL = [
-        'welcome' => [
-            'subject' => 'Welcome to {company}',
-            'html'    => '<p>Hello {name},</p><p>Thanks for reaching out to {company}. '
-                . 'We have received your request and a member of our team will contact you shortly.</p>',
-        ],
-        'agent_assigned' => [
-            'subject' => 'Your {company} agent: {agent_name}',
-            'html'    => '<p>Hi {name},</p><p>Your dedicated agent is <strong>{agent_name}</strong>.</p>'
-                . '<p>Phone: {agent_phone}<br>Email: {agent_email}</p>'
-                . '<p>They will be in touch soon.</p>',
-        ],
-        'lead_inactivity' => [
-            'subject' => 'Action needed: lead {name} not processed',
-            'html'    => '<p>Lead <strong>{name}</strong> (ID {bitrix_id}) has not been moved. '
-                . 'Please review it in Bitrix24.</p>',
-        ],
-        'appointment_customer' => [
-            'subject' => 'Reminder: your appointment with {company}',
-            'html'    => '<p>Hi {name},</p><p>This is a reminder of your appointment on <strong>{when}</strong>.</p>',
-        ],
-        'appointment_agent' => [
-            'subject' => 'Appointment reminder: {customer_name}',
-            'html'    => '<p>Appointment with {customer_name} on <strong>{when}</strong> (deal {bitrix_id}).</p>',
-        ],
-        'sign_due' => [
-            'subject' => 'Please sign your quote from {company}',
-            'html'    => '<p>Hello {name},</p><p>Your quote is ready. Please review and sign via '
-                . 'Bitrix24 Sign before <strong>{deadline}</strong>.</p>',
-        ],
-        'sign_overdue' => [
-            'subject' => 'Reminder: your quote awaits signature',
-            'html'    => '<p>Hello {name},</p><p>Your quote from {company} is still awaiting signature. '
-                . 'You can sign anytime via Bitrix24 Sign.</p>',
-        ],
-        'thank_you' => [
-            'subject' => 'Thank you — your order is confirmed',
-            'html'    => '<p>Thank you, {name}!</p><p>We have received your signature and our logistics '
-                . 'team is arranging delivery. We will keep you posted.</p>',
-        ],
-        // Sent to the logistics inbox, not the customer.
-        'logistics_notify' => [
-            'subject' => 'New signed deal {bitrix_id} — arrange delivery',
-            'html'    => '<p>Deal <strong>{bitrix_id}</strong> has been signed.</p>'
-                . '<p>Customer: {name}<br>Phone: {customer_phone}<br>Email: {customer_email}</p>'
-                . '<p>Please arrange delivery.</p>',
-        ],
-    ];
+    private static function load(string $lang): array
+    {
+        if (!isset(self::$cache[$lang])) {
+            $file = dirname(__DIR__, 2) . '/lang/' . $lang . '.php';
+            self::$cache[$lang] = is_file($file) ? (array)require $file : [];
+        }
+        return self::$cache[$lang];
+    }
 }

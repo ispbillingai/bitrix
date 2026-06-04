@@ -34,9 +34,9 @@ final class Scheduler
     {
         $sql = 'INSERT INTO reminders
                 (entity_type, bitrix_id, rule_key, recipient_type, channel, due_at,
-                 skip_if_stage_changed_from, payload, dedupe_key)
+                 skip_if_stage_changed_from, payload, lang, dedupe_key)
                 VALUES (:entity_type, :bitrix_id, :rule_key, :recipient_type, :channel, :due_at,
-                        :skip_stage, :payload, :dedupe)
+                        :skip_stage, :payload, :lang, :dedupe)
                 ON DUPLICATE KEY UPDATE id = id';
         $stmt = $this->db->prepare($sql);
         $stmt->execute([
@@ -48,6 +48,7 @@ final class Scheduler
             ':due_at'       => $r['due_at'],
             ':skip_stage'   => $r['skip_if_stage_changed_from'] ?? null,
             ':payload'      => isset($r['payload']) ? json_encode($r['payload'], JSON_UNESCAPED_UNICODE) : null,
+            ':lang'         => $r['lang'] ?? null,
             ':dedupe'       => $r['dedupe_key'] ?? null,
         ]);
     }
@@ -120,20 +121,21 @@ final class Scheduler
         }
 
         $vars = $this->buildVars($r, $payload);
+        $lang = $this->resolveLang($r);
         $channel = $r['channel'];
         $okAny = false;
 
         if ($channel === 'whatsapp' || $channel === 'both') {
             $phone = $this->recipientPhone($r, $vars);
             if ($phone !== '') {
-                $text = Templates::whatsapp($ruleKey, $vars);
+                $text = Templates::whatsapp($ruleKey, $vars, $lang);
                 $okAny = $this->notifier->whatsapp($phone, $text, $reminderId) || $okAny;
             }
         }
         if ($channel === 'email' || $channel === 'both') {
             $to = $this->recipientEmail($r, $vars);
             if ($to !== '') {
-                $mail = Templates::email($ruleKey, $vars);
+                $mail = Templates::email($ruleKey, $vars, $lang);
                 $okAny = $this->notifier->email($to, $mail['subject'], $mail['html'], $reminderId) || $okAny;
             }
         }
@@ -157,6 +159,23 @@ final class Scheduler
             'bitrix_id'      => (string)$r['bitrix_id'],
         ];
         return array_merge($vars, $payload); // payload (agent_name, when, deadline...) wins
+    }
+
+    /**
+     * Language for this message. Staff (agent/logistics) always get the office
+     * default language; customers get their lead's stored language, with an
+     * optional per-reminder override.
+     */
+    private function resolveLang(array $r): string
+    {
+        if ($r['recipient_type'] !== 'customer') {
+            return Templates::lang(Config::get('app.default_lang', 'it'));
+        }
+        if (!empty($r['lang'])) {
+            return Templates::lang($r['lang']);
+        }
+        $track = $this->track($r['entity_type'], (int)$r['bitrix_id']);
+        return Templates::lang($track['lang'] ?? null);
     }
 
     private function recipientPhone(array $r, array $vars): string

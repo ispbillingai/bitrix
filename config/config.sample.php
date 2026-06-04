@@ -73,6 +73,9 @@ return [
 
     'app' => [
         'timezone' => 'Africa/Nairobi',
+        // Default message language when a lead doesn't specify one (en|it).
+        // Staff (agent/logistics) notifications always use this language.
+        'default_lang' => 'it',
         'base_url' => 'https://glue.yourcompany.com',
         // Shared secret required on /public/webhooks/form-intake.php (?secret=).
         'intake_secret' => 'CHANGE_ME_INTAKE_SECRET',

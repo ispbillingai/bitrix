@@ -66,6 +66,7 @@ $lead = [
     'source'   => $pick($data, ['source', 'origin']) ?: 'EXTERNAL',
     'title'    => $pick($data, ['title', 'subject']),
     'comments' => $pick($data, ['comments', 'message', 'note', 'notes', 'messaggio']),
+    'lang'     => $pick($data, ['lang', 'language', 'lingua', 'locale']), // en|it, blank = default
 ];
 
 if ($lead['name'] === '' && $lead['phone'] === '' && $lead['email'] === '') {

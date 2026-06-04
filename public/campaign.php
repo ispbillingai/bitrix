@@ -44,7 +44,8 @@ try {
         (string)($data['channel'] ?? 'whatsapp'),
         (string)$data['body'],
         $data['subject'] ?? null,
-        $data['recipients']
+        $data['recipients'],
+        (string)($data['lang'] ?? 'it')
     );
     echo json_encode(['ok' => true, 'campaign_id' => $id, 'queued' => count($data['recipients'])]);
 } catch (Throwable $e) {

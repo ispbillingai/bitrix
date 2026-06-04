@@ -34,14 +34,15 @@ final class Sender
     }
 
     /** Create a campaign and queue its recipients. Returns campaign id. */
-    public function create(string $name, string $channel, string $body, ?string $subject, array $recipients): int
+    public function create(string $name, string $channel, string $body, ?string $subject, array $recipients, string $lang = 'it'): int
     {
         $channel = $channel === 'email' ? 'email' : 'whatsapp';
+        $lang = Templates::lang($lang);
         $stmt = $this->db->prepare(
-            'INSERT INTO campaigns (name, channel, subject, body, status, total)
-             VALUES (?, ?, ?, ?, "running", ?)'
+            'INSERT INTO campaigns (name, channel, lang, subject, body, status, total)
+             VALUES (?, ?, ?, ?, ?, "running", ?)'
         );
-        $stmt->execute([$name, $channel, $subject, $body, count($recipients)]);
+        $stmt->execute([$name, $channel, $lang, $subject, $body, count($recipients)]);
         $id = (int)$this->db->lastInsertId();
 
         $ins = $this->db->prepare(

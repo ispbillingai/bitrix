@@ -7,6 +7,7 @@ use Glue\Bitrix\Client;
 use Glue\Config;
 use Glue\Event\Log;
 use Glue\Reminder\Scheduler;
+use Glue\Reminder\Templates;
 use Glue\Tracking\Repo;
 
 /**
@@ -35,6 +36,7 @@ final class Intake
         $email  = trim((string)($lead['email'] ?? ''));
         $source = trim((string)($lead['source'] ?? 'EXTERNAL'));
         $title  = trim((string)($lead['title'] ?? ($name !== '' ? "Lead: $name" : 'New lead')));
+        $lang   = Templates::lang($lead['lang'] ?? null); // en|it, default from config
 
         $fields = [
             'TITLE'       => $title,
@@ -59,6 +61,7 @@ final class Intake
             'customer_phone'  => $phone ?: null,
             'customer_email'  => $email ?: null,
             'customer_name'   => $name ?: null,
+            'lang'            => $lang,
             'received_at'     => date('Y-m-d H:i:s'),
             'stage_changed_at'=> date('Y-m-d H:i:s'),
             'last_synced_at'  => date('Y-m-d H:i:s'),
@@ -74,6 +77,7 @@ final class Intake
             'recipient_type'=> 'customer',
             'channel'       => 'both',
             'due_at'        => date('Y-m-d H:i:s'),
+            'lang'          => $lang,
             'dedupe_key'    => "welcome:lead:$leadId",
         ]);
 
