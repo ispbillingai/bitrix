@@ -1,0 +1,129 @@
+<?php
+/**
+ * Leads — kanban board (drag a card to change stage), a create form, and an
+ * expandable list where each lead can be assigned to a seller, moved, converted
+ * to a deal, annotated, and its timeline read. In scope: $t, $h, $pdo, $agents, $uid.
+ */
+$stages = \Glue\Crm\Pipelines::stagesForEntity('lead');
+$byStage = \Glue\Crm\Leads::byStage();
+$rows = \Glue\Crm\Leads::all(300);
+?>
+<h2><?= $h($t('nav_leads')) ?></h2>
+
+<details class="drawer">
+  <summary class="btn ghost" style="margin-bottom:14px"><?= svg('leads') ?> <?= $h($t('lead_new')) ?></summary>
+  <form method="post" class="card" style="margin-top:12px">
+    <input type="hidden" name="do" value="lead_create">
+    <div class="row">
+      <label class="fld"><span><?= $h($t('f_name')) ?></span><input name="name" required></label>
+      <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone"></label>
+      <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email"></label>
+    </div>
+    <div class="row">
+      <label class="fld"><span><?= $h($t('f_company')) ?></span><input name="company"></label>
+      <label class="fld"><span><?= $h($t('f_source')) ?></span><input name="source" value="manual"></label>
+      <label class="fld"><span><?= $h($t('f_lang')) ?></span>
+        <select name="lang"><option value="">—</option><option value="it">IT</option><option value="en">EN</option></select></label>
+    </div>
+    <label class="fld"><span><?= $h($t('f_message')) ?></span><textarea name="comments" rows="2"></textarea></label>
+    <button class="btn"><?= $h($t('save')) ?></button>
+  </form>
+</details>
+
+<div class="kanban" id="kb-lead">
+  <?php foreach ($stages as $s): $cards = $byStage[$s['code']] ?? []; ?>
+    <div class="kcol">
+      <div class="kcol-h">
+        <span><span class="dotc" style="background:<?= $h($s['color'] ?: '#5b6cff') ?>"></span><?= $h($s['name']) ?></span>
+        <span class="cnt"><?= count($cards) ?></span>
+      </div>
+      <div class="kbody" data-stage="<?= $h($s['code']) ?>">
+        <?php foreach ($cards as $c): $nm = $c['customer_name'] ?: ('#' . $c['id']); $ag = $c['agent_name'] ?: $c['agent_username']; ?>
+          <div class="kcard" draggable="true" data-id="<?= $h($c['id']) ?>">
+            <b><?= $h($nm) ?></b>
+            <div class="meta">
+              <span><?= $h($c['source']) ?></span>
+              <?php if ($ag): ?><span><?= avatar($h, $ag) ?> <?= $h($ag) ?></span><?php endif; ?>
+            </div>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    </div>
+  <?php endforeach; ?>
+</div>
+
+<h3 style="margin-top:22px"><?= $h($t('all')) ?> · <?= count($rows) ?></h3>
+<?php if (!$rows): ?><div class="empty"><?= $h($t('none_yet')) ?></div><?php endif; ?>
+<?php foreach ($rows as $r):
+    $ag = $r['agent_name'] ?: $r['agent_username'];
+    $timeline = \Glue\Crm\Activities::forEntity('lead', (int)$r['id'], 20); ?>
+  <details class="drawer card" style="padding:0;margin-bottom:8px">
+    <summary style="display:flex;align-items:center;gap:12px;padding:13px 18px;cursor:pointer">
+      <?= avatar($h, $r['customer_name']) ?>
+      <span style="flex:1"><b><?= $h($r['customer_name'] ?: ('#' . $r['id'])) ?></b>
+        <span class="muted small"> · <?= $h($r['customer_phone']) ?> <?= $h($r['customer_email']) ?></span></span>
+      <span class="pill"><?= $h(\Glue\Crm\Pipelines::label('lead', $r['stage_code'])) ?></span>
+      <?= pill($h, $r['status']) ?>
+      <span class="muted small"><?= $ag ? $h($ag) : $h($t('unassigned')) ?></span>
+    </summary>
+    <div style="padding:4px 18px 18px;border-top:1px solid var(--line)">
+      <div class="cols c-1-1" style="margin-bottom:0">
+        <div>
+          <h3><?= $h($t('actions')) ?></h3>
+          <form method="post" class="inline"><input type="hidden" name="do" value="lead_assign">
+            <input type="hidden" name="id" value="<?= $h($r['id']) ?>">
+            <?php agent_select($h, $agents, 'agent_id', $r['assigned_to'], $t('assign_seller')); ?>
+            <button class="btn tiny"><?= $h($t('assign')) ?></button></form>
+          <form method="post" class="inline"><input type="hidden" name="do" value="lead_move">
+            <input type="hidden" name="id" value="<?= $h($r['id']) ?>">
+            <select name="stage">
+              <?php foreach ($stages as $s): ?>
+                <option value="<?= $h($s['code']) ?>"<?= $s['code'] === $r['stage_code'] ? ' selected' : '' ?>><?= $h($s['name']) ?></option>
+              <?php endforeach; ?>
+            </select>
+            <button class="btn tiny ghost"><?= $h($t('move')) ?></button></form>
+          <?php if ($r['status'] === 'open'): ?>
+          <form method="post" class="inline" onsubmit="return confirm('<?= $h($t('confirm_convert')) ?>')">
+            <input type="hidden" name="do" value="lead_convert"><input type="hidden" name="id" value="<?= $h($r['id']) ?>">
+            <button class="btn tiny"><?= svg('deals') ?> <?= $h($t('convert')) ?></button></form>
+          <?php endif; ?>
+          <form method="post" style="margin-top:12px"><input type="hidden" name="do" value="lead_note">
+            <input type="hidden" name="id" value="<?= $h($r['id']) ?>">
+            <label class="fld"><span><?= $h($t('add_note')) ?></span>
+              <textarea name="body" rows="2" required></textarea></label>
+            <button class="btn tiny ghost"><?= $h($t('save')) ?></button></form>
+        </div>
+        <div>
+          <h3><?= $h($t('timeline')) ?></h3>
+          <div class="tl">
+            <?php if (!$timeline): ?><div class="empty"><?= $h($t('none_yet')) ?></div><?php endif; ?>
+            <?php foreach ($timeline as $a): ?>
+              <div class="tl-row"><div class="tl-ic"><?= svg($a['type'] === 'note' ? 'messages' : ($a['type'] === 'stage' ? 'pipeline' : 'events')) ?></div>
+                <div class="tl-main"><?= $h($a['body']) ?>
+                  <div class="meta"><?= $h($a['full_name'] ?: $a['username'] ?: $t('system')) ?> · <?= $h(short_time($a['created_at'])) ?></div></div></div>
+            <?php endforeach; ?>
+          </div>
+        </div>
+      </div>
+    </div>
+  </details>
+<?php endforeach; ?>
+
+<script>
+(function(){
+  let dragId = null;
+  document.querySelectorAll('#kb-lead .kcard').forEach(card=>{
+    card.addEventListener('dragstart',e=>{dragId=card.dataset.id;e.dataTransfer.effectAllowed='move';});
+  });
+  document.querySelectorAll('#kb-lead .kbody').forEach(body=>{
+    body.addEventListener('dragover',e=>{e.preventDefault();body.classList.add('drag');});
+    body.addEventListener('dragleave',()=>body.classList.remove('drag'));
+    body.addEventListener('drop',e=>{
+      e.preventDefault();body.classList.remove('drag');
+      if(!dragId)return;
+      const fd=new FormData();fd.append('do','lead_move');fd.append('ajax','1');fd.append('id',dragId);fd.append('stage',body.dataset.stage);
+      fetch('?',{method:'POST',body:fd}).then(r=>r.json()).then(()=>location.reload());
+    });
+  });
+})();
+</script>

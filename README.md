@@ -1,148 +1,113 @@
-# Bitrix24 Glue
+# Standalone CRM (Bitrix24-style)
 
-A thin PHP/MySQL middleware around **Bitrix24 Standard**. Bitrix24 stays the CRM
-and source of truth; this app fills the gaps the Standard plan can't cover on its
-own — multi-source lead intake, **WhatsApp via TextMeBot**, custom timers, and the
-signing-reminder cadences — driven by Bitrix **inbound + outbound webhooks**.
+A self-contained PHP/MySQL CRM for capturing customer requests, routing them to
+salespeople, managing appointments, and driving the WhatsApp + email automations
+from `Management software.txt` — **without depending on Bitrix24**. The CRM owns
+its own data (leads, deals, contacts, appointments, tasks). Bitrix24 sync is an
+**optional, off-by-default** add-on.
 
-Built to match the house conventions of the `parking`, `order`, and `proxyserver`
-repos: PHP 8.1, PDO singleton, PSR-4 `src/`, config array, versioned migrations,
-event-log audit table, GitHub → `git pull` → `php migrate.php` deploy.
+Built on the house conventions of the `parking`/`order`/`proxyserver` repos:
+PHP 8.1, PDO singleton, PSR-4 `src/`, config array + DB-backed settings overlay,
+versioned migrations, event-log audit table, `git pull` → `php migrate.php` deploy.
 
-## How it fits together
+## What it does
 
 ```
-External forms ─┐                         ┌─► TextMeBot (WhatsApp)
-Website         ─┼─► form-intake.php ──┐   │
-Trade-show app  ─┘                     ├─► Bitrix24 REST (create lead)
-Partner email   ─► (parser) ───────────┘
-                                            ┌─► reminders queue (MySQL)
-Bitrix24 ──(outbound webhook)──► bitrix-event.php ─┤
-  stage/agent change                       └─► tracked_entities (timers)
+Public form (request.php) ─┐
+Website form (webhook) ─────┼─► Leads  ──assign──► Seller ──auto──► WhatsApp + email
+Trade-show / partner email ─┘     │  (welcome, agent profile, inactivity timer)
+                                  ▼
+                               Deals (pipeline) ──quote stage──► signing reminders
+                                  │                └─won──► thank-you + logistics
+                                  ▼
+                            Appointments ──confirm──► reminders to customer + seller
+                                  ▼
+                               Tasks (KPI scoring per seller)
 
-cron: bin/scheduler.php ──► due reminders + campaign batches ──► WhatsApp + email
+cron: bin/scheduler.php (every minute) ──► sends all due reminders + campaign batches
+optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 portal
 ```
 
-- **Inbound webhook** (`config.bitrix.base_url`): how *we* call Bitrix (create
-  leads, read deals/users, …).
-- **Outbound webhook** → `public/webhooks/bitrix-event.php`: how *Bitrix* tells us
-  a lead/deal changed so we can react.
-- **cron** (`bin/scheduler.php`, every minute): the only thing that actually sends
-  — reminders and campaign batches. Endpoints just *enqueue*, so nothing blocks.
+- **Public request form** (`public/request.php`): a branded, bilingual (EN/IT)
+  form (Nome, Cognome, Email, Telefono, Messaggio + optional preferred time). On
+  submit it creates a lead and, if a time was given, an appointment request.
+- **Website intake** (`public/webhooks/form-intake.php`): your existing site form
+  POSTs here on submit (same fields) and a lead is created — no rebuild needed.
+- **Leads / Pipeline**: kanban boards, drag a card to change stage. Assigning a
+  lead to a seller messages the customer that seller's profile. Convert a lead to
+  a deal; the deal pipeline runs the signing/closing automations.
+- **Appointments**: requests come in → staff assign a seller and confirm a time →
+  reminders fire to **both** parties before the event.
+- **Tasks + KPI**: assign work to sellers, score on completion, leaderboard.
+- **Campaigns / Messages / Reminders / Activity log**: mass WhatsApp/email, full
+  delivery outbox, the reminder queue, and an audit trail.
 
 ## Requirements → where each lives
 
-| # | Requirement | Bitrix24 native | This app |
-|---|-------------|-----------------|----------|
-| 1 | Lead acquisition (forms, website, trade-show, partner email) | CRM lead store, native forms | `form-intake.php` → `Lead\Intake` creates the lead in the first status |
-| 2 | Auto welcome (first pipeline + email/WhatsApp) | Robot can set stage / send email | `welcome` reminder (email **+ WhatsApp via TextMeBot**) enqueued on intake |
-| 3 | Agent assignment → send agent profile (email/WhatsApp) | Manual assignment | `bitrix-event.php` detects `ASSIGNED_BY_ID` change → `agent_assigned` message with the agent's name/phone/email pulled from `user.get` |
-| 4 | Activity reminder if lead not moved in 2h | — (Standard timers are weak) | `lead_inactivity` reminder to the **agent**; auto-silenced when the lead leaves the first status |
-| 5 | Appointment reminders (agent + customer) | Calendar/activities | `appointment-intake.php` schedules both at `appointment_offsets_min` (24h, 2h) |
-| 6 | Signing reminders (10/5/0 days, Bitrix24 Sign) | Bitrix24 Sign sends/tracks the document | `sign_due` cadence + overdue nudges to **15 days**; silenced when the deal moves |
-| 7 | Closing: thank-you + notify logistics | Manual stage move to "won" | `thank_you` to customer + `logistics_notify` email/WhatsApp to logistics |
-| P1 | "To Work" 3h routing timer | — | `deal_inactivity_hours` (same mechanism as #4) |
-| P1 | KPI / score evaluation | **Native** (Bitrix tasks + CRM analytics/reports) | — *(no code; configure in Bitrix)* |
-| P1 | External forms (Jotform) or native forms | Native forms | `form-intake.php` accepts Jotform webhooks (incl. `rawRequest`) |
-| P2 | Send/track signed quotes, contracts, invoices | **Native** Bitrix24 Sign | — |
-| P2 | Recurring reminders on no-sign within 15 days | — | `sign_overdue` recurring (email + WhatsApp) |
-| P2 | WhatsApp mass marketing | limited | `campaign.php` + `Campaign\Sender` (throttled) — **see caveat below** |
-| P2 | WhatsApp support bot | **Native** Bitrix24 Open Channel bot | — |
-| P2 | Manual interrupt / silence any automation | change the deal status | every timed reminder carries `skip_if_stage_changed_from`; moving the deal cancels/skips it |
-| P3 | Quotes from mobile app | **Native** Bitrix24 app | — |
-| P3 | Trade-fair app + business-card OCR | **Native** Bitrix24 (CRM scanner) | leads it produces can also flow through `form-intake.php` |
-
-### Answers to the open questions in the brief
-
-- **WhatsApp mass marketing to unlimited contacts:** technically the campaign
-  runner will send to any list, but **TextMeBot drives one ordinary WhatsApp
-  number** — high-volume marketing risks that number being banned by WhatsApp.
-  For compliant, unlimited bulk you need the **official WhatsApp Business API**
-  with pre-approved message templates (swap the gateway in `Notify\TextMeBot`).
-  The throttle (`campaign_throttle_seconds`) reduces but does not remove the risk.
-- **WhatsApp support bot:** that's a **Bitrix24 Open Channel** feature (native),
-  not this middleware. Connect WhatsApp as an Open Channel in Bitrix and build the
-  bot there.
-- **KPI, mobile quotes, Bitrix24 Sign, trade-fair OCR:** all **native Standard**
-  features — no custom code; they're configured inside Bitrix24.
-
-## Languages (English + Italian)
-
-All customer/agent message copy lives in `lang/en.php` and `lang/it.php` (same
-convention as the `order` app), keyed by rule. Language is resolved **per
-recipient**, not globally:
-
-- A lead can carry a `lang` (`en`|`it`) from the form (`lang`/`language`/`lingua`
-  field); it's stored on the entity and reused for every later message to that
-  customer.
-- If a lead doesn't specify one, `app.default_lang` (default **`it`**) is used.
-- Staff notifications (agent inactivity, logistics) always use `app.default_lang`.
-- Campaigns take an optional `lang`.
-
-To edit wording, change `lang/en.php` / `lang/it.php` — no code change. Keep the
-keys identical between the two files (parity is asserted: 9 WhatsApp + 9 email).
+| Requirement | This CRM |
+|---|---|
+| Lead acquisition (form, website, trade-show, partner email) | `request.php` + `form-intake.php` → `Crm\Leads::create` |
+| Auto welcome (email + WhatsApp) | `welcome` reminder enqueued on lead create |
+| Assign lead to seller → send seller profile | `Crm\Leads::assign` → `agent_assigned` |
+| Activity reminder if lead not worked in N hours | `lead_inactivity`, silenced when the lead leaves the first stage |
+| Appointment reminders (customer + seller) | `Crm\Appointments::schedule` at `appointment_offsets_min` |
+| Signing reminders (10/5/0 days + overdue to 15) | `Crm\Deals::moveStage` into the quote stage → `sign_due`/`sign_overdue` |
+| Closing: thank-you + notify logistics | won stage → `thank_you` + `logistics_notify` |
+| KPI / score evaluation | `Crm\Tasks` (kpi_score/weight) + leaderboard |
+| Manual interrupt / silence any automation | move the record's stage; pending reminders auto-cancel |
+| Mass WhatsApp/email marketing | `campaign.php` + `Campaign\Sender` (throttled) |
+| Bitrix24 sync | **optional** `Sync\BitrixSync`, off by default |
 
 ## Layout
 
 ```
-lang/en.php  lang/it.php  message copy (WhatsApp + email), one key per rule
-config/config.sample.php   copy to config.php (gitignored) and fill in secrets
-db/schema.sql              full reference schema
-migrations/                versioned changes applied by migrate.php
+config/config.sample.php   copy to config.php (gitignored); only `db` is required here
+db/schema.sql              full reference schema (+ seed pipelines)
+migrations/                versioned changes applied by migrate.php (005–008 add the CRM)
 migrate.php                migration runner (CLI or ?key=)
-bin/scheduler.php          cron: dispatch reminders + campaign batches
+bin/scheduler.php          cron: dispatch due reminders + campaign batches
+lang/  en.php it.php        customer message copy (WhatsApp + email)
+lang/  ui.en.php ui.it.php  dashboard UI strings
 public/
   index.php                health check
+  request.php              public customer request form
+  dashboard.php            CRM control panel (controller; renders /views)
   campaign.php             create a mass campaign
   webhooks/
-    form-intake.php        external lead → Bitrix (req #1)
-    bitrix-event.php       Bitrix stage/agent change → automations (#3,#4,#6,#7)
-    appointment-intake.php schedule appointment reminders (#5)
+    form-intake.php        website/Jotform lead → Crm\Leads
+    appointment-intake.php appointment request → Crm\Appointments
+    bitrix-event.php       optional inbound (guarded by sync flag)
+views/                     dashboard page partials (overview, leads, deals, …)
 src/
-  Bootstrap, Config, Db, Event/Log
-  Bitrix/Client            REST over inbound webhook
-  Bitrix/EventHandler      orchestration on stage/agent change
-  Lead/Intake              normalise + create lead + schedule welcome/inactivity
-  Tracking/Repo            local mirror for timers
-  Reminder/Scheduler       enqueue / cancel / dispatch due reminders
-  Reminder/Templates       message copy (WhatsApp + email)
-  Notify/TextMeBot         WhatsApp gateway (reused from parking)
-  Notify/Mailer            mail() or SMTP
-  Notify/Notifier          single send point + messages outbox
-  Campaign/Sender          mass WhatsApp/email
+  Bootstrap, Config, Db, Settings, Auth, Event/Log
+  Crm/   Pipelines, Contacts, Leads, Deals, Appointments, Tasks, Automation,
+         Activities, EntityResolver           — the CRM domain
+  Reminder/  Scheduler (queue), Templates (copy)
+  Notify/    Notifier, TextMeBot (WhatsApp), Mailer
+  Campaign/  Sender (mass send)
+  Bitrix/    Client (REST)   ── used only by:
+  Sync/      BitrixSync (optional push)
 ```
 
 ## Setup
 
 ```bash
-# 1. clone on the server
-git clone https://github.com/ispbillingai/bitrix-glue.git
-cd bitrix-glue
+git clone <repo> && cd <repo>
 
-# 2. config
 cp config/config.sample.php config/config.php
-#   edit: db, bitrix.base_url (inbound webhook), secrets, textmebot.api_key, mail
+#   edit: db credentials, app.company_name/base_url/intake_secret,
+#         textmebot.api_key, mail.*  (everything else is editable in Settings)
 
-# 3. database
-mysql -u root -p < db/schema.sql      # or: create DB then `php migrate.php`
+mysql -u root -p < db/schema.sql      # or: create the DB then `php migrate.php`
 php migrate.php
 
-# 4. cron (every minute)
-* * * * * php /var/www/html/bitrix-glue/bin/scheduler.php >> /var/log/glue.log 2>&1
+# cron (every minute) — the only thing that actually sends
+* * * * * php /var/www/html/crm/bin/scheduler.php >> /var/log/crm.log 2>&1
 ```
 
-Point the web root at `public/` (see `nginx.conf.example`). If you must serve the
-project root instead, the root `.htaccess` blocks `config/`, `src/`, etc.
-
-### Bitrix24 wiring
-
-1. **Inbound webhook** — Developer resources → Inbound webhook, scopes `crm`,
-   `user`. Put its URL in `config.bitrix.base_url`.
-2. **Outbound webhook** — Developer resources → Outbound webhook, handler URL =
-   `https://<host>/webhooks/bitrix-event.php?secret=<outbound_secret>`,
-   events: `ONCRMLEADUPDATE`, `ONCRMDEALADD`, `ONCRMDEALUPDATE`.
-3. Fill the stage/status IDs in `config.bitrix.*` from your pipelines
-   (`crm.status.list` lists them).
+Point the web root at `public/`. The dashboard seeds a default **admin / admin**
+on first load — change it on the Agents page. `views/` and `src/` live outside the
+web root and are never served directly.
 
 ### Quick test
 
@@ -150,19 +115,32 @@ project root instead, the root `.htaccess` blocks `config/`, `src/`, etc.
 # health
 curl https://<host>/index.php
 
-# simulate an external lead
+# public form: open https://<host>/request.php and submit a request
+
+# simulate the website webhook
 curl -X POST "https://<host>/webhooks/form-intake.php?secret=INTAKE_SECRET" \
   -H 'Content-Type: application/json' \
-  -d '{"name":"Jane Doe","phone":"+254700000000","email":"jane@example.com","source":"jotform","lang":"it"}'
+  -d '{"nome":"Mario","cognome":"Rossi","telefono":"+393331234567","email":"mario@example.com","messaggio":"Info","lang":"it"}'
 
-# run the scheduler once to flush the welcome message
+# flush the queue (welcome message, etc.)
 php bin/scheduler.php
 ```
 
+## Optional: Bitrix24 sync
+
+The CRM is fully standalone. To **also** mirror new leads/deals into a Bitrix24
+portal, go to **Settings → Bitrix24 sync**, tick *Enable*, and paste the inbound
+webhook URL. `Sync\BitrixSync` then pushes on create/stage-change; the
+`bitrix-event.php` endpoint receives inbound events. With sync off, none of this
+runs and Bitrix is never contacted.
+
 ## Notes
 
-- Every send is logged to `messages`; every decision to `events`. When someone
-  asks "why did this go out?", the audit trail answers it.
-- Reminders are de-duplicated by `dedupe_key`, so webhook retries never double-send.
-- Stage IDs, cadences, offsets and copy are all config/`Templates` — tuning them
+- Every send is logged to `messages`; every decision to `events`; per-record
+  history to `activities`. "Why did this go out?" is always answerable.
+- Reminders are de-duplicated by `dedupe_key`, so retries/double-submits never
+  double-send.
+- Stages, cadences, offsets and copy are all config / DB / `lang/*` — tuning them
   needs no code change.
+- **MySQL only** (no MariaDB-only SQL); column migrations guard against
+  `information_schema` instead of `ADD COLUMN IF NOT EXISTS`.

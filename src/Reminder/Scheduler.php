@@ -3,8 +3,8 @@ declare(strict_types=1);
 
 namespace Glue\Reminder;
 
-use Glue\Bitrix\Client;
 use Glue\Config;
+use Glue\Crm\EntityResolver;
 use Glue\Db;
 use Glue\Event\Log;
 use Glue\Notify\Notifier;
@@ -12,8 +12,11 @@ use PDO;
 use Throwable;
 
 /**
- * Owns the reminders queue: enqueue future work, cancel it when a deal moves
+ * Owns the reminders queue: enqueue future work, cancel it when a record moves
  * (manual silence), and dispatch whatever is due. Called by bin/scheduler.php.
+ *
+ * Recipient details and the "has it moved?" guard now come from the LOCAL CRM
+ * tables via Crm\EntityResolver — the scheduler no longer reads Bitrix over REST.
  */
 final class Scheduler
 {
@@ -27,41 +30,41 @@ final class Scheduler
     }
 
     /**
-     * Insert a reminder. dedupe_key makes repeated enqueues (e.g. webhook retries)
-     * a no-op via the unique index. due_at is a 'Y-m-d H:i:s' string.
+     * Insert a reminder. dedupe_key makes repeated enqueues (double-submit, webhook
+     * retry) a no-op via the unique index. due_at is a 'Y-m-d H:i:s' string.
      */
     public function enqueue(array $r): void
     {
         $sql = 'INSERT INTO reminders
-                (entity_type, bitrix_id, rule_key, recipient_type, channel, due_at,
+                (entity_type, entity_id, rule_key, recipient_type, channel, due_at,
                  skip_if_stage_changed_from, payload, lang, dedupe_key)
-                VALUES (:entity_type, :bitrix_id, :rule_key, :recipient_type, :channel, :due_at,
+                VALUES (:entity_type, :entity_id, :rule_key, :recipient_type, :channel, :due_at,
                         :skip_stage, :payload, :lang, :dedupe)
                 ON DUPLICATE KEY UPDATE id = id';
         $stmt = $this->db->prepare($sql);
         $stmt->execute([
-            ':entity_type'  => $r['entity_type'],
-            ':bitrix_id'    => $r['bitrix_id'] ?? null,
-            ':rule_key'     => $r['rule_key'],
+            ':entity_type'    => $r['entity_type'],
+            ':entity_id'      => $r['entity_id'] ?? null,
+            ':rule_key'       => $r['rule_key'],
             ':recipient_type' => $r['recipient_type'],
-            ':channel'      => $r['channel'] ?? 'both',
-            ':due_at'       => $r['due_at'],
-            ':skip_stage'   => $r['skip_if_stage_changed_from'] ?? null,
-            ':payload'      => isset($r['payload']) ? json_encode($r['payload'], JSON_UNESCAPED_UNICODE) : null,
-            ':lang'         => $r['lang'] ?? null,
-            ':dedupe'       => $r['dedupe_key'] ?? null,
+            ':channel'        => $r['channel'] ?? 'both',
+            ':due_at'         => $r['due_at'],
+            ':skip_stage'     => $r['skip_if_stage_changed_from'] ?? null,
+            ':payload'        => isset($r['payload']) ? json_encode($r['payload'], JSON_UNESCAPED_UNICODE) : null,
+            ':lang'           => $r['lang'] ?? null,
+            ':dedupe'         => $r['dedupe_key'] ?? null,
         ]);
     }
 
     /**
-     * Cancel pending reminders for an entity — used to silence automations when
-     * an agent manually moves the deal. Optionally limit to specific rule keys.
+     * Cancel pending reminders for a record — used to silence automations when a
+     * seller manually moves the deal. Optionally limit to specific rule keys.
      */
-    public function cancelForEntity(string $entityType, int $bitrixId, array $ruleKeys = []): int
+    public function cancelForEntity(string $entityType, int $entityId, array $ruleKeys = []): int
     {
         $sql = "UPDATE reminders SET status='cancelled'
-                WHERE status='pending' AND entity_type=? AND bitrix_id=?";
-        $args = [$entityType, $bitrixId];
+                WHERE status='pending' AND entity_type=? AND entity_id=?";
+        $args = [$entityType, $entityId];
         if ($ruleKeys) {
             $sql .= ' AND rule_key IN (' . implode(',', array_fill(0, count($ruleKeys), '?')) . ')';
             $args = array_merge($args, $ruleKeys);
@@ -94,7 +97,7 @@ final class Scheduler
             } catch (Throwable $e) {
                 $failed++;
                 $this->markFailed((int)$r['id'], $e->getMessage());
-                Log::write('scheduler', 'reminder_failed', $r['entity_type'], (int)$r['bitrix_id'],
+                Log::write('scheduler', 'reminder_failed', $r['entity_type'], (int)$r['entity_id'],
                     ['reminder_id' => (int)$r['id'], 'error' => $e->getMessage()]);
             }
         }
@@ -105,22 +108,22 @@ final class Scheduler
     private function dispatchOne(array $r): string
     {
         $reminderId = (int)$r['id'];
-        $bitrixId   = (int)$r['bitrix_id'];
+        $entityId   = (int)$r['entity_id'];
         $ruleKey    = $r['rule_key'];
         $payload    = $r['payload'] ? json_decode($r['payload'], true) : [];
 
-        // Manual-silence guard: if the entity has moved past the stage we were
-        // waiting on, skip (the agent already acted / changed the status).
-        if (!empty($r['skip_if_stage_changed_from']) && $bitrixId > 0) {
-            if ($this->stageMovedFrom($r['entity_type'], $bitrixId, $r['skip_if_stage_changed_from'])) {
+        // Manual-silence guard: if the record has moved past the stage we were
+        // waiting on, skip (the seller already acted / changed the stage).
+        if (!empty($r['skip_if_stage_changed_from']) && $entityId > 0) {
+            if ($this->stageMovedFrom($r['entity_type'], $entityId, $r['skip_if_stage_changed_from'])) {
                 $this->mark($reminderId, 'skipped');
-                Log::write('scheduler', 'reminder_skipped_stage_moved', $r['entity_type'], $bitrixId,
+                Log::write('scheduler', 'reminder_skipped_stage_moved', $r['entity_type'], $entityId,
                     ['reminder_id' => $reminderId, 'rule' => $ruleKey]);
                 return 'skipped';
             }
         }
 
-        $vars = $this->buildVars($r, $payload);
+        $vars = $this->buildVars($r, is_array($payload) ? $payload : []);
         $lang = $this->resolveLang($r);
         $channel = $r['channel'];
         $okAny = false;
@@ -141,29 +144,37 @@ final class Scheduler
         }
 
         $this->mark($reminderId, $okAny ? 'sent' : 'failed');
-        Log::write('scheduler', 'reminder_sent', $r['entity_type'], $bitrixId,
+        Log::write('scheduler', 'reminder_sent', $r['entity_type'], $entityId,
             ['reminder_id' => $reminderId, 'rule' => $ruleKey, 'ok' => $okAny]);
         return $okAny ? 'sent' : 'skipped';
     }
 
-    /** Build template vars from the tracked entity + payload + company name. */
+    /** Build template vars from the local record (resolver) + payload + company. */
     private function buildVars(array $r, array $payload): array
     {
-        $track = $this->track($r['entity_type'], (int)$r['bitrix_id']);
+        $entityId = (int)$r['entity_id'];
+        $res = EntityResolver::resolve($r['entity_type'], $entityId);
+        $company = (string)Config::get('mail.from_name', '')
+            ?: (string)Config::get('app.company_name', 'our company');
         $vars = [
-            'company'        => Config::get('mail.from_name', 'our company'),
-            'name'           => $track['customer_name'] ?? ($payload['name'] ?? 'there'),
-            'customer_name'  => $track['customer_name'] ?? ($payload['name'] ?? 'the customer'),
-            'customer_phone' => $track['customer_phone'] ?? ($payload['customer_phone'] ?? ''),
-            'customer_email' => $track['customer_email'] ?? ($payload['customer_email'] ?? ''),
-            'bitrix_id'      => (string)$r['bitrix_id'],
+            'company'        => $company,
+            'name'           => $res['customer_name'] ?? ($payload['name'] ?? 'there'),
+            'customer_name'  => $res['customer_name'] ?? ($payload['name'] ?? 'the customer'),
+            'customer_phone' => $res['customer_phone'] ?? ($payload['customer_phone'] ?? ''),
+            'customer_email' => $res['customer_email'] ?? ($payload['customer_email'] ?? ''),
+            'agent_name'     => $res['agent_name'] ?? '',
+            'agent_phone'    => $res['agent_phone'] ?? '',
+            'agent_email'    => $res['agent_email'] ?? '',
+            'id'             => (string)$entityId,
+            'entity_id'      => (string)$entityId,
+            'bitrix_id'      => (string)$entityId, // legacy placeholder still used in some copy
         ];
         return array_merge($vars, $payload); // payload (agent_name, when, deadline...) wins
     }
 
     /**
      * Language for this message. Staff (agent/logistics) always get the office
-     * default language; customers get their lead's stored language, with an
+     * default language; customers get their record's stored language, with an
      * optional per-reminder override.
      */
     private function resolveLang(array $r): string
@@ -174,8 +185,8 @@ final class Scheduler
         if (!empty($r['lang'])) {
             return Templates::lang($r['lang']);
         }
-        $track = $this->track($r['entity_type'], (int)$r['bitrix_id']);
-        return Templates::lang($track['lang'] ?? null);
+        $res = EntityResolver::resolve($r['entity_type'], (int)$r['entity_id']);
+        return Templates::lang($res['lang'] ?? null);
     }
 
     private function recipientPhone(array $r, array $vars): string
@@ -196,28 +207,11 @@ final class Scheduler
         };
     }
 
-    private function stageMovedFrom(string $entityType, int $bitrixId, string $fromStage): bool
+    /** Has the local record left the stage this reminder was waiting on? */
+    private function stageMovedFrom(string $entityType, int $entityId, string $fromStage): bool
     {
-        try {
-            $client = new Client();
-            $entity = $entityType === 'lead' ? $client->getLead($bitrixId) : $client->getDeal($bitrixId);
-            if (!$entity) {
-                return false;
-            }
-            $current = $entity['STATUS_ID'] ?? $entity['STAGE_ID'] ?? null;
-            return $current !== null && $current !== $fromStage;
-        } catch (Throwable) {
-            return false; // on Bitrix error, don't silence — better to remind than drop
-        }
-    }
-
-    private function track(string $entityType, int $bitrixId): array
-    {
-        $stmt = $this->db->prepare(
-            'SELECT * FROM tracked_entities WHERE entity_type=? AND bitrix_id=?'
-        );
-        $stmt->execute([$entityType, $bitrixId]);
-        return $stmt->fetch() ?: [];
+        $current = EntityResolver::stageCode($entityType, $entityId);
+        return $current !== null && $current !== $fromStage;
     }
 
     private function mark(int $id, string $status): void

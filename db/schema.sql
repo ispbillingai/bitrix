@@ -1,5 +1,7 @@
--- Bitrix24 glue middleware schema (MySQL 5.7+ / MariaDB 10.4+)
--- This is the full reference schema. Incremental changes live in /migrations.
+-- Standalone CRM — full reference schema (MySQL 5.7+ / 8.0).
+-- This mirrors the end state produced by /migrations. Fresh installs can load
+-- this file directly, then run `php migrate.php` (it will mark these as applied
+-- via CREATE TABLE IF NOT EXISTS / guarded ALTERs being no-ops).
 
 CREATE DATABASE IF NOT EXISTS bitrix_glue
     DEFAULT CHARACTER SET utf8mb4
@@ -7,14 +9,16 @@ CREATE DATABASE IF NOT EXISTS bitrix_glue
 
 USE bitrix_glue;
 
--- Audit log of everything that comes in or gets processed.
--- Mirrors the parking app's gate_events pattern.
+-- ---------------------------------------------------------------------------
+-- Infrastructure: audit log, settings, dashboard users (with agent profile)
+-- ---------------------------------------------------------------------------
+
 CREATE TABLE IF NOT EXISTS events (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    source VARCHAR(32) NOT NULL,            -- form_intake | bitrix_event | scheduler | campaign
-    event_type VARCHAR(64) NOT NULL,        -- lead_created | stage_changed | reminder_sent ...
-    entity_type VARCHAR(16) NULL,           -- lead | deal | contact | appointment
-    entity_id BIGINT UNSIGNED NULL,         -- Bitrix entity id
+    source VARCHAR(32) NOT NULL,
+    event_type VARCHAR(64) NOT NULL,
+    entity_type VARCHAR(16) NULL,
+    entity_id BIGINT UNSIGNED NULL,
     details JSON NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_entity (entity_type, entity_id),
@@ -22,65 +26,212 @@ CREATE TABLE IF NOT EXISTS events (
     KEY idx_source (source)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Local mirror of the Bitrix entities whose timers we watch. We only store
--- the few fields needed to decide "has this moved?" — Bitrix stays the source of truth.
-CREATE TABLE IF NOT EXISTS tracked_entities (
-    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    entity_type VARCHAR(16) NOT NULL,       -- lead | deal
-    bitrix_id BIGINT UNSIGNED NOT NULL,
-    stage_id VARCHAR(64) NULL,              -- current STATUS_ID / STAGE_ID
-    assigned_by_id BIGINT UNSIGNED NULL,    -- Bitrix user id of the agent
-    customer_phone VARCHAR(32) NULL,
-    customer_email VARCHAR(190) NULL,
-    customer_name VARCHAR(190) NULL,
-    lang CHAR(2) NOT NULL DEFAULT 'it',     -- recipient language for messages (en|it)
-    received_at DATETIME NULL,              -- when it first landed (timer anchor)
-    stage_changed_at DATETIME NULL,         -- last time stage_id changed
-    last_synced_at DATETIME NULL,
-    status ENUM('open','closed') NOT NULL DEFAULT 'open',
-    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-    UNIQUE KEY uk_entity (entity_type, bitrix_id),
-    KEY idx_stage (stage_id),
-    KEY idx_status (status)
+CREATE TABLE IF NOT EXISTS settings (
+    `key` VARCHAR(120) NOT NULL PRIMARY KEY,
+    `value` TEXT NULL,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- The scheduled-work queue. The cron scheduler picks up due, pending rows.
--- rule_key identifies which automation produced it (see src/Reminder/Rules.php).
+CREATE TABLE IF NOT EXISTS users (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(64) NOT NULL UNIQUE,
+    full_name VARCHAR(190) NULL,
+    email VARCHAR(190) NULL,
+    phone VARCHAR(32) NULL,
+    title VARCHAR(120) NULL,
+    photo_url VARCHAR(255) NULL,
+    lang CHAR(2) NOT NULL DEFAULT 'it',
+    bitrix_user_id BIGINT UNSIGNED NULL,
+    password_hash VARCHAR(255) NOT NULL,
+    role VARCHAR(20) NOT NULL DEFAULT 'agent',
+    active TINYINT(1) NOT NULL DEFAULT 1,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- CRM core: pipelines/stages, contacts, leads, deals, appointments, tasks
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS pipelines (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    entity_type ENUM('lead','deal') NOT NULL,
+    name VARCHAR(120) NOT NULL,
+    is_default TINYINT(1) NOT NULL DEFAULT 0,
+    sort INT NOT NULL DEFAULT 0,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_entity (entity_type)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS stages (
+    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    pipeline_id INT UNSIGNED NOT NULL,
+    code VARCHAR(48) NOT NULL,
+    name VARCHAR(120) NOT NULL,
+    sort INT NOT NULL DEFAULT 0,
+    is_first TINYINT(1) NOT NULL DEFAULT 0,
+    is_won TINYINT(1) NOT NULL DEFAULT 0,
+    is_lost TINYINT(1) NOT NULL DEFAULT 0,
+    color VARCHAR(16) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_pipeline_code (pipeline_id, code),
+    KEY idx_pipeline (pipeline_id, sort)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS contacts (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(190) NOT NULL,
+    company VARCHAR(190) NULL,
+    phone VARCHAR(32) NULL,
+    email VARCHAR(190) NULL,
+    lang CHAR(2) NOT NULL DEFAULT 'it',
+    source VARCHAR(48) NULL,
+    assigned_to INT UNSIGNED NULL,
+    notes TEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_phone (phone),
+    KEY idx_email (email),
+    KEY idx_assigned (assigned_to)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS leads (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    contact_id BIGINT UNSIGNED NULL,
+    title VARCHAR(190) NULL,
+    source VARCHAR(48) NULL,
+    pipeline_id INT UNSIGNED NULL,
+    stage_code VARCHAR(48) NOT NULL DEFAULT 'NEW',
+    assigned_to INT UNSIGNED NULL,
+    status ENUM('open','converted','junk') NOT NULL DEFAULT 'open',
+    customer_name VARCHAR(190) NULL,
+    customer_phone VARCHAR(32) NULL,
+    customer_email VARCHAR(190) NULL,
+    comments TEXT NULL,
+    lang CHAR(2) NOT NULL DEFAULT 'it',
+    received_at DATETIME NULL,
+    stage_changed_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_stage (pipeline_id, stage_code),
+    KEY idx_assigned (assigned_to),
+    KEY idx_status (status),
+    KEY idx_contact (contact_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS deals (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(190) NOT NULL,
+    contact_id BIGINT UNSIGNED NULL,
+    lead_id BIGINT UNSIGNED NULL,
+    pipeline_id INT UNSIGNED NULL,
+    stage_code VARCHAR(48) NOT NULL DEFAULT 'NEW',
+    amount DECIMAL(14,2) NOT NULL DEFAULT 0,
+    currency VARCHAR(8) NOT NULL DEFAULT 'EUR',
+    assigned_to INT UNSIGNED NULL,
+    status ENUM('open','won','lost') NOT NULL DEFAULT 'open',
+    expected_close_date DATE NULL,
+    customer_name VARCHAR(190) NULL,
+    customer_phone VARCHAR(32) NULL,
+    customer_email VARCHAR(190) NULL,
+    lang CHAR(2) NOT NULL DEFAULT 'it',
+    stage_changed_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_stage (pipeline_id, stage_code),
+    KEY idx_assigned (assigned_to),
+    KEY idx_status (status),
+    KEY idx_contact (contact_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS appointments (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    contact_id BIGINT UNSIGNED NULL,
+    lead_id BIGINT UNSIGNED NULL,
+    agent_id INT UNSIGNED NULL,
+    title VARCHAR(190) NULL,
+    location VARCHAR(190) NULL,
+    preferred_at DATETIME NULL,
+    starts_at DATETIME NULL,
+    ends_at DATETIME NULL,
+    status ENUM('requested','confirmed','done','cancelled','no_show') NOT NULL DEFAULT 'requested',
+    notes TEXT NULL,
+    customer_name VARCHAR(190) NULL,
+    customer_phone VARCHAR(32) NULL,
+    customer_email VARCHAR(190) NULL,
+    lang CHAR(2) NOT NULL DEFAULT 'it',
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_status (status),
+    KEY idx_agent (agent_id),
+    KEY idx_starts (starts_at),
+    KEY idx_contact (contact_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS tasks (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    title VARCHAR(190) NOT NULL,
+    description TEXT NULL,
+    assigned_to INT UNSIGNED NULL,
+    related_type VARCHAR(16) NULL,
+    related_id BIGINT UNSIGNED NULL,
+    due_at DATETIME NULL,
+    priority ENUM('low','normal','high') NOT NULL DEFAULT 'normal',
+    status ENUM('open','done','cancelled') NOT NULL DEFAULT 'open',
+    kpi_score INT NULL,
+    kpi_weight INT NOT NULL DEFAULT 1,
+    completed_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_assigned (assigned_to, status),
+    KEY idx_due (status, due_at),
+    KEY idx_related (related_type, related_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS activities (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    entity_type VARCHAR(16) NOT NULL,
+    entity_id BIGINT UNSIGNED NOT NULL,
+    user_id INT UNSIGNED NULL,
+    type ENUM('note','call','email','stage','meeting','task','system') NOT NULL DEFAULT 'note',
+    body TEXT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_entity (entity_type, entity_id),
+    KEY idx_created (created_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- Reminder queue + message outbox + campaigns
+-- ---------------------------------------------------------------------------
+
 CREATE TABLE IF NOT EXISTS reminders (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     entity_type VARCHAR(16) NOT NULL,       -- lead | deal | appointment
-    bitrix_id BIGINT UNSIGNED NULL,         -- related Bitrix entity (lead/deal id)
-    rule_key VARCHAR(48) NOT NULL,          -- welcome | agent_assigned | lead_inactivity |
-                                            -- appointment | sign_due | sign_overdue | thank_you
+    entity_id BIGINT UNSIGNED NULL,         -- local record id
+    rule_key VARCHAR(48) NOT NULL,
     recipient_type ENUM('customer','agent','logistics') NOT NULL,
     channel ENUM('whatsapp','email','both') NOT NULL DEFAULT 'both',
     due_at DATETIME NOT NULL,
-    -- guard: if set, scheduler re-reads Bitrix and SKIPS if the entity already
-    -- moved past this stage (manual-silence: changing the deal status cancels it).
     skip_if_stage_changed_from VARCHAR(64) NULL,
-    payload JSON NULL,                      -- extra template vars (appointment time, etc.)
-    lang CHAR(2) NULL,                      -- override recipient language; NULL = use entity's
+    payload JSON NULL,
+    lang CHAR(2) NULL,
     status ENUM('pending','sent','skipped','cancelled','failed') NOT NULL DEFAULT 'pending',
     attempts INT UNSIGNED NOT NULL DEFAULT 0,
     last_error TEXT NULL,
     sent_at DATETIME NULL,
-    -- dedup key so the same automation never schedules twice for one entity+offset.
     dedupe_key VARCHAR(128) NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uk_dedupe (dedupe_key),
     KEY idx_due (status, due_at),
-    KEY idx_entity (entity_type, bitrix_id)
+    KEY idx_entity (entity_type, entity_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Outbox: one row per message actually dispatched (audit + delivery status).
 CREATE TABLE IF NOT EXISTS messages (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     reminder_id BIGINT UNSIGNED NULL,
     campaign_id BIGINT UNSIGNED NULL,
     channel ENUM('whatsapp','email') NOT NULL,
-    recipient VARCHAR(190) NOT NULL,        -- phone (E.164) or email
+    recipient VARCHAR(190) NOT NULL,
     subject VARCHAR(255) NULL,
     body MEDIUMTEXT NULL,
     status ENUM('sent','failed') NOT NULL,
@@ -91,8 +242,6 @@ CREATE TABLE IF NOT EXISTS messages (
     KEY idx_recipient (recipient)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
--- Mass WhatsApp / email campaigns (req part2 #2 marketing). Recipients are
--- expanded into messages rows as they are sent, throttled by the scheduler.
 CREATE TABLE IF NOT EXISTS campaigns (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(190) NOT NULL,
@@ -118,3 +267,42 @@ CREATE TABLE IF NOT EXISTS campaign_recipients (
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_campaign_status (campaign_id, status)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- Optional Bitrix24 sync mapping (only used when bitrix.sync_enabled = true)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS sync_map (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    local_type ENUM('lead','deal','contact') NOT NULL,
+    local_id BIGINT UNSIGNED NOT NULL,
+    bitrix_id BIGINT UNSIGNED NULL,
+    last_pushed_at DATETIME NULL,
+    last_pulled_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_local (local_type, local_id),
+    KEY idx_bitrix (local_type, bitrix_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- Seed: default Leads and Deals pipelines with stages
+-- ---------------------------------------------------------------------------
+
+INSERT INTO pipelines (id, entity_type, name, is_default, sort) VALUES
+    (1, 'lead', 'Leads', 1, 0),
+    (2, 'deal', 'Deals', 1, 0)
+ON DUPLICATE KEY UPDATE id = id;
+
+INSERT INTO stages (pipeline_id, code, name, sort, is_first, is_won, is_lost, color) VALUES
+    (1, 'NEW',        'New',          0, 1, 0, 0, '#5b6cff'),
+    (1, 'CONTACTED',  'Contacted',    1, 0, 0, 0, '#d9a40a'),
+    (1, 'QUALIFIED',  'Qualified',    2, 0, 0, 0, '#3fb868'),
+    (1, 'CONVERTED',  'Converted',    3, 0, 1, 0, '#3fb868'),
+    (1, 'JUNK',       'Junk',         4, 0, 0, 1, '#e5616e'),
+    (2, 'NEW',        'New',          0, 1, 0, 0, '#5b6cff'),
+    (2, 'QUOTE',      'Quote sent',   1, 0, 0, 0, '#d9a40a'),
+    (2, 'NEGOTIATION','Negotiation',  2, 0, 0, 0, '#7c5cff'),
+    (2, 'WON',        'Won',          3, 0, 1, 0, '#3fb868'),
+    (2, 'LOST',       'Lost',         4, 0, 0, 1, '#e5616e')
+ON DUPLICATE KEY UPDATE id = id;

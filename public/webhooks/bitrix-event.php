@@ -2,22 +2,22 @@
 declare(strict_types=1);
 
 /**
- * Receives Bitrix24 OUTBOUND webhook events and runs the matching automation
- * (requirements #3 agent profile, #4 silence inactivity, #6 signing reminders,
- * #7 thank-you + logistics).
+ * OPTIONAL inbound hook for the Bitrix24 sync (off by default).
+ *
+ * The CRM is standalone — this endpoint only matters if you turn on Bitrix sync in
+ * Settings and want changes made *inside Bitrix* echoed back. When sync is disabled
+ * it simply acknowledges and ignores, so a stray Bitrix webhook never errors.
  *
  * Configure in Bitrix24: Developer resources -> Outbound webhook. Handler URL =
- * this file with ?secret=<bitrix.outbound_secret>. Subscribe to:
- *   ONCRMLEADUPDATE, ONCRMDEALADD, ONCRMDEALUPDATE
- *
- * Bitrix posts form-encoded:  event, data[FIELDS][ID], auth[...]
+ * this file with ?secret=<bitrix.outbound_secret>. Bitrix posts form-encoded:
+ *   event, data[FIELDS][ID], auth[...]
  */
 require __DIR__ . '/../../src/Bootstrap.php';
 
-use Glue\Bitrix\EventHandler;
 use Glue\Bootstrap;
 use Glue\Config;
 use Glue\Event\Log;
+use Glue\Sync\BitrixSync;
 
 Bootstrap::init();
 header('Content-Type: application/json');
@@ -27,6 +27,12 @@ $secret = $_GET['secret'] ?? '';
 if (!hash_equals((string)Config::get('bitrix.outbound_secret', ''), (string)$secret)) {
     http_response_code(401);
     echo json_encode(['ok' => false, 'error' => 'unauthorized']);
+    exit;
+}
+
+if (!BitrixSync::enabled()) {
+    // Sync is off: acknowledge so Bitrix stops retrying, but do nothing.
+    echo json_encode(['ok' => true, 'sync' => 'disabled']);
     exit;
 }
 
@@ -42,18 +48,7 @@ if ($event === '' || $id <= 0) {
 $entityType = str_contains($event, 'LEAD') ? 'lead'
     : (str_contains($event, 'DEAL') ? 'deal' : null);
 
-if ($entityType === null) {
-    // Acknowledge unknown events so Bitrix doesn't retry forever.
-    echo json_encode(['ok' => true, 'ignored' => $event]);
-    exit;
-}
-
-try {
-    $result = (new EventHandler())->handle($entityType, $id, $event);
-    echo json_encode(['ok' => true] + $result);
-} catch (Throwable $e) {
-    Log::write('bitrix_event', 'handler_error', $entityType, $id,
-        ['event' => $event, 'error' => $e->getMessage()]);
-    http_response_code(500);
-    echo json_encode(['ok' => false, 'error' => 'handler_failed', 'detail' => $e->getMessage()]);
-}
+// Record the inbound event; reconciliation back into local records is handled by
+// the sync module's pull pass (kept minimal — push is the primary direction).
+Log::write('bitrix_event', 'inbound', $entityType, $id, ['event' => $event]);
+echo json_encode(['ok' => true, 'received' => $event, 'entity' => $entityType, 'id' => $id]);

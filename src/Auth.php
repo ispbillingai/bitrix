@@ -51,8 +51,39 @@ final class Auth
     /** @return array<int,array> all users (without hashes) */
     public static function all(): array
     {
-        $rows = Db::pdo()->query('SELECT id, username, role, active, created_at FROM users ORDER BY id')->fetchAll();
+        $rows = Db::pdo()->query(
+            'SELECT id, username, full_name, email, phone, title, role, active, created_at
+             FROM users ORDER BY id'
+        )->fetchAll();
         return $rows ?: [];
+    }
+
+    /** Active sellers/agents for assignment dropdowns. */
+    public static function agents(): array
+    {
+        $rows = Db::pdo()->query(
+            'SELECT id, username, full_name, email, phone, title FROM users WHERE active = 1 ORDER BY full_name, username'
+        )->fetchAll();
+        return $rows ?: [];
+    }
+
+    /** Update an agent's profile fields (name/email/phone/title). */
+    public static function updateProfile(int $id, array $fields): void
+    {
+        $allowed = ['full_name', 'email', 'phone', 'title', 'role', 'lang'];
+        $set = [];
+        $args = [];
+        foreach ($fields as $k => $v) {
+            if (in_array($k, $allowed, true)) {
+                $set[] = "`$k` = ?";
+                $args[] = ($v === '' ? null : $v);
+            }
+        }
+        if (!$set) {
+            return;
+        }
+        $args[] = $id;
+        Db::pdo()->prepare('UPDATE users SET ' . implode(', ', $set) . ' WHERE id = ?')->execute($args);
     }
 
     public static function create(string $username, string $password, string $role = 'admin'): int

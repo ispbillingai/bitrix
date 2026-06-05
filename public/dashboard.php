@@ -2,9 +2,10 @@
 declare(strict_types=1);
 
 /**
- * Bitrix24 Glue control panel — sidebar + header layout, EN/IT, with Setup
- * (DB-backed settings), connection tests, queues/logs and a translated
- * Instructions page. Single self-contained file in the house dashboard style.
+ * Standalone CRM control panel — sidebar + header layout, EN/IT, DB-backed
+ * settings, leads/deals kanban, contacts, appointments, tasks/KPI, agents,
+ * campaigns and the message/automation logs. Thin controller: it handles auth +
+ * POST actions, then includes a per-page view from /views. House dashboard style.
  */
 require __DIR__ . '/../src/Bootstrap.php';
 
@@ -13,6 +14,13 @@ use Glue\Bootstrap;
 use Glue\Bitrix\Client;
 use Glue\Campaign\Sender;
 use Glue\Config;
+use Glue\Crm\Activities;
+use Glue\Crm\Appointments;
+use Glue\Crm\Contacts;
+use Glue\Crm\Deals;
+use Glue\Crm\Leads;
+use Glue\Crm\Pipelines;
+use Glue\Crm\Tasks;
 use Glue\Db;
 use Glue\Notify\Notifier;
 use Glue\Notify\TextMeBot;
@@ -50,7 +58,6 @@ if (!isset($_SESSION['glue_auth'])) {
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['password'])) {
         $username = trim((string)($_POST['username'] ?? ''));
         $user = Auth::verify($username, (string)$_POST['password']);
-        // Master fallback (config.php) so an operator is never locked out.
         $masterPw = (string)Config::get('dashboard.password', '');
         if (!$user && $masterPw !== '' && hash_equals($masterPw, (string)$_POST['password'])) {
             $user = ['id' => 0, 'username' => ($username ?: 'admin'), 'role' => 'admin'];
@@ -69,118 +76,282 @@ if (!isset($_SESSION['glue_auth'])) {
 
 $pdo = Db::pdo();
 $tab = $_GET['tab'] ?? 'overview';
+$uid = (int)($_SESSION['glue_user']['id'] ?? 0) ?: null;
 
 // ---- POST actions ----
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $do = $_POST['do'] ?? '';
+    $ajax = ($_POST['ajax'] ?? '') === '1';
     try {
-        if ($do === 'save_settings') {
-            $allowed = [
-                'bitrix.base_url', 'bitrix.outbound_secret', 'bitrix.lead_status_new',
-                'bitrix.deal_stage_quote', 'bitrix.deal_stage_signed',
-                'app.intake_secret', 'app.default_lang', 'app.timezone',
-                'textmebot.api_key', 'mail.from_name', 'mail.from_email',
-                'mail.smtp.host', 'mail.smtp.port', 'mail.smtp.user', 'mail.smtp.pass', 'mail.smtp.secure',
-                'logistics.email', 'logistics.phone',
-            ];
-            $pairs = [];
-            foreach ($allowed as $k) {
-                if (array_key_exists($k, $_POST)) {
-                    $pairs[$k] = trim((string)$_POST[$k]);
+        switch ($do) {
+            // ---------- settings ----------
+            case 'save_settings':
+                $allowed = [
+                    'app.company_name', 'app.default_lang', 'app.timezone', 'app.base_url', 'app.intake_secret',
+                    'crm.currency', 'crm.deal_quote_stage',
+                    'reminders.lead_inactivity_hours', 'reminders.deal_inactivity_hours',
+                    'reminders.sign_overdue_every_days', 'reminders.sign_overdue_max_days',
+                    'textmebot.api_key', 'mail.from_name', 'mail.from_email',
+                    'mail.smtp.host', 'mail.smtp.port', 'mail.smtp.user', 'mail.smtp.pass', 'mail.smtp.secure',
+                    'logistics.email', 'logistics.phone',
+                    'bitrix.sync_enabled', 'bitrix.base_url', 'bitrix.outbound_secret',
+                ];
+                $pairs = [];
+                foreach ($allowed as $k) {
+                    if (array_key_exists($k, $_POST)) {
+                        $pairs[$k] = trim((string)$_POST[$k]);
+                    }
                 }
-            }
-            Settings::setMany($pairs);
-            $flash = $t('saved');
-        } elseif ($do === 'cancel_reminder') {
-            $pdo->prepare("UPDATE reminders SET status='cancelled' WHERE id=? AND status='pending'")
-                ->execute([(int)$_POST['id']]);
-            $flash = $t('rem_cancelled');
-        } elseif ($do === 'run_scheduler') {
-            $r = (new Scheduler())->runDue();
-            (new Sender())->runBatch();
-            $flash = $t('ov_ran') . ' ' . json_encode($r);
-        } elseif ($do === 'create_campaign') {
-            $recips = array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string)$_POST['recipients'])));
-            (new Sender())->create(
-                trim((string)$_POST['name']) ?: 'Campaign',
-                (string)$_POST['channel'],
-                (string)$_POST['body'],
-                $_POST['subject'] ?? null,
-                array_values($recips),
-                $lang
-            );
-            $flash = $t('camp_created');
-            $tab = 'campaigns';
-        } elseif ($do === 'test_bitrix') {
-            $me = (new Client())->call('profile');
-            $flash = $t('test_ok') . ': ' . ($me['NAME'] ?? '') . ' ' . ($me['LAST_NAME'] ?? '') . ' (' . ($me['ID'] ?? '?') . ')';
-            $tab = 'settings';
-        } elseif ($do === 'test_whatsapp') {
-            $ok = (new Notifier())->whatsapp((string)$_POST['to'], 'Bitrix24 Glue — test ✅');
-            $flash = ($ok ? $t('test_ok') : $t('test_fail'));
-            $flashType = $ok ? 'ok' : 'err';
-            $tab = 'settings';
-        } elseif ($do === 'test_email') {
-            $ok = (new Notifier())->email((string)$_POST['to'], 'Bitrix24 Glue test', '<p>Bitrix24 Glue — test ✅</p>');
-            $flash = ($ok ? $t('test_ok') : $t('test_fail'));
-            $flashType = $ok ? 'ok' : 'err';
-            $tab = 'settings';
-        } elseif ($do === 'create_user') {
-            Auth::create((string)$_POST['username'], (string)$_POST['password'], (string)($_POST['role'] ?? 'admin'));
-            $flash = $t('u_added');
-            $tab = 'users';
-        } elseif ($do === 'set_password') {
-            Auth::setPassword((int)$_POST['id'], (string)$_POST['password']);
-            $flash = $t('pw_changed');
-            $tab = 'users';
-        } elseif ($do === 'toggle_user') {
-            Auth::setActive((int)$_POST['id'], ($_POST['active'] ?? '') === '1');
-            $tab = 'users';
-        } elseif ($do === 'delete_user') {
-            if ((int)$_POST['id'] !== (int)($_SESSION['glue_user']['id'] ?? 0)) {
-                Auth::delete((int)$_POST['id']);
-                $flash = $t('u_deleted');
-            }
-            $tab = 'users';
-        } elseif ($do === 'change_my_password') {
-            $uid = (int)($_SESSION['glue_user']['id'] ?? 0);
-            if ($uid > 0) {
-                Auth::setPassword($uid, (string)$_POST['password']);
+                // checkbox: present only when ticked
+                $pairs['bitrix.sync_enabled'] = isset($_POST['bitrix.sync_enabled']) ? 'true' : 'false';
+                Settings::setMany($pairs);
+                $flash = $t('saved');
+                $tab = 'settings';
+                break;
+
+            case 'stage_add':
+                $pid = (int)$_POST['pipeline_id'];
+                $code = strtoupper(preg_replace('/[^A-Za-z0-9_]/', '', (string)$_POST['code']));
+                if ($pid && $code !== '') {
+                    $maxSort = (int)$pdo->query("SELECT COALESCE(MAX(sort),0)+1 FROM stages WHERE pipeline_id=$pid")->fetchColumn();
+                    $st = $pdo->prepare('INSERT INTO stages (pipeline_id, code, name, sort, color) VALUES (?,?,?,?,?)
+                                         ON DUPLICATE KEY UPDATE name=VALUES(name)');
+                    $st->execute([$pid, $code, trim((string)$_POST['name']) ?: $code, $maxSort, '#5b6cff']);
+                    Pipelines::clearCache();
+                }
+                $flash = $t('saved');
+                $tab = 'settings';
+                break;
+
+            case 'stage_delete':
+                $pdo->prepare('DELETE FROM stages WHERE id=? AND is_first=0 AND is_won=0 AND is_lost=0')
+                    ->execute([(int)$_POST['id']]);
+                Pipelines::clearCache();
+                $tab = 'settings';
+                break;
+
+            // ---------- leads ----------
+            case 'lead_create':
+                Leads::create([
+                    'name' => $_POST['name'] ?? '', 'phone' => $_POST['phone'] ?? '', 'email' => $_POST['email'] ?? '',
+                    'company' => $_POST['company'] ?? '', 'comments' => $_POST['comments'] ?? '',
+                    'source' => $_POST['source'] ?? 'manual', 'lang' => $_POST['lang'] ?? null,
+                ], $uid);
+                $flash = $t('saved');
+                $tab = 'leads';
+                break;
+            case 'lead_assign':
+                Leads::assign((int)$_POST['id'], (int)$_POST['agent_id'], $uid);
+                $flash = $t('saved');
+                $tab = 'leads';
+                break;
+            case 'lead_move':
+                Leads::moveStage((int)$_POST['id'], (string)$_POST['stage'], $uid);
+                if ($ajax) { echo json_encode(['ok' => true]); exit; }
+                $tab = 'leads';
+                break;
+            case 'lead_convert':
+                $dealId = Leads::convert((int)$_POST['id'], $uid);
+                $flash = $t('lead_converted') . ' #' . $dealId;
+                $tab = 'deals';
+                break;
+            case 'lead_note':
+                Activities::add('lead', (int)$_POST['id'], 'note', (string)$_POST['body'], $uid);
+                $tab = 'leads';
+                break;
+
+            // ---------- deals ----------
+            case 'deal_create':
+                Deals::create([
+                    'title' => $_POST['title'] ?? 'Deal', 'amount' => $_POST['amount'] ?? 0,
+                    'currency' => $_POST['currency'] ?? null, 'name' => $_POST['name'] ?? '',
+                    'phone' => $_POST['phone'] ?? '', 'email' => $_POST['email'] ?? '',
+                    'assigned_to' => ($_POST['assigned_to'] ?? '') !== '' ? (int)$_POST['assigned_to'] : null,
+                    'expected_close_date' => $_POST['expected_close_date'] ?? null,
+                ], $uid);
+                $flash = $t('saved');
+                $tab = 'deals';
+                break;
+            case 'deal_assign':
+                Deals::assign((int)$_POST['id'], (int)$_POST['agent_id'], $uid);
+                $flash = $t('saved');
+                $tab = 'deals';
+                break;
+            case 'deal_move':
+                Deals::moveStage((int)$_POST['id'], (string)$_POST['stage'], $uid);
+                if ($ajax) { echo json_encode(['ok' => true]); exit; }
+                $tab = 'deals';
+                break;
+            case 'deal_note':
+                Activities::add('deal', (int)$_POST['id'], 'note', (string)$_POST['body'], $uid);
+                $tab = 'deals';
+                break;
+
+            // ---------- contacts ----------
+            case 'contact_create':
+                Contacts::create([
+                    'name' => $_POST['name'] ?? '', 'company' => $_POST['company'] ?? '',
+                    'phone' => $_POST['phone'] ?? '', 'email' => $_POST['email'] ?? '',
+                    'lang' => $_POST['lang'] ?? null, 'notes' => $_POST['notes'] ?? '',
+                ]);
+                $flash = $t('saved');
+                $tab = 'contacts';
+                break;
+
+            // ---------- appointments ----------
+            case 'appt_create':
+                Appointments::request([
+                    'name' => $_POST['name'] ?? '', 'phone' => $_POST['phone'] ?? '', 'email' => $_POST['email'] ?? '',
+                    'preferred_at' => $_POST['preferred_at'] ?? '', 'title' => $_POST['title'] ?? null,
+                    'notes' => $_POST['notes'] ?? null, 'lang' => $_POST['lang'] ?? null,
+                ], $uid);
+                $flash = $t('saved');
+                $tab = 'appointments';
+                break;
+            case 'appt_schedule':
+                Appointments::schedule(
+                    (int)$_POST['id'], (int)$_POST['agent_id'], (string)$_POST['starts_at'],
+                    ['location' => $_POST['location'] ?? '', 'title' => $_POST['title'] ?? ''], $uid
+                );
+                $flash = $t('appt_scheduled');
+                $tab = 'appointments';
+                break;
+            case 'appt_status':
+                Appointments::setStatus((int)$_POST['id'], (string)$_POST['status'], $uid);
+                $tab = 'appointments';
+                break;
+
+            // ---------- tasks ----------
+            case 'task_create':
+                Tasks::create([
+                    'title' => $_POST['title'] ?? 'Task', 'description' => $_POST['description'] ?? '',
+                    'assigned_to' => ($_POST['assigned_to'] ?? '') !== '' ? (int)$_POST['assigned_to'] : null,
+                    'due_at' => $_POST['due_at'] ?? null, 'priority' => $_POST['priority'] ?? 'normal',
+                    'kpi_weight' => $_POST['kpi_weight'] ?? 1,
+                ], $uid);
+                $flash = $t('saved');
+                $tab = 'tasks';
+                break;
+            case 'task_complete':
+                Tasks::complete((int)$_POST['id'], ($_POST['kpi_score'] ?? '') !== '' ? (int)$_POST['kpi_score'] : null, $uid);
+                $flash = $t('saved');
+                $tab = 'tasks';
+                break;
+            case 'task_status':
+                Tasks::setStatus((int)$_POST['id'], (string)$_POST['status']);
+                $tab = 'tasks';
+                break;
+
+            // ---------- reminders / scheduler / campaigns ----------
+            case 'cancel_reminder':
+                $pdo->prepare("UPDATE reminders SET status='cancelled' WHERE id=? AND status='pending'")
+                    ->execute([(int)$_POST['id']]);
+                $flash = $t('rem_cancelled');
+                $tab = 'reminders';
+                break;
+            case 'run_scheduler':
+                $r = (new Scheduler())->runDue();
+                (new Sender())->runBatch();
+                $flash = $t('ov_ran') . ' ' . json_encode($r);
+                break;
+            case 'create_campaign':
+                $recips = array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string)$_POST['recipients'])));
+                (new Sender())->create(
+                    trim((string)$_POST['name']) ?: 'Campaign', (string)$_POST['channel'],
+                    (string)$_POST['body'], $_POST['subject'] ?? null, array_values($recips), $lang
+                );
+                $flash = $t('camp_created');
+                $tab = 'campaigns';
+                break;
+
+            // ---------- connection tests ----------
+            case 'test_bitrix':
+                $me = (new Client())->call('profile');
+                $flash = $t('test_ok') . ': ' . ($me['NAME'] ?? '') . ' ' . ($me['LAST_NAME'] ?? '') . ' (' . ($me['ID'] ?? '?') . ')';
+                $tab = 'settings';
+                break;
+            case 'test_whatsapp':
+                $ok = (new Notifier())->whatsapp((string)$_POST['to'], (string)Config::get('app.company_name', 'CRM') . ' — test ✅');
+                $flash = $ok ? $t('test_ok') : $t('test_fail');
+                $flashType = $ok ? 'ok' : 'err';
+                $tab = 'settings';
+                break;
+            case 'test_email':
+                $ok = (new Notifier())->email((string)$_POST['to'], 'CRM test', '<p>CRM — test ✅</p>');
+                $flash = $ok ? $t('test_ok') : $t('test_fail');
+                $flashType = $ok ? 'ok' : 'err';
+                $tab = 'settings';
+                break;
+
+            // ---------- users / agents ----------
+            case 'create_user':
+                $newId = Auth::create((string)$_POST['username'], (string)$_POST['password'], (string)($_POST['role'] ?? 'agent'));
+                Auth::updateProfile($newId, [
+                    'full_name' => $_POST['full_name'] ?? '', 'email' => $_POST['email'] ?? '',
+                    'phone' => $_POST['phone'] ?? '', 'title' => $_POST['title'] ?? '',
+                ]);
+                $flash = $t('u_added');
+                $tab = 'agents';
+                break;
+            case 'update_profile':
+                Auth::updateProfile((int)$_POST['id'], [
+                    'full_name' => $_POST['full_name'] ?? '', 'email' => $_POST['email'] ?? '',
+                    'phone' => $_POST['phone'] ?? '', 'title' => $_POST['title'] ?? '', 'role' => $_POST['role'] ?? 'agent',
+                ]);
+                $flash = $t('saved');
+                $tab = 'agents';
+                break;
+            case 'set_password':
+                Auth::setPassword((int)$_POST['id'], (string)$_POST['password']);
                 $flash = $t('pw_changed');
-            } else {
-                $flash = $t('pw_change_na');
-                $flashType = 'err';
-            }
-            $tab = 'users';
+                $tab = 'agents';
+                break;
+            case 'toggle_user':
+                Auth::setActive((int)$_POST['id'], ($_POST['active'] ?? '') === '1');
+                $tab = 'agents';
+                break;
+            case 'delete_user':
+                if ((int)$_POST['id'] !== (int)($_SESSION['glue_user']['id'] ?? 0)) {
+                    Auth::delete((int)$_POST['id']);
+                    $flash = $t('u_deleted');
+                }
+                $tab = 'agents';
+                break;
+            case 'change_my_password':
+                if ($uid) {
+                    Auth::setPassword($uid, (string)$_POST['password']);
+                    $flash = $t('pw_changed');
+                } else {
+                    $flash = $t('pw_change_na');
+                    $flashType = 'err';
+                }
+                $tab = 'agents';
+                break;
         }
     } catch (Throwable $e) {
+        if ($ajax) { http_response_code(500); echo json_encode(['ok' => false, 'error' => $e->getMessage()]); exit; }
         $flash = $t('test_fail') . ': ' . $e->getMessage();
         $flashType = 'err';
     }
 }
 
-// ---- small data helpers ----
+// ---- small data helpers available to views ----
 $count = fn(string $sql): int => (int)$pdo->query($sql)->fetchColumn();
 $cfg = fn(string $k, $d = '') => Config::get($k, $d);
+$agents = Auth::agents();
+$money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_format((float)$n, 0);
 
 render_head($t, $h, $lang, $tab, $flash, $flashType);
 
-switch ($tab) {
-    case 'settings':    render_setup($t, $h, $cfg); break;
-    case 'leads':       render_leads($t, $h, $pdo); break;
-    case 'reminders':   render_reminders($t, $h, $pdo); break;
-    case 'messages':    render_messages($t, $h, $pdo); break;
-    case 'campaigns':   render_campaigns($t, $h, $pdo); break;
-    case 'events':      render_events($t, $h, $pdo); break;
-    case 'instructions':render_instructions($t); break;
-    case 'users':       render_users($t, $h); break;
-    default:            render_overview($t, $h, $pdo, $count); break;
-}
+$views = ['overview', 'leads', 'deals', 'contacts', 'appointments', 'tasks',
+          'campaigns', 'messages', 'reminders', 'events', 'agents', 'settings', 'instructions'];
+$view = in_array($tab, $views, true) ? $tab : 'overview';
+require dirname(__DIR__) . '/views/' . $view . '.php';
 
 render_foot();
 
 
-// ============================ views ============================
+// ============================ shared chrome ============================
 
 function render_login(callable $t, callable $h, string $lang, ?string $err): void { ?>
 <!DOCTYPE html><html lang="<?= $h($lang) ?>"><head><meta charset="utf-8">
@@ -188,7 +359,7 @@ function render_login(callable $t, callable $h, string $lang, ?string $err): voi
 <title><?= $h($t('login_title')) ?></title><?php css(); ?></head>
 <body class="center">
   <form class="login" method="post">
-    <div class="logo">B</div>
+    <div class="logo">C</div>
     <h1><?= $h($t('login_title')) ?></h1>
     <p class="muted"><?= $h($t('login_sub')) ?></p>
     <?php if ($err): ?><p class="err"><?= $h($err) ?></p><?php endif; ?>
@@ -200,21 +371,22 @@ function render_login(callable $t, callable $h, string $lang, ?string $err): voi
 <?php }
 
 function render_head(callable $t, callable $h, string $lang, string $tab, ?string $flash, string $flashType): void {
+    $brand = (string)\Glue\Config::get('app.company_name', '') ?: $t('app_title');
     $nav = [
-        'overview'    => 'nav_overview', 'leads' => 'nav_leads',
-        'reminders'   => 'nav_reminders', 'messages' => 'nav_messages',
-        'campaigns'   => 'nav_campaigns', 'events' => 'nav_events',
-        'instructions'=> 'nav_instr', 'settings' => 'nav_settings', 'users' => 'nav_users',
+        'overview' => 'nav_overview', 'leads' => 'nav_leads', 'deals' => 'nav_deals',
+        'contacts' => 'nav_contacts', 'appointments' => 'nav_appointments', 'tasks' => 'nav_tasks',
+        'campaigns' => 'nav_campaigns', 'messages' => 'nav_messages', 'reminders' => 'nav_reminders',
+        'events' => 'nav_events', 'agents' => 'nav_agents', 'instructions' => 'nav_instr', 'settings' => 'nav_settings',
     ]; ?>
 <!DOCTYPE html><html lang="<?= $h($lang) ?>"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title><?= $h($t('app_title')) ?></title><?php css(); ?>
+<title><?= $h($brand) ?> — CRM</title><?php css(); ?>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script></head>
 <body>
 <div class="shell">
   <aside class="sidebar">
-    <div class="brand"><div class="logo">B</div><div><strong><?= $h($t('app_title')) ?></strong>
-      <span class="muted small"><?= $h($t('app_subtitle')) ?></span></div></div>
+    <div class="brand"><div class="logo"><?= $h(strtoupper(substr($brand, 0, 1)) ?: 'C') ?></div>
+      <div><strong><?= $h($brand) ?></strong><span class="muted small"><?= $h($t('app_subtitle')) ?></span></div></div>
     <nav>
       <?php foreach ($nav as $key => $label): ?>
         <a class="<?= $tab === $key ? 'active' : '' ?>" href="?tab=<?= $h($key) ?>"><?= svg($key) ?><span><?= $h($t($label)) ?></span></a>
@@ -225,6 +397,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
     <header class="topbar">
       <div class="crumb"><?= $h($t('nav_' . ($tab === 'instructions' ? 'instr' : $tab))) ?></div>
       <div class="actions">
+        <a class="btn ghost tiny" href="request.php" target="_blank"><?= svg('link') ?> <?= $h($t('public_form')) ?></a>
         <span class="langsw">
           <a class="<?= $lang === 'en' ? 'on' : '' ?>" href="?tab=<?= $h($tab) ?>&lang=en">EN</a>
           <a class="<?= $lang === 'it' ? 'on' : '' ?>" href="?tab=<?= $h($tab) ?>&lang=it">IT</a>
@@ -239,439 +412,61 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
 
 function render_foot(): void { echo '</div></main></div></body></html>'; }
 
-function render_overview(callable $t, callable $h, $pdo, callable $count): void {
-    $bitrixOk = ($u = (string)\Glue\Config::get('bitrix.base_url', '')) !== '' && !str_contains($u, 'CHANGE_ME');
-    $waOk = (new TextMeBot())->enabled();
-    $mailOk = (string)\Glue\Config::get('mail.from_email', '') !== '';
-    $pending = $count("SELECT COUNT(*) FROM reminders WHERE status='pending'");
-    $sent = $count("SELECT COUNT(*) FROM messages WHERE status='sent'");
-    $failed = $count("SELECT COUNT(*) FROM messages WHERE status='failed'");
-    $leads = $count("SELECT COUNT(*) FROM tracked_entities");
-    $camps = $count("SELECT COUNT(*) FROM campaigns");
 
-    // ---- chart data: messages per day, last 14 days ----
-    $days = [];
-    for ($i = 13; $i >= 0; $i--) {
-        $days[date('Y-m-d', strtotime("-$i day"))] = ['sent' => 0, 'failed' => 0];
-    }
-    $mrows = $pdo->query("SELECT DATE(created_at) d, status, COUNT(*) c FROM messages
-                          WHERE created_at >= (CURDATE() - INTERVAL 13 DAY) GROUP BY d, status")->fetchAll();
-    foreach ($mrows as $r) {
-        if (isset($days[$r['d']]) && isset($days[$r['d']][$r['status']])) {
-            $days[$r['d']][$r['status']] = (int)$r['c'];
-        }
-    }
-    $labels = array_map(fn($d) => date('M j', strtotime($d)), array_keys($days));
-    $sentSeries = array_map(fn($v) => $v['sent'], array_values($days));
-    $failSeries = array_map(fn($v) => $v['failed'], array_values($days));
-
-    // ---- reminders by status ----
-    $rstat = $pdo->query("SELECT status, COUNT(*) c FROM reminders GROUP BY status")->fetchAll(PDO::FETCH_KEY_PAIR);
-    $rOrder = ['pending', 'sent', 'skipped', 'cancelled', 'failed'];
-    $rData = array_map(fn($s) => (int)($rstat[$s] ?? 0), $rOrder);
-
-    // ---- feeds ----
-    $events = $pdo->query("SELECT * FROM events ORDER BY id DESC LIMIT 8")->fetchAll();
-    $upcoming = $pdo->query("SELECT * FROM reminders WHERE status='pending' ORDER BY due_at ASC LIMIT 8")->fetchAll();
-
-    $chart = [
-        'labels' => $labels, 'sent' => $sentSeries, 'failed' => $failSeries,
-        'rLabels' => array_map(fn($s) => ucfirst($s), $rOrder), 'rData' => $rData,
-        'tSent' => $t('lg_sent'), 'tFailed' => $t('lg_failed'),
-    ]; ?>
-    <h2><?= $h($t('ov_title')) ?></h2>
-
-    <div class="grid">
-      <?php
-      num_card($h, 'clock', $t('ov_pending'), $pending, $t('ov_pending_sub'));
-      num_card($h, 'send', $t('ov_sent'), $sent, $t('ov_sent_sub'));
-      num_card($h, 'alert', $t('ov_failed'), $failed, $t('ov_failed_sub'));
-      num_card($h, 'users', $t('ov_leads'), $leads, $t('ov_leads_sub'));
-      num_card($h, 'mega', $t('ov_campaigns'), $camps, $t('ov_campaigns_sub'));
-      ?>
-    </div>
-
-    <div class="cols c-2-1">
-      <div class="panel">
-        <div class="panel-h"><h3><?= svg('messages') ?><?= $h($t('ch_messages_title')) ?></h3></div>
-        <div class="chart-wrap"><canvas id="chMsg"></canvas></div>
-      </div>
-      <div class="panel">
-        <div class="panel-h"><h3><?= svg('reminders') ?><?= $h($t('ch_reminders_title')) ?></h3></div>
-        <div class="chart-wrap sm"><canvas id="chRem"></canvas></div>
-      </div>
-    </div>
-
-    <div class="cols c-1-1">
-      <div class="panel">
-        <div class="panel-h"><h3><?= svg('events') ?><?= $h($t('ov_recent')) ?></h3>
-          <a class="btn ghost tiny" href="?tab=events"><?= $h($t('filter_all')) ?></a></div>
-        <div class="feed">
-          <?php if (!$events): ?><div class="empty"><?= $h($t('none_yet')) ?></div><?php endif; ?>
-          <?php foreach ($events as $e): ?>
-            <div class="feed-row">
-              <div class="feed-ic"><?= svg(feed_icon($e['source'])) ?></div>
-              <div class="feed-main"><b><?= $h($e['event_type']) ?></b>
-                <div class="meta"><?= $h($e['source']) ?><?= $e['entity_type'] ? ' · ' . $h($e['entity_type']) . ' ' . $h($e['entity_id']) : '' ?></div></div>
-              <div class="feed-time"><?= $h(short_time($e['created_at'])) ?></div>
-            </div>
-          <?php endforeach; ?>
-        </div>
-      </div>
-      <div class="panel">
-        <div class="panel-h"><h3><?= svg('clock') ?><?= $h($t('ov_upcoming')) ?></h3>
-          <a class="btn ghost tiny" href="?tab=reminders"><?= $h($t('filter_all')) ?></a></div>
-        <div class="feed">
-          <?php if (!$upcoming): ?><div class="empty"><?= $h($t('none_yet')) ?></div><?php endif; ?>
-          <?php foreach ($upcoming as $r): ?>
-            <div class="feed-row">
-              <div class="feed-ic"><?= svg('clock') ?></div>
-              <div class="feed-main"><b><?= $h($r['rule_key']) ?></b>
-                <div class="meta"><?= $h($r['recipient_type']) ?> · <?= $h($r['channel']) ?> · #<?= $h($r['bitrix_id']) ?></div></div>
-              <div class="feed-time"><?= $h($r['due_at']) ?></div>
-            </div>
-          <?php endforeach; ?>
-        </div>
-      </div>
-    </div>
-
-    <div class="panel" style="margin-bottom:16px">
-      <div class="panel-h"><h3><?= svg('settings') ?><?= $h($t('ov_status')) ?></h3>
-        <form method="post" class="inline" style="margin:0"><input type="hidden" name="do" value="run_scheduler">
-          <button class="btn ghost tiny"><?= $h($t('ov_run')) ?></button></form></div>
-      <div class="grid" style="margin-bottom:0">
-        <?php
-        stat_card($h, 'database', $t('st_db'), $t('configured'), true);
-        stat_card($h, 'link', $t('st_bitrix'), $bitrixOk ? $t('configured') : $t('not_configured'), $bitrixOk);
-        stat_card($h, 'chat', $t('st_whatsapp'), $waOk ? $t('configured') : $t('not_configured'), $waOk);
-        stat_card($h, 'mail', $t('st_mail'), $mailOk ? $t('configured') : $t('not_configured'), $mailOk);
-        ?>
-      </div>
-    </div>
-
-    <script>
-    (function(){
-      const d = <?= json_encode($chart, JSON_UNESCAPED_UNICODE) ?>;
-      const css = getComputedStyle(document.documentElement);
-      const c = n => css.getPropertyValue(n).trim();
-      const grid = 'rgba(255,255,255,.06)', muted = c('--muted');
-      Chart.defaults.color = muted; Chart.defaults.font.family = 'Inter, sans-serif';
-      new Chart(document.getElementById('chMsg'), {
-        type:'bar',
-        data:{labels:d.labels,datasets:[
-          {label:d.tSent,data:d.sent,backgroundColor:c('--green'),borderRadius:5,maxBarThickness:26},
-          {label:d.tFailed,data:d.failed,backgroundColor:c('--red'),borderRadius:5,maxBarThickness:26}]},
-        options:{maintainAspectRatio:false,plugins:{legend:{position:'bottom',labels:{boxWidth:12,padding:16}}},
-          scales:{x:{grid:{display:false},border:{display:false}},
-                  y:{beginAtZero:true,ticks:{precision:0},grid:{color:grid},border:{display:false}}}}
-      });
-      new Chart(document.getElementById('chRem'), {
-        type:'doughnut',
-        data:{labels:d.rLabels,datasets:[{data:d.rData,borderWidth:0,
-          backgroundColor:[c('--amber'),c('--green'),c('--muted'),c('--red'),'#7c5cff']}]},
-        options:{maintainAspectRatio:false,cutout:'62%',plugins:{legend:{position:'right',labels:{boxWidth:12,padding:12}}}}
-      });
-    })();
-    </script>
-<?php }
-
-function render_setup(callable $t, callable $h, callable $cfg): void {
-    $base = rtrim((string)$cfg('app.base_url', ''), '/');
-    $is = $h($cfg('app.intake_secret', ''));
-    $os = $h($cfg('bitrix.outbound_secret', ''));
-    $urls = [
-        'url_form'      => "$base/webhooks/form-intake.php?secret=$is",
-        'url_bitrix_ev' => "$base/webhooks/bitrix-event.php?secret=$os",
-        'url_appt'      => "$base/webhooks/appointment-intake.php?secret=$is",
-        'url_campaign'  => "$base/campaign.php?secret=$is",
-    ]; ?>
-    <h2><?= $h($t('setup_title')) ?></h2>
-    <p class="muted"><?= $h($t('setup_intro')) ?></p>
-
-    <div class="card">
-      <h3><?= $h($t('urls_title')) ?></h3>
-      <p class="muted small"><?= $h($t('urls_intro')) ?></p>
-      <?php foreach ($urls as $k => $u): ?>
-        <label class="fld"><span><?= $h($t($k)) ?></span>
-          <input readonly value="<?= $h($u) ?>" onclick="this.select()"></label>
-      <?php endforeach; ?>
-    </div>
-
-    <form method="post" class="card">
-      <input type="hidden" name="do" value="save_settings">
-      <h3><?= $h($t('sec_bitrix')) ?></h3>
-      <?php
-      fld($h, 'bitrix.base_url', $t('f_bitrix_url'), $cfg('bitrix.base_url'), $t('f_bitrix_url_h'));
-      fld($h, 'bitrix.outbound_secret', $t('f_outbound'), $cfg('bitrix.outbound_secret'), $t('f_outbound_h'));
-      fld($h, 'app.intake_secret', $t('f_intake'), $cfg('app.intake_secret'), $t('f_intake_h'));
-      ?>
-      <h3><?= $h($t('sec_stages')) ?></h3>
-      <p class="muted small"><?= $h($t('f_stages_h')) ?></p>
-      <?php
-      fld($h, 'bitrix.lead_status_new', $t('f_lead_new'), $cfg('bitrix.lead_status_new', 'NEW'));
-      fld($h, 'bitrix.deal_stage_quote', $t('f_deal_quote'), $cfg('bitrix.deal_stage_quote', 'PREPARATION'));
-      fld($h, 'bitrix.deal_stage_signed', $t('f_deal_signed'), $cfg('bitrix.deal_stage_signed', 'WON'));
-      ?>
-      <h3><?= $h($t('sec_whatsapp')) ?></h3>
-      <?php fld($h, 'textmebot.api_key', $t('f_tmb_key'), $cfg('textmebot.api_key'), $t('f_tmb_key_h')); ?>
-      <h3><?= $h($t('sec_mail')) ?></h3>
-      <?php
-      fld($h, 'mail.from_name', $t('f_from_name'), $cfg('mail.from_name'), $t('f_from_name_h'));
-      fld($h, 'mail.from_email', $t('f_from_email'), $cfg('mail.from_email'));
-      ?>
-      <p class="muted small"><?= $h($t('f_smtp_h')) ?></p>
-      <div class="row">
-        <?php
-        fld($h, 'mail.smtp.host', $t('f_smtp_host'), $cfg('mail.smtp.host'));
-        fld($h, 'mail.smtp.port', $t('f_smtp_port'), $cfg('mail.smtp.port'));
-        ?>
-      </div>
-      <div class="row">
-        <?php
-        fld($h, 'mail.smtp.user', $t('f_smtp_user'), $cfg('mail.smtp.user'));
-        fld($h, 'mail.smtp.pass', $t('f_smtp_pass'), $cfg('mail.smtp.pass'));
-        fld($h, 'mail.smtp.secure', $t('f_smtp_secure'), $cfg('mail.smtp.secure'));
-        ?>
-      </div>
-      <h3><?= $h($t('sec_logistics')) ?></h3>
-      <?php
-      fld($h, 'logistics.email', $t('f_log_email'), $cfg('logistics.email'));
-      fld($h, 'logistics.phone', $t('f_log_phone'), $cfg('logistics.phone'));
-      ?>
-      <h3><?= $h($t('sec_general')) ?></h3>
-      <?php
-      fld($h, 'app.default_lang', $t('f_default_lang'), $cfg('app.default_lang', 'it'));
-      fld($h, 'app.timezone', $t('f_tz'), $cfg('app.timezone', 'Europe/Rome'));
-      ?>
-      <button class="btn"><?= $h($t('save')) ?></button>
-    </form>
-
-    <div class="card">
-      <h3><?= $h($t('test_title')) ?></h3>
-      <form method="post" class="inline">
-        <input type="hidden" name="do" value="test_bitrix">
-        <button class="btn ghost"><?= $h($t('test_bitrix')) ?></button>
-      </form>
-      <form method="post" class="inline">
-        <input type="hidden" name="do" value="test_whatsapp">
-        <input name="to" placeholder="<?= $h($t('test_phone_ph')) ?>" required>
-        <button class="btn ghost"><?= $h($t('test_wa')) ?></button>
-      </form>
-      <form method="post" class="inline">
-        <input type="hidden" name="do" value="test_email">
-        <input name="to" placeholder="<?= $h($t('test_email_ph')) ?>" required>
-        <button class="btn ghost"><?= $h($t('test_email')) ?></button>
-      </form>
-    </div>
-<?php }
-
-function render_leads(callable $t, callable $h, $pdo): void {
-    $rows = $pdo->query("SELECT * FROM tracked_entities ORDER BY id DESC LIMIT 200")->fetchAll(); ?>
-    <h2><?= $h($t('leads_title')) ?></h2>
-    <table><thead><tr>
-      <th><?= $h($t('th_type')) ?></th><th><?= $h($t('th_bitrix_id')) ?></th><th><?= $h($t('th_stage')) ?></th>
-      <th><?= $h($t('th_customer')) ?></th><th><?= $h($t('th_lang')) ?></th>
-      <th><?= $h($t('th_received')) ?></th><th><?= $h($t('th_status')) ?></th>
-    </tr></thead><tbody>
-    <?php if (!$rows): ?><tr><td colspan="7" class="muted"><?= $h($t('none_yet')) ?></td></tr><?php endif; ?>
-    <?php foreach ($rows as $r): ?>
-      <tr><td><?= $h($r['entity_type']) ?></td><td><?= $h($r['bitrix_id']) ?></td><td><?= $h($r['stage_id']) ?></td>
-      <td><?= $h($r['customer_name']) ?><br><span class="muted small"><?= $h($r['customer_phone']) ?></span></td>
-      <td><?= $h($r['lang']) ?></td><td class="small"><?= $h($r['received_at']) ?></td>
-      <td><span class="pill"><?= $h($r['status']) ?></span></td></tr>
-    <?php endforeach; ?>
-    </tbody></table>
-<?php }
-
-function render_reminders(callable $t, callable $h, $pdo): void {
-    $all = ($_GET['f'] ?? 'pending') === 'all';
-    $sql = "SELECT * FROM reminders " . ($all ? '' : "WHERE status='pending' ") . "ORDER BY due_at DESC LIMIT 300";
-    $rows = $pdo->query($sql)->fetchAll(); ?>
-    <h2><?= $h($t('rem_title')) ?></h2>
-    <div class="tabs">
-      <a class="<?= $all ? '' : 'on' ?>" href="?tab=reminders&f=pending"><?= $h($t('filter_pending')) ?></a>
-      <a class="<?= $all ? 'on' : '' ?>" href="?tab=reminders&f=all"><?= $h($t('filter_all')) ?></a>
-    </div>
-    <table><thead><tr>
-      <th><?= $h($t('th_due')) ?></th><th><?= $h($t('th_rule')) ?></th><th><?= $h($t('th_recipient')) ?></th>
-      <th><?= $h($t('th_channel')) ?></th><th><?= $h($t('th_status')) ?></th><th></th>
-    </tr></thead><tbody>
-    <?php if (!$rows): ?><tr><td colspan="6" class="muted"><?= $h($t('none_yet')) ?></td></tr><?php endif; ?>
-    <?php foreach ($rows as $r): ?>
-      <tr><td class="small"><?= $h($r['due_at']) ?></td><td><?= $h($r['rule_key']) ?> <span class="muted small">#<?= $h($r['bitrix_id']) ?></span></td>
-      <td><?= $h($r['recipient_type']) ?></td><td><?= $h($r['channel']) ?></td>
-      <td><span class="pill pill-<?= $h($r['status']) ?>"><?= $h($r['status']) ?></span></td>
-      <td><?php if ($r['status'] === 'pending'): ?>
-        <form method="post" class="inline"><input type="hidden" name="do" value="cancel_reminder">
-        <input type="hidden" name="id" value="<?= $h($r['id']) ?>">
-        <button class="btn tiny ghost"><?= $h($t('cancel')) ?></button></form>
-      <?php endif; ?></td></tr>
-    <?php endforeach; ?>
-    </tbody></table>
-<?php }
-
-function render_messages(callable $t, callable $h, $pdo): void {
-    $rows = $pdo->query("SELECT * FROM messages ORDER BY id DESC LIMIT 300")->fetchAll(); ?>
-    <h2><?= $h($t('msg_title')) ?></h2>
-    <table><thead><tr>
-      <th><?= $h($t('th_time')) ?></th><th><?= $h($t('th_channel')) ?></th><th><?= $h($t('th_recipient')) ?></th>
-      <th><?= $h($t('th_subject')) ?></th><th><?= $h($t('th_status')) ?></th>
-    </tr></thead><tbody>
-    <?php if (!$rows): ?><tr><td colspan="5" class="muted"><?= $h($t('none_yet')) ?></td></tr><?php endif; ?>
-    <?php foreach ($rows as $r): ?>
-      <tr><td class="small"><?= $h($r['created_at']) ?></td><td><?= $h($r['channel']) ?></td>
-      <td><?= $h($r['recipient']) ?></td><td class="small"><?= $h($r['subject']) ?></td>
-      <td><span class="pill pill-<?= $r['status'] === 'sent' ? 'sent' : 'failed' ?>"><?= $h($r['status']) ?></span></td></tr>
-    <?php endforeach; ?>
-    </tbody></table>
-<?php }
-
-function render_campaigns(callable $t, callable $h, $pdo): void {
-    $rows = $pdo->query("SELECT * FROM campaigns ORDER BY id DESC LIMIT 100")->fetchAll(); ?>
-    <h2><?= $h($t('camp_title')) ?></h2>
-    <div class="warn"><?= $h($t('camp_warn')) ?></div>
-    <form method="post" class="card">
-      <input type="hidden" name="do" value="create_campaign">
-      <h3><?= $h($t('camp_new')) ?></h3>
-      <label class="fld"><span><?= $h($t('camp_name')) ?></span><input name="name"></label>
-      <label class="fld"><span><?= $h($t('camp_channel')) ?></span>
-        <select name="channel"><option value="whatsapp">WhatsApp</option><option value="email">Email</option></select></label>
-      <label class="fld"><span><?= $h($t('camp_subject')) ?></span><input name="subject"></label>
-      <label class="fld"><span><?= $h($t('camp_body')) ?></span><textarea name="body" rows="3" required></textarea></label>
-      <label class="fld"><span><?= $h($t('camp_recipients')) ?></span><textarea name="recipients" rows="4" required></textarea></label>
-      <button class="btn"><?= $h($t('camp_create')) ?></button>
-    </form>
-    <table><thead><tr>
-      <th><?= $h($t('camp_name')) ?></th><th><?= $h($t('th_channel')) ?></th><th><?= $h($t('th_total')) ?></th>
-      <th><?= $h($t('th_sent')) ?></th><th><?= $h($t('th_failed')) ?></th><th><?= $h($t('th_status')) ?></th>
-    </tr></thead><tbody>
-    <?php if (!$rows): ?><tr><td colspan="6" class="muted"><?= $h($t('none_yet')) ?></td></tr><?php endif; ?>
-    <?php foreach ($rows as $r): ?>
-      <tr><td><?= $h($r['name']) ?></td><td><?= $h($r['channel']) ?></td><td><?= $h($r['total']) ?></td>
-      <td><?= $h($r['sent']) ?></td><td><?= $h($r['failed']) ?></td>
-      <td><span class="pill"><?= $h($r['status']) ?></span></td></tr>
-    <?php endforeach; ?>
-    </tbody></table>
-<?php }
-
-function render_events(callable $t, callable $h, $pdo): void {
-    $rows = $pdo->query("SELECT * FROM events ORDER BY id DESC LIMIT 300")->fetchAll(); ?>
-    <h2><?= $h($t('ev_title')) ?></h2>
-    <table><thead><tr>
-      <th><?= $h($t('th_time')) ?></th><th><?= $h($t('th_source')) ?></th><th><?= $h($t('th_event')) ?></th><th><?= $h($t('th_entity')) ?></th>
-    </tr></thead><tbody>
-    <?php if (!$rows): ?><tr><td colspan="4" class="muted"><?= $h($t('none_yet')) ?></td></tr><?php endif; ?>
-    <?php foreach ($rows as $r): ?>
-      <tr><td class="small"><?= $h($r['created_at']) ?></td><td><?= $h($r['source']) ?></td>
-      <td><?= $h($r['event_type']) ?></td>
-      <td class="small"><?= $h($r['entity_type']) ?> <?= $h($r['entity_id']) ?></td></tr>
-    <?php endforeach; ?>
-    </tbody></table>
-<?php }
-
-function render_instructions(callable $t): void {
-    $steps = ['s1', 's2', 's3', 's4', 's5', 's6'];
-    echo '<h2>' . htmlspecialchars($t('instr_title')) . '</h2>';
-    echo '<p class="lead">' . htmlspecialchars($t('instr_intro')) . '</p>';
-    foreach ($steps as $s) {
-        echo '<div class="step"><h3>' . htmlspecialchars($t('instr_' . $s . '_t')) . '</h3>';
-        echo '<p>' . $t('instr_' . $s) . '</p></div>'; // copy contains safe <b> tags
-    }
-    echo '<div class="step accent"><h3>' . htmlspecialchars($t('instr_manual_t')) . '</h3>';
-    echo '<p>' . $t('instr_manual') . '</p></div>';
-}
-
-function render_users(callable $t, callable $h): void {
-    $users = \Glue\Auth::all();
-    $meId = (int)($_SESSION['glue_user']['id'] ?? 0); ?>
-    <h2><?= $h($t('users_title')) ?></h2>
-
-    <form method="post" class="card">
-      <input type="hidden" name="do" value="create_user">
-      <h3><?= $h($t('u_add')) ?></h3>
-      <div class="row">
-        <label class="fld"><span><?= $h($t('u_username')) ?></span><input name="username" required></label>
-        <label class="fld"><span><?= $h($t('u_password')) ?></span><input name="password" required></label>
-        <label class="fld"><span><?= $h($t('u_role')) ?></span>
-          <select name="role"><option value="admin">admin</option><option value="agent">agent</option></select></label>
-      </div>
-      <button class="btn"><?= $h($t('u_create')) ?></button>
-    </form>
-
-    <table><thead><tr>
-      <th><?= $h($t('u_username')) ?></th><th><?= $h($t('u_role')) ?></th><th><?= $h($t('u_active')) ?></th>
-      <th><?= $h($t('u_reset')) ?></th><th></th>
-    </tr></thead><tbody>
-    <?php foreach ($users as $u): $id = (int)$u['id']; ?>
-      <tr>
-        <td><?= $h($u['username']) ?><?php if ($id === $meId): ?> <span class="muted small"><?= $h($t('u_you')) ?></span><?php endif; ?></td>
-        <td><?= $h($u['role']) ?></td>
-        <td>
-          <form method="post" class="inline"><input type="hidden" name="do" value="toggle_user">
-            <input type="hidden" name="id" value="<?= $id ?>">
-            <input type="hidden" name="active" value="<?= $u['active'] ? '0' : '1' ?>">
-            <button class="btn tiny ghost"><?= $u['active'] ? $h($t('u_disable')) : $h($t('u_enable')) ?></button>
-          </form>
-        </td>
-        <td>
-          <form method="post" class="inline"><input type="hidden" name="do" value="set_password">
-            <input type="hidden" name="id" value="<?= $id ?>">
-            <input name="password" placeholder="<?= $h($t('u_new_pw')) ?>" required>
-            <button class="btn tiny ghost"><?= $h($t('u_set')) ?></button>
-          </form>
-        </td>
-        <td><?php if ($id !== $meId): ?>
-          <form method="post" class="inline" onsubmit="return confirm('?')"><input type="hidden" name="do" value="delete_user">
-            <input type="hidden" name="id" value="<?= $id ?>">
-            <button class="btn tiny ghost"><?= $h($t('u_delete')) ?></button>
-          </form>
-        <?php endif; ?></td>
-      </tr>
-    <?php endforeach; ?>
-    </tbody></table>
-
-    <form method="post" class="card">
-      <input type="hidden" name="do" value="change_my_password">
-      <h3><?= $h($t('change_pw_title')) ?></h3>
-      <label class="fld"><span><?= $h($t('u_new_pw')) ?></span><input name="password" required></label>
-      <button class="btn"><?= $h($t('save')) ?></button>
-    </form>
-<?php }
-
-// ============================ ui bits ============================
+// ============================ ui bits (shared by views) ============================
 
 function stat_card(callable $h, string $icon, string $label, string $val, bool $ok): void {
     echo '<div class="tile"><div class="tile-top">' . svg($icon) . '<span class="small">' . $h($label) . '</span></div>'
         . '<span class="badge ' . ($ok ? 'ok' : 'no') . '"><span class="dot"></span>' . $h($val) . '</span></div>';
 }
-function num_card(callable $h, string $icon, string $label, int $n, string $sub = ''): void {
+function num_card(callable $h, string $icon, string $label, $n, string $sub = ''): void {
     echo '<div class="tile"><div class="tile-top">' . svg($icon) . '<span class="small">' . $h($label) . '</span></div>'
         . '<span class="big">' . $h((string)$n) . '</span>'
         . ($sub !== '' ? '<div class="sub">' . $h($sub) . '</div>' : '') . '</div>';
 }
-
-/** Map an event source to a feed icon name. */
-function feed_icon(string $source): string {
-    return [
-        'form_intake'   => 'leads',
-        'bitrix_event'  => 'link',
-        'scheduler'     => 'clock',
-        'campaign'      => 'mega',
-        'appointment'   => 'reminders',
-    ][$source] ?? 'events';
+function avatar(callable $h, ?string $name): string {
+    $n = trim((string)$name);
+    $ini = $n !== '' ? strtoupper(mb_substr($n, 0, 1)) : '?';
+    return '<span class="avatar">' . $h($ini) . '</span>';
 }
-
-/** Compact timestamp for the activity feed. */
+function feed_icon(string $source): string {
+    return ['form_intake' => 'leads', 'crm' => 'leads', 'bitrix_event' => 'link', 'sync' => 'link',
+        'scheduler' => 'clock', 'campaign' => 'mega', 'appointment' => 'appointments',
+        'request_form' => 'leads'][$source] ?? 'events';
+}
 function short_time(?string $dt): string {
     $ts = $dt ? strtotime($dt) : false;
     return $ts ? date('M j, H:i', $ts) : (string)$dt;
 }
+function fld(callable $h, string $name, string $label, $value, string $hint = ''): void {
+    echo '<label class="fld"><span>' . $h($label) . '</span>'
+        . '<input name="' . $h($name) . '" value="' . $h($value) . '">'
+        . ($hint ? '<small class="muted">' . $h($hint) . '</small>' : '') . '</label>';
+}
+/** <select> of agents for assignment. */
+function agent_select(callable $h, array $agents, string $name, $selected = null, string $placeholder = '—'): void {
+    echo '<select name="' . $h($name) . '"><option value="">' . $h($placeholder) . '</option>';
+    foreach ($agents as $a) {
+        $label = trim((string)($a['full_name'] ?? '')) ?: $a['username'];
+        $sel = ((string)$selected === (string)$a['id']) ? ' selected' : '';
+        echo '<option value="' . $h($a['id']) . '"' . $sel . '>' . $h($label) . '</option>';
+    }
+    echo '</select>';
+}
+function pill(callable $h, string $status): string {
+    return '<span class="pill pill-' . $h($status) . '">' . $h($status) . '</span>';
+}
 
-/** Inline line-icons (no external lib). 18px, stroke = currentColor. */
 function svg(string $name): string {
     $p = [
         'overview'    => '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
         'leads'       => '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/>',
+        'deals'       => '<path d="M3 11l18-5v12L3 14v-3z"/><path d="M3 11v3"/><line x1="7" y1="10" x2="7" y2="15"/>',
+        'pipeline'    => '<line x1="4" y1="6" x2="20" y2="6"/><line x1="4" y1="12" x2="14" y2="12"/><line x1="4" y1="18" x2="9" y2="18"/>',
+        'contacts'    => '<circle cx="12" cy="8" r="4"/><path d="M4 21v-1a6 6 0 0 1 12 0v1"/>',
+        'appointments'=> '<rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>',
+        'tasks'       => '<path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/>',
+        'agents'      => '<path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>',
         'users'       => '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/>',
         'reminders'   => '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
         'clock'       => '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
@@ -686,15 +481,13 @@ function svg(string $name): string {
         'link'        => '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
         'mail'        => '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/>',
         'send'        => '<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
+        'money'       => '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
         'alert'       => '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
+        'check'       => '<path d="M20 6 9 17l-5-5"/>',
+        'trophy'      => '<path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4z"/><path d="M5 4H3v2a3 3 0 0 0 3 3M19 4h2v2a3 3 0 0 1-3 3"/>',
     ];
     $body = $p[$name] ?? $p['overview'];
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' . $body . '</svg>';
-}
-function fld(callable $h, string $name, string $label, $value, string $hint = ''): void {
-    echo '<label class="fld"><span>' . $h($label) . '</span>'
-        . '<input name="' . $h($name) . '" value="' . $h($value) . '">'
-        . ($hint ? '<small class="muted">' . $h($hint) . '</small>' : '') . '</label>';
 }
 
 function css(): void { ?>
@@ -703,7 +496,7 @@ function css(): void { ?>
   --bg:#0e131c;--surface:#161c28;--surface2:#1c2533;--line:#28303f;--line2:#39435a;
   --txt:#e7ecf4;--muted:#8b95a7;--accent:#5b6cff;--accent-soft:rgba(91,108,255,.14);
   --green:#3fb868;--green-bg:rgba(63,184,104,.13);--red:#e5616e;--red-bg:rgba(229,97,110,.13);
-  --amber:#d9a40a;--amber-bg:rgba(217,164,10,.13);--radius:12px;
+  --amber:#d9a40a;--amber-bg:rgba(217,164,10,.13);--violet:#7c5cff;--radius:12px;
 }
 *{margin:0;padding:0;box-sizing:border-box;}
 body{font-family:'Inter',system-ui,sans-serif;color:var(--txt);font-size:14px;line-height:1.5;
@@ -714,45 +507,43 @@ a{color:inherit;text-decoration:none;}
 .logo{width:40px;height:40px;border-radius:10px;background:var(--accent);display:flex;align-items:center;
   justify-content:center;font-weight:800;color:#fff;font-size:18px;flex:0 0 auto;}
 .shell{display:flex;min-height:100vh;}
-.sidebar{width:244px;background:var(--surface);border-right:1px solid var(--line);
+.sidebar{width:236px;background:var(--surface);border-right:1px solid var(--line);
   padding:18px 14px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column;flex:0 0 auto;}
 .brand{display:flex;gap:11px;align-items:center;margin:4px 6px 22px;}
 .brand strong{display:block;font-size:15px;} .brand span{display:block;line-height:1.3;margin-top:2px;}
-nav{display:flex;flex-direction:column;gap:2px;}
-nav a{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:8px;color:var(--muted);
+nav{display:flex;flex-direction:column;gap:2px;overflow-y:auto;}
+nav a{display:flex;align-items:center;gap:11px;padding:9px 12px;border-radius:8px;color:var(--muted);
   font-weight:500;transition:background .12s,color .12s;}
 nav a svg{width:18px;height:18px;flex:0 0 auto;}
 nav a:hover{background:var(--surface2);color:var(--txt);}
 nav a.active{background:var(--accent);color:#fff;}
 main{flex:1;display:flex;flex-direction:column;min-width:0;}
-.topbar{display:flex;justify-content:space-between;align-items:center;padding:15px 28px;
+.topbar{display:flex;justify-content:space-between;align-items:center;padding:13px 28px;
   border-bottom:1px solid var(--line);background:var(--surface);position:sticky;top:0;z-index:5;}
 .crumb{font-weight:700;font-size:17px;}
-.actions{display:flex;gap:14px;align-items:center;}
+.actions{display:flex;gap:12px;align-items:center;}
+.actions .btn.tiny svg{width:14px;height:14px;}
 .langsw{display:inline-flex;background:var(--surface2);border:1px solid var(--line);border-radius:8px;padding:2px;}
 .langsw a{padding:4px 9px;border-radius:6px;color:var(--muted);font-weight:600;font-size:12px;}
 .langsw a.on{background:var(--accent);color:#fff;}
-.content{padding:26px 28px;width:100%;}
+.content{padding:24px 28px;width:100%;}
 h2{font-size:21px;margin-bottom:18px;letter-spacing:-.01em;} h3{font-size:15px;margin:16px 0 12px;}
 .lead{font-size:15px;color:var(--muted);margin-bottom:20px;line-height:1.65;max-width:820px;}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:14px;margin-bottom:16px;}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:14px;margin-bottom:16px;}
 .card{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:20px;margin-bottom:16px;}
-.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;
-  transition:border-color .12s;}
+.tile{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:16px 18px;transition:border-color .12s;}
 .tile:hover{border-color:var(--line2);}
 .tile-top{display:flex;align-items:center;gap:9px;margin-bottom:10px;color:var(--muted);}
 .tile-top svg{width:17px;height:17px;}
-.tile .big{display:block;margin-top:6px;}
-.tile .sub{font-size:12px;color:var(--muted);margin-top:4px;}
+.tile .big{display:block;margin-top:6px;} .tile .sub{font-size:12px;color:var(--muted);margin-top:4px;}
 .badge{display:inline-flex;align-items:center;gap:7px;padding:5px 11px;border-radius:7px;font-size:12.5px;font-weight:600;}
 .badge .dot{width:7px;height:7px;border-radius:50%;}
 .badge.ok{background:var(--green-bg);color:var(--green);} .badge.ok .dot{background:var(--green);}
 .badge.no{background:var(--red-bg);color:var(--red);} .badge.no .dot{background:var(--red);}
-/* dashboard layout */
 .cols{display:grid;gap:16px;margin-bottom:16px;}
 .cols.c-2-1{grid-template-columns:2fr 1fr;} .cols.c-1-1{grid-template-columns:1fr 1fr;}
 @media(max-width:1100px){.cols.c-2-1,.cols.c-1-1{grid-template-columns:1fr;}}
-.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;margin-bottom:0;}
+.panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;}
 .panel-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
 .panel-h h3{margin:0;display:flex;align-items:center;gap:9px;} .panel-h h3 svg{width:17px;height:17px;color:var(--muted);}
 .chart-wrap{position:relative;height:240px;} .chart-wrap.sm{height:210px;}
@@ -770,24 +561,24 @@ input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);
 input:focus,select:focus,textarea:focus{border-color:var(--accent);}
 input[readonly]{color:var(--muted);cursor:pointer;}
 .fld small{display:block;margin-top:6px;font-size:12px;line-height:1.5;}
-.row{display:flex;gap:14px;flex-wrap:wrap;} .row .fld{flex:1;min-width:160px;}
-.btn{padding:10px 18px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-weight:600;
-  cursor:pointer;font-size:14px;transition:filter .12s;} .btn:hover{filter:brightness(1.08);}
+.row{display:flex;gap:14px;flex-wrap:wrap;} .row .fld{flex:1;min-width:150px;}
+.btn{padding:10px 16px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-weight:600;
+  cursor:pointer;font-size:14px;transition:filter .12s;display:inline-flex;align-items:center;gap:7px;} .btn:hover{filter:brightness(1.08);}
+.btn svg{width:15px;height:15px;}
 .btn.ghost{background:var(--surface2);border:1px solid var(--line);color:var(--txt);}
 .btn.ghost:hover{border-color:var(--line2);filter:none;background:var(--surface);}
 .btn.tiny{padding:6px 12px;font-size:12.5px;}
-.inline{display:inline-flex;gap:8px;align-items:center;margin:0 12px 10px 0;}
-.inline input{width:auto;}
+.inline{display:inline-flex;gap:8px;align-items:center;margin:0 10px 8px 0;}
+.inline input,.inline select{width:auto;}
 table{width:100%;border-collapse:separate;border-spacing:0;background:var(--surface);
   border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;}
-th,td{text-align:left;padding:12px 15px;border-bottom:1px solid var(--line);vertical-align:middle;}
+th,td{text-align:left;padding:11px 14px;border-bottom:1px solid var(--line);vertical-align:middle;}
 th{color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.05em;font-weight:600;background:var(--surface2);}
-tbody tr:hover{background:var(--surface2);}
-tr:last-child td{border-bottom:none;}
-.pill{display:inline-block;padding:4px 10px;border-radius:7px;background:var(--surface2);font-size:12px;font-weight:600;border:1px solid var(--line);}
-.pill-pending{color:var(--amber);background:var(--amber-bg);border-color:transparent;}
-.pill-sent{color:var(--green);background:var(--green-bg);border-color:transparent;}
-.pill-failed,.pill-cancelled{color:var(--red);background:var(--red-bg);border-color:transparent;}
+tbody tr:hover{background:var(--surface2);} tr:last-child td{border-bottom:none;}
+.pill{display:inline-block;padding:4px 10px;border-radius:7px;background:var(--surface2);font-size:12px;font-weight:600;border:1px solid var(--line);text-transform:capitalize;}
+.pill-pending,.pill-requested,.pill-open{color:var(--amber);background:var(--amber-bg);border-color:transparent;}
+.pill-sent,.pill-confirmed,.pill-done,.pill-won,.pill-converted{color:var(--green);background:var(--green-bg);border-color:transparent;}
+.pill-failed,.pill-cancelled,.pill-lost,.pill-junk,.pill-no_show{color:var(--red);background:var(--red-bg);border-color:transparent;}
 .flash{background:var(--green-bg);border:1px solid var(--green);color:var(--green);padding:12px 16px;
   border-radius:8px;margin-bottom:18px;word-break:break-word;font-weight:500;}
 .flash-err{background:var(--red-bg);border-color:var(--red);color:var(--red);}
@@ -803,8 +594,32 @@ tr:last-child td{border-bottom:none;}
 .login .logo{margin:0 auto 18px;width:50px;height:50px;font-size:22px;} .login h1{font-size:21px;margin-bottom:5px;}
 .login input{margin:9px 0;} .login button{width:100%;margin-top:10px;}
 .err{color:var(--red);font-size:13px;margin-bottom:8px;}
-@media(max-width:760px){.sidebar{width:60px;padding:14px 8px;} .brand span,.brand strong,nav a span{display:none;}
-  .brand{justify-content:center;} nav a{justify-content:center;padding:11px;} .content{padding:18px;}}
+/* kanban */
+.kanban{display:flex;gap:14px;overflow-x:auto;padding-bottom:8px;}
+.kcol{flex:0 0 270px;background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);display:flex;flex-direction:column;max-height:72vh;}
+.kcol-h{padding:12px 14px;border-bottom:1px solid var(--line);display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;}
+.kcol-h .dotc{width:8px;height:8px;border-radius:50%;display:inline-block;margin-right:8px;}
+.kcol-h .cnt{font-size:11px;color:var(--muted);background:var(--surface2);border-radius:20px;padding:2px 8px;}
+.kbody{padding:10px;display:flex;flex-direction:column;gap:9px;overflow-y:auto;min-height:60px;}
+.kbody.drag{outline:2px dashed var(--line2);outline-offset:-6px;border-radius:8px;}
+.kcard{background:var(--surface2);border:1px solid var(--line);border-radius:9px;padding:11px 12px;cursor:grab;}
+.kcard:hover{border-color:var(--line2);} .kcard b{font-size:13.5px;font-weight:600;}
+.kcard .meta{font-size:11.5px;color:var(--muted);margin-top:4px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
+.kcard .amt{color:var(--green);font-weight:600;}
+.avatar{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--accent-soft);color:var(--accent);
+  align-items:center;justify-content:center;font-size:11px;font-weight:700;}
+.tl{display:flex;flex-direction:column;gap:0;}
+.tl-row{display:flex;gap:11px;padding:9px 0;border-bottom:1px solid var(--line);}
+.tl-row:last-child{border-bottom:none;}
+.tl-ic{width:26px;height:26px;border-radius:7px;background:var(--surface2);display:flex;align-items:center;justify-content:center;color:var(--muted);flex:0 0 auto;}
+.tl-ic svg{width:13px;height:13px;} .tl-main{flex:1;min-width:0;} .tl-main .meta{font-size:11.5px;color:var(--muted);}
+.lb{display:flex;align-items:center;gap:10px;padding:10px 4px;border-bottom:1px solid var(--line);}
+.lb:last-child{border-bottom:none;} .lb .nm{flex:1;font-weight:600;} .lb .sc{font-weight:700;color:var(--accent);}
+.lb .mini{font-size:11.5px;color:var(--muted);}
+details.drawer{margin-bottom:8px;} details.drawer>summary{cursor:pointer;list-style:none;}
+details.drawer>summary::-webkit-details-marker{display:none;}
+@media(max-width:760px){.sidebar{width:58px;padding:14px 8px;} .brand span,.brand strong,nav a span{display:none;}
+  .brand{justify-content:center;} nav a{justify-content:center;padding:11px;} .content{padding:16px;} .actions .btn.tiny span{display:none;}}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <?php }

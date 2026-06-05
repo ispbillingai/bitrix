@@ -25,7 +25,7 @@
 
 # Belt-and-suspenders for hosts without mod_rewrite: block the sensitive bits.
 <IfModule !mod_rewrite.c>
-    RedirectMatch 403 ^/(config|src|migrations|db|vendor|bin|lang|\.git)(/|$)
+    RedirectMatch 403 ^/(config|src|views|migrations|db|vendor|bin|lang|\.git)(/|$)
     <FilesMatch "\.(sql|md|json|lock)$">
         Require all denied
     </FilesMatch>

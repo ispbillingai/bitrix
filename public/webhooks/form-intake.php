@@ -4,22 +4,22 @@ declare(strict_types=1);
 /**
  * Requirement #1: lead acquisition from external sources.
  *
- * Accepts a lead from Jotform webhooks, the website form, the trade-show app, or
- * a partner-email parser, normalises the fields, and creates it in Bitrix24 (in
- * the first status) with the welcome + inactivity automations scheduled.
+ * The customer's website form (e.g. the Cashmatic "Ricevi la nostra offerta" form:
+ * Nome, Cognome, Email, Telefono, Messaggio) POSTs here on submit; so can Jotform,
+ * the trade-show app, or a partner-email parser. We normalise the fields and create
+ * a lead in OUR CRM (first stage) with the welcome + inactivity automations.
  *
  * Auth: ?secret=<app.intake_secret>.
  * Body: JSON or form-encoded. Recognised keys (any casing / common aliases):
- *   name, phone, email, source, title, comments
- *
+ *   name | nome (+ cognome), phone | telefono, email, source, title, message | messaggio
  * Jotform: point a webhook here; raw rawRequest is also parsed as a fallback.
  */
 require __DIR__ . '/../../src/Bootstrap.php';
 
 use Glue\Bootstrap;
 use Glue\Config;
+use Glue\Crm\Leads;
 use Glue\Event\Log;
-use Glue\Lead\Intake;
 
 Bootstrap::init();
 header('Content-Type: application/json');
@@ -47,7 +47,7 @@ if (isset($data['rawRequest']) && is_string($data['rawRequest'])) {
     }
 }
 
-// --- normalise common field names ---
+// --- normalise common field names (first match wins, case-insensitive) ---
 $pick = static function (array $d, array $keys): string {
     foreach ($keys as $k) {
         foreach ($d as $dk => $dv) {
@@ -59,12 +59,21 @@ $pick = static function (array $d, array $keys): string {
     return '';
 };
 
+// Build the full name from name, or first+last (nome + cognome).
+$name  = $pick($data, ['name', 'full_name', 'fullname', 'nome', 'q3_name']);
+$first = $pick($data, ['first_name', 'firstname', 'nome']);
+$last  = $pick($data, ['last_name', 'lastname', 'surname', 'cognome']);
+if ($name === '') {
+    $name = trim("$first $last");
+}
+
 $lead = [
-    'name'     => $pick($data, ['name', 'full_name', 'fullname', 'nome', 'q3_name']),
-    'phone'    => $pick($data, ['phone', 'telephone', 'mobile', 'tel', 'telefono', 'whatsapp']),
+    'name'     => $name,
+    'phone'    => $pick($data, ['phone', 'telephone', 'mobile', 'tel', 'telefono', 'whatsapp', 'cellulare']),
     'email'    => $pick($data, ['email', 'e-mail', 'mail']),
-    'source'   => $pick($data, ['source', 'origin']) ?: 'EXTERNAL',
-    'title'    => $pick($data, ['title', 'subject']),
+    'company'  => $pick($data, ['company', 'azienda', 'ragione_sociale']),
+    'source'   => $pick($data, ['source', 'origin']) ?: 'website',
+    'title'    => $pick($data, ['title', 'subject', 'oggetto']),
     'comments' => $pick($data, ['comments', 'message', 'note', 'notes', 'messaggio']),
     'lang'     => $pick($data, ['lang', 'language', 'lingua', 'locale']), // en|it, blank = default
 ];
@@ -76,7 +85,7 @@ if ($lead['name'] === '' && $lead['phone'] === '' && $lead['email'] === '') {
 }
 
 try {
-    $leadId = Intake::create($lead);
+    $leadId = Leads::create($lead);
     echo json_encode(['ok' => true, 'lead_id' => $leadId]);
 } catch (Throwable $e) {
     Log::write('form_intake', 'intake_error', null, null, ['error' => $e->getMessage(), 'lead' => $lead]);
