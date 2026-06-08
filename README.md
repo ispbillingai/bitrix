@@ -51,7 +51,7 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 | Assign lead to seller → send seller profile | `Crm\Leads::assign` → `agent_assigned` |
 | Activity reminder if lead not worked in N hours | `lead_inactivity`, silenced when the lead leaves the first stage |
 | Appointment reminders (customer + seller) | `Crm\Appointments::schedule` at `appointment_offsets_min` |
-| Signing reminders (10/5/0 days + overdue to 15) | `Crm\Deals::moveStage` into the quote stage → `sign_due`/`sign_overdue` |
+| Signing reminders (15 days after sent, then 10/5 days before the deal's signature due date, + overdue to 15) | `Crm\Deals::moveStage` into the quote stage → `sign_due`/`sign_overdue` |
 | Closing: thank-you + notify logistics | won stage → `thank_you` + `logistics_notify` |
 | KPI / score evaluation | `Crm\Tasks` (kpi_score/weight) + leaderboard |
 | Manual interrupt / silence any automation | move the record's stage; pending reminders auto-cancel |
@@ -63,7 +63,7 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 ```
 config/config.sample.php   copy to config.php (gitignored); only `db` is required here
 db/schema.sql              full reference schema (+ seed pipelines)
-migrations/                versioned changes applied by migrate.php (005–008 add the CRM)
+migrations/                versioned changes applied by migrate.php (005–009 add the CRM)
 migrate.php                migration runner (CLI or ?key=)
 bin/scheduler.php          cron: dispatch due reminders + campaign batches
 lang/  en.php it.php        customer message copy (WhatsApp + email)

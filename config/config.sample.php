@@ -60,13 +60,16 @@ return [
 
     // Reminder cadences. Hours unless noted. Tune from Settings without code.
     'reminders' => [
-        'lead_inactivity_hours'   => 2,   // req #4: seller notified if lead not worked
+        'lead_inactivity_hours'   => 3,   // req #4: seller notified if lead not worked
         'deal_inactivity_hours'   => 3,   // "To Work" timer for deals
         // Appointment reminders: minutes-before-event to fire (customer + seller).
         'appointment_offsets_min' => [1440, 120], // 24h and 2h before
-        // Signing reminders: days-before-deadline to fire (req #6).
-        'sign_offsets_days'       => [10, 5, 0],
-        // After deadline, keep nudging every N days until signed, up to max.
+        // Signing cadence (Phase 4). The agent sets a signature due date per deal
+        // when sending the quote; the cadence anchors on it:
+        'sign_after_sent_days'    => 15,      // R1: nudge if unsigned N days after the quote went out
+        'sign_before_due_days'    => [10, 5], // R2/R3: nudge this many days BEFORE the due date
+        'sign_due_default_days'   => 30,      // fallback due window when no date is set on the deal
+        // After the due date, keep nudging every N days until signed, up to max.
         'sign_overdue_every_days' => 3,
         'sign_overdue_max_days'   => 15,  // 15-day window
     ],

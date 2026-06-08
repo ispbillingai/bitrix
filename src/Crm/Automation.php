@@ -41,7 +41,7 @@ final class Automation
     public static function inactivity(string $entityType, int $id, string $fromStage): void
     {
         $cfgKey = $entityType === 'deal' ? 'reminders.deal_inactivity_hours' : 'reminders.lead_inactivity_hours';
-        $hours = (int)Config::get($cfgKey, $entityType === 'deal' ? 3 : 2);
+        $hours = (int)Config::get($cfgKey, 3);
         self::sched()->enqueue([
             'entity_type'    => $entityType,
             'entity_id'      => $id,
@@ -118,17 +118,48 @@ final class Automation
         return $n;
     }
 
-    /** #6 Signing cadence — reminders at 10/5/0 days before deadline, then overdue nudges. */
-    public static function signCadence(int $dealId, string $quoteStage): void
+    /**
+     * #6 Signing cadence (Phase 4 "Quote sent"). The agent sets a signature due
+     * date on the deal when sending the quote; the cadence anchors on it:
+     *   R1  — unsigned N days AFTER the quote was sent (sign_after_sent_days)
+     *   R2+ — a number of days BEFORE the due date (sign_before_due_days)
+     * then recurring nudges after the due date until signed. When no due date is
+     * given, falls back to a configurable window from today. Dedupe keys include
+     * the resolved deadline, so changing the due date (re-anchor) enqueues afresh.
+     */
+    public static function signCadence(int $dealId, string $quoteStage, ?string $dueDate = null): void
     {
-        $offsets    = (array)Config::get('reminders.sign_offsets_days', [10, 5, 0]);
-        $maxOffset  = $offsets ? max($offsets) : 10;
-        $deadlineTs = strtotime("+$maxOffset days");
-        $deadline   = date('Y-m-d', $deadlineTs);
-        $sched      = self::sched();
+        $sched = self::sched();
+        $now   = time();
 
-        foreach ($offsets as $daysBefore) {
-            $dueTs = max(time(), $deadlineTs - (int)$daysBefore * 86400);
+        // Resolve the signature due date: agent's value, else a default window.
+        $defaultDays = max(1, (int)Config::get('reminders.sign_due_default_days', 30));
+        $deadlineTs  = $dueDate ? strtotime($dueDate . ' 09:00:00') : false;
+        if (!$deadlineTs || $deadlineTs <= $now) {
+            $deadlineTs = strtotime("+$defaultDays days", $now);
+        }
+        $deadline = date('Y-m-d', $deadlineTs);
+
+        // R1 — still unsigned N days after the quote went out (CRM.txt: 15 days).
+        $afterDays = max(1, (int)Config::get('reminders.sign_after_sent_days', 15));
+        $sched->enqueue([
+            'entity_type'    => 'deal',
+            'entity_id'      => $dealId,
+            'rule_key'       => 'sign_due',
+            'recipient_type' => 'customer',
+            'channel'        => 'both',
+            'due_at'         => date('Y-m-d H:i:s', $now + $afterDays * 86400),
+            'skip_if_stage_changed_from' => $quoteStage,
+            'payload'        => ['deadline' => $deadline],
+            'dedupe_key'     => "sign:deal:$dealId:after:$deadline",
+        ]);
+
+        // R2/R3 — a number of days before the due date (CRM.txt: 10 and 5 days left).
+        foreach ((array)Config::get('reminders.sign_before_due_days', [10, 5]) as $daysBefore) {
+            $dueTs = $deadlineTs - (int)$daysBefore * 86400;
+            if ($dueTs <= $now) {
+                continue; // that window is already past for this due date
+            }
             $sched->enqueue([
                 'entity_type'    => 'deal',
                 'entity_id'      => $dealId,
@@ -138,11 +169,11 @@ final class Automation
                 'due_at'         => date('Y-m-d H:i:s', $dueTs),
                 'skip_if_stage_changed_from' => $quoteStage,
                 'payload'        => ['deadline' => $deadline],
-                'dedupe_key'     => "sign:deal:$dealId:$daysBefore",
+                'dedupe_key'     => "sign:deal:$dealId:before$daysBefore:$deadline",
             ]);
         }
 
-        // Overdue recurring nudges up to the max window (req part2 #2: 15 days).
+        // Overdue recurring nudges after the due date, up to the max window (15 days).
         $every = max(1, (int)Config::get('reminders.sign_overdue_every_days', 3));
         $maxD  = (int)Config::get('reminders.sign_overdue_max_days', 15);
         for ($d = $every; $d <= $maxD; $d += $every) {
@@ -154,7 +185,7 @@ final class Automation
                 'channel'        => 'both',
                 'due_at'         => date('Y-m-d H:i:s', $deadlineTs + $d * 86400),
                 'skip_if_stage_changed_from' => $quoteStage,
-                'dedupe_key'     => "signover:deal:$dealId:$d",
+                'dedupe_key'     => "signover:deal:$dealId:$d:$deadline",
             ]);
         }
     }

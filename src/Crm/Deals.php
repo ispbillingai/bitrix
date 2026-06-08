@@ -28,10 +28,10 @@ final class Deals
         $stmt = Db::pdo()->prepare(
             'INSERT INTO deals
                 (title, contact_id, lead_id, pipeline_id, stage_code, amount, currency,
-                 assigned_to, status, expected_close_date, customer_name, customer_phone,
-                 customer_email, lang, stage_changed_at)
+                 assigned_to, status, expected_close_date, sign_due_date, customer_name,
+                 customer_phone, customer_email, lang, stage_changed_at)
              VALUES (:title, :contact_id, :lead_id, :pipeline_id, :stage, :amount, :currency,
-                 :assigned_to, "open", :close_date, :name, :phone, :email, :lang, NOW())'
+                 :assigned_to, "open", :close_date, :sign_due, :name, :phone, :email, :lang, NOW())'
         );
         $stmt->execute([
             ':title'       => trim((string)($d['title'] ?? 'Deal')) ?: 'Deal',
@@ -43,6 +43,7 @@ final class Deals
             ':currency'    => $d['currency'] ?? Config::get('crm.currency', 'EUR'),
             ':assigned_to' => $d['assigned_to'] ?? null,
             ':close_date'  => $d['expected_close_date'] ?? null,
+            ':sign_due'    => ($d['sign_due_date'] ?? '') !== '' ? $d['sign_due_date'] : null,
             ':name'        => $d['name'] ?? null,
             ':phone'       => $d['phone'] ?? null,
             ':email'       => $d['email'] ?? null,
@@ -70,32 +71,58 @@ final class Deals
         self::pushSync($dealId);
     }
 
-    /** Move stage and fire the quote/won/lost automations. */
-    public static function moveStage(int $dealId, string $stageCode, ?int $actorId = null): void
+    /**
+     * Move stage and fire the quote/won/lost automations. $signDueDate (optional,
+     * 'Y-m-d') is the signature due date the agent sets when sending the quote; it
+     * is persisted and anchors the signing cadence. Passing only a due date while
+     * already in the quote stage re-anchors the reminders to the new date.
+     */
+    public static function moveStage(int $dealId, string $stageCode, ?int $actorId = null, ?string $signDueDate = null): void
     {
         $deal = self::find($dealId);
         if (!$deal) {
             return;
         }
         $oldStage   = (string)$deal['stage_code'];
-        if ($oldStage === $stageCode) {
-            return;
-        }
         $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
-        $stage      = Pipelines::stage((int)$deal['pipeline_id'], $stageCode);
-        $isWon      = $stage && (int)$stage['is_won'] === 1;
-        $isLost     = $stage && (int)$stage['is_lost'] === 1;
-        $status     = $isWon ? 'won' : ($isLost ? 'lost' : 'open');
+        $oldDue     = ($deal['sign_due_date'] ?? '') !== '' ? (string)$deal['sign_due_date'] : null;
 
-        Db::pdo()->prepare(
-            'UPDATE deals SET stage_code = ?, status = ?, stage_changed_at = NOW() WHERE id = ?'
-        )->execute([$stageCode, $status, $dealId]);
+        // Persist a signature due date if the agent supplied one with this action.
+        $dueProvided = $signDueDate !== null && trim($signDueDate) !== '';
+        $dueChanged  = $dueProvided && $signDueDate !== $oldDue;
+        if ($dueChanged) {
+            Db::pdo()->prepare('UPDATE deals SET sign_due_date = ? WHERE id = ?')->execute([$signDueDate, $dealId]);
+            $deal['sign_due_date'] = $signDueDate;
+        }
 
-        $sched = new Scheduler();
+        $stageChanged = $oldStage !== $stageCode;
+        if (!$stageChanged && !$dueChanged) {
+            return; // nothing to do
+        }
 
-        // #6 Quote sent -> start the signing cadence.
-        if ($stageCode === $quoteStage && $oldStage !== $quoteStage) {
-            Automation::signCadence($dealId, $quoteStage);
+        $stage  = Pipelines::stage((int)$deal['pipeline_id'], $stageCode);
+        $isWon  = $stage && (int)$stage['is_won'] === 1;
+        $isLost = $stage && (int)$stage['is_lost'] === 1;
+        $status = $isWon ? 'won' : ($isLost ? 'lost' : 'open');
+        $sched  = new Scheduler();
+
+        if ($stageChanged) {
+            Db::pdo()->prepare(
+                'UPDATE deals SET stage_code = ?, status = ?, stage_changed_at = NOW() WHERE id = ?'
+            )->execute([$stageCode, $status, $dealId]);
+        }
+
+        $dueDate = ($deal['sign_due_date'] ?? '') !== '' ? (string)$deal['sign_due_date'] : null;
+
+        // #6 Quote sent -> start the signing cadence; or re-anchor it if the agent
+        // updated the due date while the deal is already in the quote stage.
+        $enteringQuote = $stageCode === $quoteStage && $oldStage !== $quoteStage;
+        $reAnchor      = !$stageChanged && $dueChanged && $stageCode === $quoteStage;
+        if ($enteringQuote || $reAnchor) {
+            if ($reAnchor) {
+                $sched->cancelForEntity('deal', $dealId, ['sign_due', 'sign_overdue']);
+            }
+            Automation::signCadence($dealId, $quoteStage, $dueDate);
         }
         // #7 Won -> thank-you + logistics, stop chasing the signature.
         if ($isWon) {
@@ -107,9 +134,11 @@ final class Deals
             $sched->cancelForEntity('deal', $dealId, ['sign_due', 'sign_overdue']);
         }
 
-        Activities::add('deal', $dealId, 'stage',
-            'Stage: ' . Pipelines::label('deal', $oldStage) . ' → ' . Pipelines::label('deal', $stageCode), $actorId);
-        Log::write('crm', 'deal_stage_changed', 'deal', $dealId, ['from' => $oldStage, 'to' => $stageCode]);
+        if ($stageChanged) {
+            Activities::add('deal', $dealId, 'stage',
+                'Stage: ' . Pipelines::label('deal', $oldStage) . ' → ' . Pipelines::label('deal', $stageCode), $actorId);
+            Log::write('crm', 'deal_stage_changed', 'deal', $dealId, ['from' => $oldStage, 'to' => $stageCode]);
+        }
         self::pushSync($dealId);
     }
 

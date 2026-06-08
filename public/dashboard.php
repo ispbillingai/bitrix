@@ -90,6 +90,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'app.company_name', 'app.default_lang', 'app.timezone', 'app.base_url', 'app.intake_secret',
                     'crm.currency', 'crm.deal_quote_stage',
                     'reminders.lead_inactivity_hours', 'reminders.deal_inactivity_hours',
+                    'reminders.sign_after_sent_days',
                     'reminders.sign_overdue_every_days', 'reminders.sign_overdue_max_days',
                     'textmebot.api_key', 'mail.from_name', 'mail.from_email',
                     'mail.smtp.host', 'mail.smtp.port', 'mail.smtp.user', 'mail.smtp.pass', 'mail.smtp.secure',
@@ -168,6 +169,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'phone' => $_POST['phone'] ?? '', 'email' => $_POST['email'] ?? '',
                     'assigned_to' => ($_POST['assigned_to'] ?? '') !== '' ? (int)$_POST['assigned_to'] : null,
                     'expected_close_date' => $_POST['expected_close_date'] ?? null,
+                    'sign_due_date' => $_POST['sign_due_date'] ?? null,
                 ], $uid);
                 $flash = $t('saved');
                 $tab = 'deals';
@@ -178,7 +180,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $tab = 'deals';
                 break;
             case 'deal_move':
-                Deals::moveStage((int)$_POST['id'], (string)$_POST['stage'], $uid);
+                Deals::moveStage((int)$_POST['id'], (string)$_POST['stage'], $uid, $_POST['sign_due_date'] ?? null);
                 if ($ajax) { echo json_encode(['ok' => true]); exit; }
                 $tab = 'deals';
                 break;

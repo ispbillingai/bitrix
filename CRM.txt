@@ -1,0 +1,64 @@
+CRM WORK STAGES
+
+[ENTRY CHANNELS]
+|
++---> Website (Form / Jotform)
++---> Trade Show App (OCR Scan)
++---> Direct Emails / Partners
+|
+V
++====================================================+
+| STAGE 1: "TO BE WORKED ON" (Entry into the Pipeline) |
++=========================================================+
+|
++-- [Auto] ---> WELCOME Email + WhatsApp to the customer
+|
++-- [Timer] --> Countdown begins (e.g., 3 hours)
+|
++-- Expires without changes? ---> [Alarm] Agent Reminder
+|
+V
++=====================================================+
+| PHASE 2: "ASSIGNMENT" |
++======================================================+
+|
++-- [Action] -> The lead is assigned to an agent (the timer stops)
+|
++-- [Auto] ---> Email + WhatsApp to the customer: "Here is your agent (contact details)"
+|
+V
++====================================================+
+| PHASE 3: "APPOINTMENT" |
++===================================================+
+|
++-- [Action] -> Set meeting date on calendar
+|
++-- [Auto] ---> Pre-event reminder (e.g., -24h) to Customer and Agent
+|
+V
++=======================================================+
+| PHASE 4: "QUOTE SENT" (integrate OTP signature API software, such as DocuSign) |
++======================================================+
+|
++-- [Action] -> Agent generates and sends quote from App/PC
+|
++-- [Auto] ---> Signature Check (Email Reminder Loop + WA)
+|
++---> No signature after 15 days -> Reminder 1
++---> 10 days left until due date -> Reminder 2
++---> 5 days left until due date -> Reminder 3
+|
+V
++=====================================================+
+| PHASE 5: "DEAL CLOSING" |
++=====================================================+
+|
++-- Agent's Manual Action to Block Reminders:
+|
++---> [ MOVED TO "LOST" ] ----> End of all operations
+|
++---> [ MOVED TO "WON" ]
+|
++-- [Auto] ---> THANK YOU Email + WhatsApp
+|
++-- [Auto] ---> Task Creation for LOGISTICS OFFICE

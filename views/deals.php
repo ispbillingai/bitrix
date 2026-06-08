@@ -24,6 +24,7 @@ foreach ($byStage as $code => $cards) {
     <div class="row">
       <label class="fld"><span><?= $h($t('f_amount')) ?></span><input name="amount" type="number" step="0.01" value="0"></label>
       <label class="fld"><span><?= $h($t('f_close')) ?></span><input name="expected_close_date" type="date"></label>
+      <label class="fld"><span><?= $h($t('f_sign_due')) ?></span><input name="sign_due_date" type="date"><small class="muted"><?= $h($t('f_sign_due_h')) ?></small></label>
       <label class="fld"><span><?= $h($t('th_agent')) ?></span><?php agent_select($h, $agents, 'assigned_to', null, $t('unassigned')); ?></label>
     </div>
     <div class="row">
@@ -86,6 +87,7 @@ foreach ($byStage as $code => $cards) {
                 <option value="<?= $h($s['code']) ?>"<?= $s['code'] === $r['stage_code'] ? ' selected' : '' ?>><?= $h($s['name']) ?></option>
               <?php endforeach; ?>
             </select>
+            <input type="date" name="sign_due_date" value="<?= $h($r['sign_due_date'] ?? '') ?>" title="<?= $h($t('f_sign_due_h')) ?>">
             <button class="btn tiny ghost"><?= $h($t('move')) ?></button></form>
           <form method="post" style="margin-top:12px"><input type="hidden" name="do" value="deal_note">
             <input type="hidden" name="id" value="<?= $h($r['id']) ?>">

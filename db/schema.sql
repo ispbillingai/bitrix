@@ -130,6 +130,7 @@ CREATE TABLE IF NOT EXISTS deals (
     assigned_to INT UNSIGNED NULL,
     status ENUM('open','won','lost') NOT NULL DEFAULT 'open',
     expected_close_date DATE NULL,
+    sign_due_date DATE NULL,
     customer_name VARCHAR(190) NULL,
     customer_phone VARCHAR(32) NULL,
     customer_email VARCHAR(190) NULL,
