@@ -88,7 +88,7 @@ $agentViews   = ['overview', 'leads', 'deals', 'appointments', 'tasks', 'instruc
 $agentActions = [
     'lead_move', 'lead_convert', 'lead_note',
     'deal_move', 'deal_note',
-    'appt_schedule', 'appt_status',
+    'appt_create', 'appt_schedule', 'appt_status',
     'task_complete', 'task_status', 'change_my_password',
 ];
 
@@ -113,9 +113,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         foreach ($ownerCol as $prefix => $tc) {
             if (str_starts_with($do, $prefix)) { $needsOwner = $tc; break; }
         }
-        if ($needsOwner !== null) {
+        // Only check existing-record actions (those carrying an id). Create actions
+        // like appt_create have no id and set ownership themselves.
+        if ($needsOwner !== null && $rid > 0) {
             [$table, $col] = $needsOwner;
-            $owner = $rid > 0 ? (int)$pdo->query("SELECT $col FROM $table WHERE id = $rid")->fetchColumn() : 0;
+            $owner = (int)$pdo->query("SELECT $col FROM $table WHERE id = $rid")->fetchColumn();
             if ($owner !== $scopeId) {
                 if ($ajax) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
                 $flash = $t('not_allowed');
@@ -261,6 +263,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'name' => $_POST['name'] ?? '', 'phone' => $_POST['phone'] ?? '', 'email' => $_POST['email'] ?? '',
                     'preferred_at' => $_POST['preferred_at'] ?? '', 'title' => $_POST['title'] ?? null,
                     'notes' => $_POST['notes'] ?? null, 'lang' => $_POST['lang'] ?? null,
+                    // an agent's appointment is owned by them so they can manage it
+                    'agent_id' => $isAgent ? $uid : null,
                 ], $uid);
                 $flash = $t('saved');
                 $tab = 'appointments';

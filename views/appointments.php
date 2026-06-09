@@ -8,7 +8,6 @@ $rows = \Glue\Crm\Appointments::all(300, $scopeId ?? null);
 ?>
 <h2><?= $h($t('nav_appointments')) ?></h2>
 
-<?php if (empty($isAgent)): ?>
 <details class="drawer">
   <summary class="btn ghost" style="margin-bottom:14px"><?= svg('appointments') ?> <?= $h($t('appt_new')) ?></summary>
   <form method="post" class="card" style="margin-top:12px">
@@ -26,7 +25,6 @@ $rows = \Glue\Crm\Appointments::all(300, $scopeId ?? null);
     <button class="btn"><?= $h($t('save')) ?></button>
   </form>
 </details>
-<?php endif; ?>
 
 <table><thead><tr>
   <th><?= $h($t('th_customer')) ?></th><th><?= $h($t('appt_when')) ?></th><th><?= $h($t('th_agent')) ?></th>
@@ -47,7 +45,11 @@ $rows = \Glue\Crm\Appointments::all(300, $scopeId ?? null);
       <details class="drawer"><summary class="btn ghost tiny"><?= $h($t('manage')) ?></summary>
         <form method="post" class="card" style="margin-top:10px;min-width:320px">
           <input type="hidden" name="do" value="appt_schedule"><input type="hidden" name="id" value="<?= $h($r['id']) ?>">
-          <label class="fld"><span><?= $h($t('assign_seller')) ?></span><?php agent_select($h, $agents, 'agent_id', $r['agent_id'], $t('unassigned')); ?></label>
+          <?php if (empty($isAgent)): ?>
+            <label class="fld"><span><?= $h($t('assign_seller')) ?></span><?php agent_select($h, $agents, 'agent_id', $r['agent_id'], $t('unassigned')); ?></label>
+          <?php else: ?>
+            <input type="hidden" name="agent_id" value="<?= $h($uid) ?>">
+          <?php endif; ?>
           <label class="fld"><span><?= $h($t('appt_confirm_time')) ?></span>
             <input type="datetime-local" name="starts_at" value="<?= $h($when ? date('Y-m-d\TH:i', strtotime($when)) : '') ?>" required></label>
           <label class="fld"><span><?= $h($t('appt_location')) ?></span><input name="location" value="<?= $h($r['location']) ?>"></label>

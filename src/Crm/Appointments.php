@@ -27,14 +27,15 @@ final class Appointments
 
         $stmt = Db::pdo()->prepare(
             'INSERT INTO appointments
-                (contact_id, lead_id, title, location, preferred_at, status,
+                (contact_id, lead_id, agent_id, title, location, preferred_at, status,
                  notes, customer_name, customer_phone, customer_email, lang)
-             VALUES (:contact_id, :lead_id, :title, :location, :preferred, "requested",
+             VALUES (:contact_id, :lead_id, :agent_id, :title, :location, :preferred, "requested",
                  :notes, :name, :phone, :email, :lang)'
         );
         $stmt->execute([
             ':contact_id' => $d['contact_id'] ?? null,
             ':lead_id'    => $d['lead_id'] ?? null,
+            ':agent_id'   => ($d['agent_id'] ?? null) ?: null,
             ':title'      => trim((string)($d['title'] ?? '')) ?: 'Appointment request',
             ':location'   => $d['location'] ?? null,
             ':preferred'  => $preferredTs ? date('Y-m-d H:i:s', $preferredTs) : null,
