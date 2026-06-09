@@ -9,7 +9,7 @@ $rows = $pdo->query("SELECT * FROM messages ORDER BY id DESC LIMIT 300")->fetchA
 </tr></thead><tbody>
 <?php if (!$rows): ?><tr><td colspan="5" class="muted"><?= $h($t('none_yet')) ?></td></tr><?php endif; ?>
 <?php foreach ($rows as $r): ?>
-  <tr><td class="small"><?= $h($r['created_at']) ?></td><td><?= $h($r['channel']) ?></td>
+  <tr><td class="small"><?= $h($r['created_at']) ?></td><td><?= $h(code_label($t, 'chan_', $r['channel'])) ?></td>
     <td><?= $h($r['recipient']) ?></td><td class="small"><?= $h($r['subject']) ?></td>
     <td><?= pill($h, $r['status'], $t) ?></td></tr>
 <?php endforeach; ?>

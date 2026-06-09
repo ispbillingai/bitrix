@@ -103,6 +103,64 @@ return [
     'stt_failed'      => 'Fallito',
     'stt_skipped'     => 'Saltato',
 
+    // chiavi regola promemoria
+    'rk_welcome'              => 'Benvenuto',
+    'rk_agent_assigned'       => 'Agente assegnato',
+    'rk_appointment_agent'    => 'Appuntamento (venditore)',
+    'rk_appointment_confirmed'=> 'Appuntamento confermato',
+    'rk_appointment_customer' => 'Appuntamento (cliente)',
+    'rk_lead_inactivity'      => 'Inattività lead',
+    'rk_logistics_notify'     => 'Notifica logistica',
+    'rk_sign_due'             => 'Promemoria firma',
+    'rk_sign_overdue'         => 'Firma in ritardo',
+    'rk_thank_you'            => 'Ringraziamento',
+
+    // tipi destinatario
+    'rcpt_customer'   => 'Cliente',
+    'rcpt_agent'      => 'Venditore',
+    'rcpt_logistics'  => 'Logistica',
+
+    // canali
+    'chan_both'       => 'WhatsApp + Email',
+    'chan_whatsapp'   => 'WhatsApp',
+    'chan_email'      => 'Email',
+
+    // origini registro attività
+    'src_appointment'  => 'Appuntamento',
+    'src_bitrix_event' => 'Evento Bitrix',
+    'src_campaign'     => 'Campagna',
+    'src_crm'          => 'CRM',
+    'src_form_intake'  => 'Acquisizione modulo',
+    'src_request_form' => 'Modulo richiesta',
+    'src_scheduler'    => 'Scheduler',
+    'src_sync'         => 'Sincronizzazione',
+
+    // tipi evento registro attività
+    'evt_intake_error'                 => 'Errore acquisizione',
+    'evt_inbound'                      => 'In entrata',
+    'evt_error'                        => 'Errore',
+    'evt_campaign_created'             => 'Campagna creata',
+    'evt_appointment_requested'        => 'Appuntamento richiesto',
+    'evt_appointment_scheduled'        => 'Appuntamento pianificato',
+    'evt_appointment_status'           => 'Stato appuntamento modificato',
+    'evt_deal_created'                 => 'Trattativa creata',
+    'evt_deal_assigned'                => 'Trattativa assegnata',
+    'evt_deal_stage_changed'           => 'Fase trattativa modificata',
+    'evt_lead_created'                 => 'Lead creato',
+    'evt_lead_assigned'                => 'Lead assegnato',
+    'evt_lead_stage_changed'           => 'Fase lead modificata',
+    'evt_task_created'                 => 'Attività creata',
+    'evt_task_completed'               => 'Attività completata',
+    'evt_reminder_sent'                => 'Promemoria inviato',
+    'evt_reminder_failed'              => 'Promemoria fallito',
+    'evt_reminder_skipped_stage_moved' => 'Promemoria saltato (fase cambiata)',
+    'evt_deal_pushed'                  => 'Trattativa inviata',
+    'evt_deal_push_failed'             => 'Invio trattativa fallito',
+    'evt_deal_push_error'              => 'Errore invio trattativa',
+    'evt_lead_pushed'                  => 'Lead inviato',
+    'evt_lead_push_failed'             => 'Invio lead fallito',
+    'evt_lead_push_error'              => 'Errore invio lead',
+
     // overview
     'ov_title'         => 'Panoramica',
     'ov_open_leads'    => 'Lead aperti',

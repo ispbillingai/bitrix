@@ -103,6 +103,64 @@ return [
     'stt_failed'      => 'Failed',
     'stt_skipped'     => 'Skipped',
 
+    // reminder rule keys
+    'rk_welcome'              => 'Welcome',
+    'rk_agent_assigned'       => 'Agent assigned',
+    'rk_appointment_agent'    => 'Appointment (seller)',
+    'rk_appointment_confirmed'=> 'Appointment confirmed',
+    'rk_appointment_customer' => 'Appointment (customer)',
+    'rk_lead_inactivity'      => 'Lead inactivity',
+    'rk_logistics_notify'     => 'Logistics notification',
+    'rk_sign_due'             => 'Signature reminder',
+    'rk_sign_overdue'         => 'Signature overdue',
+    'rk_thank_you'            => 'Thank you',
+
+    // recipient types
+    'rcpt_customer'   => 'Customer',
+    'rcpt_agent'      => 'Seller',
+    'rcpt_logistics'  => 'Logistics',
+
+    // channels
+    'chan_both'       => 'WhatsApp + Email',
+    'chan_whatsapp'   => 'WhatsApp',
+    'chan_email'      => 'Email',
+
+    // activity-log sources
+    'src_appointment'  => 'Appointment',
+    'src_bitrix_event' => 'Bitrix event',
+    'src_campaign'     => 'Campaign',
+    'src_crm'          => 'CRM',
+    'src_form_intake'  => 'Form intake',
+    'src_request_form' => 'Request form',
+    'src_scheduler'    => 'Scheduler',
+    'src_sync'         => 'Sync',
+
+    // activity-log event types
+    'evt_intake_error'                 => 'Intake error',
+    'evt_inbound'                      => 'Inbound',
+    'evt_error'                        => 'Error',
+    'evt_campaign_created'             => 'Campaign created',
+    'evt_appointment_requested'        => 'Appointment requested',
+    'evt_appointment_scheduled'        => 'Appointment scheduled',
+    'evt_appointment_status'           => 'Appointment status changed',
+    'evt_deal_created'                 => 'Deal created',
+    'evt_deal_assigned'                => 'Deal assigned',
+    'evt_deal_stage_changed'           => 'Deal stage changed',
+    'evt_lead_created'                 => 'Lead created',
+    'evt_lead_assigned'                => 'Lead assigned',
+    'evt_lead_stage_changed'           => 'Lead stage changed',
+    'evt_task_created'                 => 'Task created',
+    'evt_task_completed'               => 'Task completed',
+    'evt_reminder_sent'                => 'Reminder sent',
+    'evt_reminder_failed'              => 'Reminder failed',
+    'evt_reminder_skipped_stage_moved' => 'Reminder skipped (stage moved)',
+    'evt_deal_pushed'                  => 'Deal pushed',
+    'evt_deal_push_failed'             => 'Deal push failed',
+    'evt_deal_push_error'              => 'Deal push error',
+    'evt_lead_pushed'                  => 'Lead pushed',
+    'evt_lead_push_failed'             => 'Lead push failed',
+    'evt_lead_push_error'              => 'Lead push error',
+
     // overview
     'ov_title'         => 'Overview',
     'ov_open_leads'    => 'Open leads',

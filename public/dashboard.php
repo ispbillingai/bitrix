@@ -499,6 +499,20 @@ function stage_label(callable $t, string $code, ?string $name = null): string {
     }
     return ($name !== null && $name !== '') ? $name : $code;
 }
+/**
+ * Localise a machine code (event type, source, rule key, recipient, channel)
+ * via a prefixed lang key, e.g. code_label($t, 'evt_', 'lead_created'). Falls
+ * back to the raw code when there's no translation, so new codes still show.
+ */
+function code_label(callable $t, string $prefix, ?string $code): string {
+    $code = (string)$code;
+    if ($code === '') {
+        return '';
+    }
+    $key = $prefix . $code;
+    $tr  = $t($key);
+    return $tr !== $key ? $tr : $code;
+}
 
 function svg(string $name): string {
     $p = [
