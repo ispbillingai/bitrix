@@ -24,6 +24,6 @@ $rows = $pdo->query("SELECT * FROM campaigns ORDER BY id DESC LIMIT 100")->fetch
 <?php if (!$rows): ?><tr><td colspan="6" class="muted"><?= $h($t('none_yet')) ?></td></tr><?php endif; ?>
 <?php foreach ($rows as $r): ?>
   <tr><td><?= $h($r['name']) ?></td><td><?= $h($r['channel']) ?></td><td><?= $h($r['total']) ?></td>
-    <td><?= $h($r['sent']) ?></td><td><?= $h($r['failed']) ?></td><td><?= pill($h, $r['status']) ?></td></tr>
+    <td><?= $h($r['sent']) ?></td><td><?= $h($r['failed']) ?></td><td><?= pill($h, $r['status'], $t) ?></td></tr>
 <?php endforeach; ?>
 </tbody></table>

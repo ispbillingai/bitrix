@@ -40,7 +40,7 @@ foreach ($byStage as $code => $cards) {
   <?php foreach ($stages as $s): $cards = $byStage[$s['code']] ?? []; ?>
     <div class="kcol">
       <div class="kcol-h">
-        <span><span class="dotc" style="background:<?= $h($s['color'] ?: '#5b6cff') ?>"></span><?= $h($s['name']) ?></span>
+        <span><span class="dotc" style="background:<?= $h($s['color'] ?: '#5b6cff') ?>"></span><?= $h(stage_label($t, $s['code'], $s['name'])) ?></span>
         <span class="cnt"><?= count($cards) ?> · <?= $h($money($stageTotals[$s['code']] ?? 0)) ?></span>
       </div>
       <div class="kbody" data-stage="<?= $h($s['code']) ?>">
@@ -68,8 +68,8 @@ foreach ($byStage as $code => $cards) {
       <span style="flex:1"><b><?= $h($r['title']) ?></b>
         <span class="muted small"> · <?= $h($r['customer_name']) ?></span></span>
       <span class="amt" style="color:var(--green);font-weight:600"><?= $h($money($r['amount'], $r['currency'])) ?></span>
-      <span class="pill"><?= $h(\Glue\Crm\Pipelines::label('deal', $r['stage_code'])) ?></span>
-      <?= pill($h, $r['status']) ?>
+      <span class="pill"><?= $h(stage_label($t, $r['stage_code'], \Glue\Crm\Pipelines::label('deal', $r['stage_code']))) ?></span>
+      <?= pill($h, $r['status'], $t) ?>
       <span class="muted small"><?= $ag ? $h($ag) : $h($t('unassigned')) ?></span>
     </summary>
     <div style="padding:4px 18px 18px;border-top:1px solid var(--line)">
@@ -84,7 +84,7 @@ foreach ($byStage as $code => $cards) {
             <input type="hidden" name="id" value="<?= $h($r['id']) ?>">
             <select name="stage">
               <?php foreach ($stages as $s): ?>
-                <option value="<?= $h($s['code']) ?>"<?= $s['code'] === $r['stage_code'] ? ' selected' : '' ?>><?= $h($s['name']) ?></option>
+                <option value="<?= $h($s['code']) ?>"<?= $s['code'] === $r['stage_code'] ? ' selected' : '' ?>><?= $h(stage_label($t, $s['code'], $s['name'])) ?></option>
               <?php endforeach; ?>
             </select>
             <input type="date" name="sign_due_date" value="<?= $h($r['sign_due_date'] ?? '') ?>" title="<?= $h($t('f_sign_due_h')) ?>">

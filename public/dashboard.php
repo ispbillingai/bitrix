@@ -106,6 +106,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // checkbox: present only when ticked
                 $pairs['bitrix.sync_enabled'] = isset($_POST['bitrix.sync_enabled']) ? 'true' : 'false';
                 Settings::setMany($pairs);
+                // Config was overlaid once at boot; re-apply so the form below this
+                // request reflects the values we just saved (not the pre-save snapshot).
+                Config::applyOverlay(Settings::nested());
                 $flash = $t('saved');
                 $tab = 'settings';
                 break;
@@ -455,8 +458,36 @@ function agent_select(callable $h, array $agents, string $name, $selected = null
     }
     echo '</select>';
 }
-function pill(callable $h, string $status): string {
-    return '<span class="pill pill-' . $h($status) . '">' . $h($status) . '</span>';
+/** Status pill with a localised label but the raw status as the CSS class. */
+function pill(callable $h, string $status, ?callable $t = null): string {
+    $label = $status;
+    if ($t !== null) {
+        $tr = $t('stt_' . $status);
+        $label = $tr !== 'stt_' . $status ? $tr : $status; // fall back to raw if untranslated
+    }
+    return '<span class="pill pill-' . $h($status) . '">' . $h($label) . '</span>';
+}
+/**
+ * Localised stage label. The default pipeline stages are seeded in English
+ * (migration 008); translate those by code. If an operator renamed a stage away
+ * from its seed default, respect their custom name. Custom stages with no
+ * translation fall back to their stored name.
+ */
+function stage_label(callable $t, string $code, ?string $name = null): string {
+    static $seed = [
+        'NEW' => 'New', 'CONTACTED' => 'Contacted', 'QUALIFIED' => 'Qualified',
+        'CONVERTED' => 'Converted', 'JUNK' => 'Junk', 'QUOTE' => 'Quote sent',
+        'NEGOTIATION' => 'Negotiation', 'WON' => 'Won', 'LOST' => 'Lost',
+    ];
+    if ($name !== null && $name !== '' && isset($seed[$code]) && strcasecmp($name, $seed[$code]) !== 0) {
+        return $name; // operator-renamed → keep their label
+    }
+    $key = 'stg_' . $code;
+    $tr  = $t($key);
+    if ($tr !== $key) {
+        return $tr;
+    }
+    return ($name !== null && $name !== '') ? $name : $code;
 }
 
 function svg(string $name): string {

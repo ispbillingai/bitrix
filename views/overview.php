@@ -68,7 +68,7 @@ $mailOk = (string)$cfg('mail.from_email', '') !== '';
     <?php foreach ($leadStages as $s): $c = (int)($leadCounts[$s['code']] ?? 0); $pct = $openLeads > 0 ? round(100 * $c / $openLeads) : 0; ?>
       <div style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
-          <span><span class="dotc" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:<?= $h($s['color'] ?: '#5b6cff') ?>;margin-right:7px"></span><?= $h($s['name']) ?></span>
+          <span><span class="dotc" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:<?= $h($s['color'] ?: '#5b6cff') ?>;margin-right:7px"></span><?= $h(stage_label($t, $s['code'], $s['name'])) ?></span>
           <span class="muted"><?= $c ?></span>
         </div>
         <div style="height:7px;background:var(--surface2);border-radius:6px;overflow:hidden">

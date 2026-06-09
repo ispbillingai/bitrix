@@ -11,6 +11,6 @@ $rows = $pdo->query("SELECT * FROM messages ORDER BY id DESC LIMIT 300")->fetchA
 <?php foreach ($rows as $r): ?>
   <tr><td class="small"><?= $h($r['created_at']) ?></td><td><?= $h($r['channel']) ?></td>
     <td><?= $h($r['recipient']) ?></td><td class="small"><?= $h($r['subject']) ?></td>
-    <td><?= pill($h, $r['status']) ?></td></tr>
+    <td><?= pill($h, $r['status'], $t) ?></td></tr>
 <?php endforeach; ?>
 </tbody></table>

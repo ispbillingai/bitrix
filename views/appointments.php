@@ -40,7 +40,7 @@ $rows = \Glue\Crm\Appointments::all(300);
     <td><?= $when ? $h(date('D j M Y, H:i', strtotime($when))) : '<span class="muted">—</span>' ?>
       <?php if (!$r['starts_at'] && $r['preferred_at']): ?><br><span class="muted small"><?= $h($t('appt_pref_label')) ?></span><?php endif; ?></td>
     <td><?= $ag ? $h($ag) : '<span class="muted">—</span>' ?></td>
-    <td><?= pill($h, $r['status']) ?></td>
+    <td><?= pill($h, $r['status'], $t) ?></td>
     <td style="white-space:nowrap">
       <details class="drawer"><summary class="btn ghost tiny"><?= $h($t('manage')) ?></summary>
         <form method="post" class="card" style="margin-top:10px;min-width:320px">

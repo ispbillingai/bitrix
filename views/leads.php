@@ -34,7 +34,7 @@ $rows = \Glue\Crm\Leads::all(300);
   <?php foreach ($stages as $s): $cards = $byStage[$s['code']] ?? []; ?>
     <div class="kcol">
       <div class="kcol-h">
-        <span><span class="dotc" style="background:<?= $h($s['color'] ?: '#5b6cff') ?>"></span><?= $h($s['name']) ?></span>
+        <span><span class="dotc" style="background:<?= $h($s['color'] ?: '#5b6cff') ?>"></span><?= $h(stage_label($t, $s['code'], $s['name'])) ?></span>
         <span class="cnt"><?= count($cards) ?></span>
       </div>
       <div class="kbody" data-stage="<?= $h($s['code']) ?>">
@@ -62,8 +62,8 @@ $rows = \Glue\Crm\Leads::all(300);
       <?= avatar($h, $r['customer_name']) ?>
       <span style="flex:1"><b><?= $h($r['customer_name'] ?: ('#' . $r['id'])) ?></b>
         <span class="muted small"> · <?= $h($r['customer_phone']) ?> <?= $h($r['customer_email']) ?></span></span>
-      <span class="pill"><?= $h(\Glue\Crm\Pipelines::label('lead', $r['stage_code'])) ?></span>
-      <?= pill($h, $r['status']) ?>
+      <span class="pill"><?= $h(stage_label($t, $r['stage_code'], \Glue\Crm\Pipelines::label('lead', $r['stage_code']))) ?></span>
+      <?= pill($h, $r['status'], $t) ?>
       <span class="muted small"><?= $ag ? $h($ag) : $h($t('unassigned')) ?></span>
     </summary>
     <div style="padding:4px 18px 18px;border-top:1px solid var(--line)">
@@ -78,7 +78,7 @@ $rows = \Glue\Crm\Leads::all(300);
             <input type="hidden" name="id" value="<?= $h($r['id']) ?>">
             <select name="stage">
               <?php foreach ($stages as $s): ?>
-                <option value="<?= $h($s['code']) ?>"<?= $s['code'] === $r['stage_code'] ? ' selected' : '' ?>><?= $h($s['name']) ?></option>
+                <option value="<?= $h($s['code']) ?>"<?= $s['code'] === $r['stage_code'] ? ' selected' : '' ?>><?= $h(stage_label($t, $s['code'], $s['name'])) ?></option>
               <?php endforeach; ?>
             </select>
             <button class="btn tiny ghost"><?= $h($t('move')) ?></button></form>

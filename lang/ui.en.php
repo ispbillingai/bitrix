@@ -75,6 +75,33 @@ return [
     'th_status'      => 'Status',
     'th_created'     => 'Created',
 
+    // default pipeline stage names (seeded in English; translated for display)
+    'stg_NEW'         => 'New',
+    'stg_CONTACTED'   => 'Contacted',
+    'stg_QUALIFIED'   => 'Qualified',
+    'stg_CONVERTED'   => 'Converted',
+    'stg_JUNK'        => 'Junk',
+    'stg_QUOTE'       => 'Quote sent',
+    'stg_NEGOTIATION' => 'Negotiation',
+    'stg_WON'         => 'Won',
+    'stg_LOST'        => 'Lost',
+
+    // record statuses (shown as pills)
+    'stt_open'        => 'Open',
+    'stt_won'         => 'Won',
+    'stt_lost'        => 'Lost',
+    'stt_converted'   => 'Converted',
+    'stt_junk'        => 'Junk',
+    'stt_requested'   => 'Requested',
+    'stt_confirmed'   => 'Confirmed',
+    'stt_done'        => 'Done',
+    'stt_cancelled'   => 'Cancelled',
+    'stt_no_show'     => 'No-show',
+    'stt_pending'     => 'Pending',
+    'stt_sent'        => 'Sent',
+    'stt_failed'      => 'Failed',
+    'stt_skipped'     => 'Skipped',
+
     // overview
     'ov_title'         => 'Overview',
     'ov_open_leads'    => 'Open leads',

@@ -42,7 +42,7 @@ $board = \Glue\Crm\Tasks::leaderboard();
         <td class="small <?= $overdue ? '' : 'muted' ?>" style="<?= $overdue ? 'color:var(--red)' : '' ?>">
           <?= $r['due_at'] ? $h(short_time($r['due_at'])) : '—' ?></td>
         <td><?= $r['kpi_score'] !== null ? '<b>' . $h($r['kpi_score']) . '</b>' : '<span class="muted">—</span>' ?></td>
-        <td><?= pill($h, $r['status']) ?></td>
+        <td><?= pill($h, $r['status'], $t) ?></td>
         <td style="white-space:nowrap">
           <?php if ($r['status'] === 'open'): ?>
             <details class="drawer"><summary class="btn ghost tiny"><?= $h($t('task_complete')) ?></summary>

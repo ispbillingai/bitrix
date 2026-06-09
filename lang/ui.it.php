@@ -75,6 +75,33 @@ return [
     'th_status'      => 'Stato',
     'th_created'     => 'Creato',
 
+    // nomi fase predefiniti (seed in inglese; tradotti per la visualizzazione)
+    'stg_NEW'         => 'Nuovo',
+    'stg_CONTACTED'   => 'Contattato',
+    'stg_QUALIFIED'   => 'Qualificato',
+    'stg_CONVERTED'   => 'Convertito',
+    'stg_JUNK'        => 'Scartato',
+    'stg_QUOTE'       => 'Preventivo inviato',
+    'stg_NEGOTIATION' => 'Negoziazione',
+    'stg_WON'         => 'Vinta',
+    'stg_LOST'        => 'Persa',
+
+    // stati dei record (mostrati come pill)
+    'stt_open'        => 'Aperto',
+    'stt_won'         => 'Vinta',
+    'stt_lost'        => 'Persa',
+    'stt_converted'   => 'Convertito',
+    'stt_junk'        => 'Scartato',
+    'stt_requested'   => 'Richiesto',
+    'stt_confirmed'   => 'Confermato',
+    'stt_done'        => 'Completato',
+    'stt_cancelled'   => 'Annullato',
+    'stt_no_show'     => 'Non presentato',
+    'stt_pending'     => 'In attesa',
+    'stt_sent'        => 'Inviato',
+    'stt_failed'      => 'Fallito',
+    'stt_skipped'     => 'Saltato',
+
     // overview
     'ov_title'         => 'Panoramica',
     'ov_open_leads'    => 'Lead aperti',

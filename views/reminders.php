@@ -20,7 +20,7 @@ $rows = $pdo->query($sql)->fetchAll();
   <tr><td class="small"><?= $h($r['due_at']) ?></td>
     <td><?= $h($r['rule_key']) ?> <span class="muted small"><?= $h($r['entity_type']) ?> #<?= $h($r['entity_id']) ?></span></td>
     <td><?= $h($r['recipient_type']) ?></td><td><?= $h($r['channel']) ?></td>
-    <td><?= pill($h, $r['status']) ?></td>
+    <td><?= pill($h, $r['status'], $t) ?></td>
     <td><?php if ($r['status'] === 'pending'): ?>
       <form method="post" class="inline"><input type="hidden" name="do" value="cancel_reminder">
       <input type="hidden" name="id" value="<?= $h($r['id']) ?>">
