@@ -78,10 +78,52 @@ $pdo = Db::pdo();
 $tab = $_GET['tab'] ?? 'overview';
 $uid = (int)($_SESSION['glue_user']['id'] ?? 0) ?: null;
 
+// ---- role-based access ----
+// Agents see a restricted panel: only their own leads/deals/appointments/tasks,
+// no settings/agents/campaigns/global logs. Admins (and the master login) see all.
+$role    = (string)($_SESSION['glue_user']['role'] ?? 'admin');
+$isAgent = $role === 'agent';
+$scopeId = $isAgent ? (int)($_SESSION['glue_user']['id'] ?? 0) : null; // null = no scope (admin)
+$agentViews   = ['overview', 'leads', 'deals', 'appointments', 'tasks', 'instructions'];
+$agentActions = [
+    'lead_move', 'lead_convert', 'lead_note',
+    'deal_move', 'deal_note',
+    'appt_schedule', 'appt_status',
+    'task_complete', 'task_status', 'change_my_password',
+];
+
 // ---- POST actions ----
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $do = $_POST['do'] ?? '';
     $ajax = ($_POST['ajax'] ?? '') === '1';
+    // Agents may only run their own whitelisted actions; block admin actions.
+    if ($isAgent && !in_array($do, $agentActions, true)) {
+        if ($ajax) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
+        $flash = $t('not_allowed');
+        $flashType = 'err';
+        $do = ''; // fall through the switch without matching any case
+    }
+    // ...and only on records assigned to them (block IDOR via a forged id). An
+    // unassigned or non-existent record reads as owner 0 and is denied too.
+    if ($isAgent && $do !== '') {
+        $rid = (int)($_POST['id'] ?? 0);
+        $ownerCol = ['lead_' => ['leads', 'assigned_to'], 'deal_' => ['deals', 'assigned_to'],
+                     'appt_' => ['appointments', 'agent_id'], 'task_' => ['tasks', 'assigned_to']];
+        $needsOwner = null;
+        foreach ($ownerCol as $prefix => $tc) {
+            if (str_starts_with($do, $prefix)) { $needsOwner = $tc; break; }
+        }
+        if ($needsOwner !== null) {
+            [$table, $col] = $needsOwner;
+            $owner = $rid > 0 ? (int)$pdo->query("SELECT $col FROM $table WHERE id = $rid")->fetchColumn() : 0;
+            if ($owner !== $scopeId) {
+                if ($ajax) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
+                $flash = $t('not_allowed');
+                $flashType = 'err';
+                $do = '';
+            }
+        }
+    }
     try {
         switch ($do) {
             // ---------- settings ----------
@@ -356,11 +398,17 @@ $cfg = fn(string $k, $d = '') => Config::get($k, $d);
 $agents = Auth::agents();
 $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_format((float)$n, 0);
 
-render_head($t, $h, $lang, $tab, $flash, $flashType);
-
 $views = ['overview', 'leads', 'deals', 'contacts', 'appointments', 'tasks',
           'campaigns', 'messages', 'reminders', 'events', 'agents', 'settings', 'instructions'];
 $view = in_array($tab, $views, true) ? $tab : 'overview';
+// Agents can't reach admin views, even by typing the URL.
+if ($isAgent && !in_array($view, $agentViews, true)) {
+    $view = 'overview';
+    $tab  = 'overview';
+}
+
+render_head($t, $h, $lang, $tab, $flash, $flashType, $isAgent);
+
 require dirname(__DIR__) . '/views/' . $view . '.php';
 
 render_foot();
@@ -385,14 +433,17 @@ function render_login(callable $t, callable $h, string $lang, ?string $err): voi
 </body></html>
 <?php }
 
-function render_head(callable $t, callable $h, string $lang, string $tab, ?string $flash, string $flashType): void {
+function render_head(callable $t, callable $h, string $lang, string $tab, ?string $flash, string $flashType, bool $isAgent = false): void {
     $brand = (string)\Glue\Config::get('app.company_name', '') ?: $t('app_title');
     $nav = [
         'overview' => 'nav_overview', 'leads' => 'nav_leads', 'deals' => 'nav_deals',
         'contacts' => 'nav_contacts', 'appointments' => 'nav_appointments', 'tasks' => 'nav_tasks',
         'campaigns' => 'nav_campaigns', 'messages' => 'nav_messages', 'reminders' => 'nav_reminders',
         'events' => 'nav_events', 'agents' => 'nav_agents', 'instructions' => 'nav_instr', 'settings' => 'nav_settings',
-    ]; ?>
+    ];
+    if ($isAgent) { // agents only see their own work
+        $nav = array_intersect_key($nav, array_flip(['overview', 'leads', 'deals', 'appointments', 'tasks', 'instructions']));
+    } ?>
 <!DOCTYPE html><html lang="<?= $h($lang) ?>"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title><?= $h($brand) ?> — CRM</title><?php css(); ?>

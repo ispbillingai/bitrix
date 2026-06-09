@@ -4,10 +4,11 @@
  * seller and confirm the real time, which schedules reminders to both parties.
  * In scope: $t, $h, $pdo, $agents, $uid.
  */
-$rows = \Glue\Crm\Appointments::all(300);
+$rows = \Glue\Crm\Appointments::all(300, $scopeId ?? null);
 ?>
 <h2><?= $h($t('nav_appointments')) ?></h2>
 
+<?php if (empty($isAgent)): ?>
 <details class="drawer">
   <summary class="btn ghost" style="margin-bottom:14px"><?= svg('appointments') ?> <?= $h($t('appt_new')) ?></summary>
   <form method="post" class="card" style="margin-top:12px">
@@ -25,6 +26,7 @@ $rows = \Glue\Crm\Appointments::all(300);
     <button class="btn"><?= $h($t('save')) ?></button>
   </form>
 </details>
+<?php endif; ?>
 
 <table><thead><tr>
   <th><?= $h($t('th_customer')) ?></th><th><?= $h($t('appt_when')) ?></th><th><?= $h($t('th_agent')) ?></th>

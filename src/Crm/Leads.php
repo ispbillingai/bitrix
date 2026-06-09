@@ -150,24 +150,26 @@ final class Leads
         return $stmt->fetch() ?: null;
     }
 
-    /** @return array<int,array> recent leads with agent label */
-    public static function all(int $limit = 300): array
+    /** @return array<int,array> recent leads with agent label ($assignedTo scopes to one seller) */
+    public static function all(int $limit = 300, ?int $assignedTo = null): array
     {
         $limit = max(1, min(1000, $limit));
+        $where = $assignedTo ? ' WHERE l.assigned_to = ' . (int)$assignedTo : '';
         return Db::pdo()->query(
             "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name
              FROM leads l LEFT JOIN users u ON u.id = l.assigned_to
-             ORDER BY l.id DESC LIMIT $limit"
+             $where ORDER BY l.id DESC LIMIT $limit"
         )->fetchAll();
     }
 
-    /** Open leads grouped by stage_code (for the kanban board). */
-    public static function byStage(): array
+    /** Open leads grouped by stage_code (for the kanban board). $assignedTo scopes to one seller. */
+    public static function byStage(?int $assignedTo = null): array
     {
+        $where = "WHERE l.status = 'open'" . ($assignedTo ? ' AND l.assigned_to = ' . (int)$assignedTo : '');
         $rows = Db::pdo()->query(
             "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name
              FROM leads l LEFT JOIN users u ON u.id = l.assigned_to
-             WHERE l.status = 'open' ORDER BY l.id DESC"
+             $where ORDER BY l.id DESC"
         )->fetchAll();
         $out = [];
         foreach ($rows as $r) {

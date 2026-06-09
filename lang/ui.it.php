@@ -37,6 +37,7 @@ return [
     'save'           => 'Salva',
     'saved'          => 'Salvato.',
     'settings_saved_n' => 'campi salvati',
+    'not_allowed'    => 'Non hai i permessi per questa azione.',
     'configured'     => 'Configurato',
     'not_configured' => 'Non configurato',
     'none_yet'       => 'Ancora niente.',

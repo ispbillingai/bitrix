@@ -8,15 +8,21 @@ use Glue\Crm\Deals;
 use Glue\Crm\Tasks;
 use Glue\Notify\TextMeBot;
 
-$openLeads = $count("SELECT COUNT(*) FROM leads WHERE status='open'");
-$openDeals = $count("SELECT COUNT(*) FROM deals WHERE status='open'");
-$pipeVal   = Deals::openValue();
-$apptUpcoming = $count("SELECT COUNT(*) FROM appointments WHERE status IN('requested','confirmed') AND (starts_at IS NULL OR starts_at >= NOW()-INTERVAL 1 DAY)");
-$tasksOpen = $count("SELECT COUNT(*) FROM tasks WHERE status='open'");
-$tasksOverdue = $count("SELECT COUNT(*) FROM tasks WHERE status='open' AND due_at IS NOT NULL AND due_at < NOW()");
-$wonCount  = $count("SELECT COUNT(*) FROM deals WHERE status='won'");
-$convBase  = $count("SELECT COUNT(*) FROM leads");
-$conv = $convBase > 0 ? round(100 * $count("SELECT COUNT(*) FROM leads WHERE status='converted'") / $convBase) : 0;
+// Agent scope: when set, every KPI is limited to records assigned to this seller.
+$scope  = !empty($scopeId) ? (int)$scopeId : null;
+$sLead  = $scope ? " AND assigned_to = $scope" : ''; // leads / deals / tasks
+$sAppt  = $scope ? " AND agent_id = $scope" : '';    // appointments
+$leadsW = $scope ? " WHERE assigned_to = $scope" : '';
+
+$openLeads = $count("SELECT COUNT(*) FROM leads WHERE status='open'$sLead");
+$openDeals = $count("SELECT COUNT(*) FROM deals WHERE status='open'$sLead");
+$pipeVal   = Deals::openValue($scope);
+$apptUpcoming = $count("SELECT COUNT(*) FROM appointments WHERE status IN('requested','confirmed') AND (starts_at IS NULL OR starts_at >= NOW()-INTERVAL 1 DAY)$sAppt");
+$tasksOpen = $count("SELECT COUNT(*) FROM tasks WHERE status='open'$sLead");
+$tasksOverdue = $count("SELECT COUNT(*) FROM tasks WHERE status='open' AND due_at IS NOT NULL AND due_at < NOW()$sLead");
+$wonCount  = $count("SELECT COUNT(*) FROM deals WHERE status='won'$sLead");
+$convBase  = $count("SELECT COUNT(*) FROM leads$leadsW");
+$conv = $convBase > 0 ? round(100 * $count("SELECT COUNT(*) FROM leads WHERE status='converted'$sLead") / $convBase) : 0;
 
 // messages per day (14d)
 $days = [];
@@ -34,7 +40,7 @@ $chart = [
 
 // lead funnel by stage
 $leadStages = \Glue\Crm\Pipelines::stagesForEntity('lead');
-$leadCounts = $pdo->query("SELECT stage_code, COUNT(*) c FROM leads WHERE status='open' GROUP BY stage_code")
+$leadCounts = $pdo->query("SELECT stage_code, COUNT(*) c FROM leads WHERE status='open'$sLead GROUP BY stage_code")
     ->fetchAll(PDO::FETCH_KEY_PAIR);
 
 $events = $pdo->query("SELECT * FROM events ORDER BY id DESC LIMIT 8")->fetchAll();
@@ -58,10 +64,12 @@ $mailOk = (string)$cfg('mail.from_email', '') !== '';
 </div>
 
 <div class="cols c-2-1">
+  <?php if (empty($isAgent)): ?>
   <div class="panel">
     <div class="panel-h"><h3><?= svg('messages') ?><?= $h($t('ch_messages_title')) ?></h3></div>
     <div class="chart-wrap"><canvas id="chMsg"></canvas></div>
   </div>
+  <?php endif; ?>
   <div class="panel">
     <div class="panel-h"><h3><?= svg('leads') ?><?= $h($t('ov_funnel')) ?></h3></div>
     <?php if (!$leadStages): ?><div class="empty"><?= $h($t('none_yet')) ?></div><?php endif; ?>
@@ -79,6 +87,7 @@ $mailOk = (string)$cfg('mail.from_email', '') !== '';
   </div>
 </div>
 
+<?php if (empty($isAgent)): ?>
 <div class="cols c-1-1">
   <div class="panel">
     <div class="panel-h"><h3><?= svg('events') ?><?= $h($t('ov_recent')) ?></h3>
@@ -122,14 +131,17 @@ $mailOk = (string)$cfg('mail.from_email', '') !== '';
     ?>
   </div>
 </div>
+<?php endif; ?>
 
 <script>
 (function(){
   const d = <?= json_encode($chart, JSON_UNESCAPED_UNICODE) ?>;
   const css = getComputedStyle(document.documentElement); const c = n => css.getPropertyValue(n).trim();
   const grid = 'rgba(255,255,255,.06)';
+  const chMsg = document.getElementById('chMsg');
+  if (!chMsg) return; // chart hidden for agents
   Chart.defaults.color = c('--muted'); Chart.defaults.font.family = 'Inter, sans-serif';
-  new Chart(document.getElementById('chMsg'), {
+  new Chart(chMsg, {
     type:'bar',
     data:{labels:d.labels,datasets:[
       {label:d.tSent,data:d.sent,backgroundColor:c('--green'),borderRadius:5,maxBarThickness:26},

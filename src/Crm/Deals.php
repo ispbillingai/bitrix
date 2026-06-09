@@ -151,23 +151,25 @@ final class Deals
         return $stmt->fetch() ?: null;
     }
 
-    public static function all(int $limit = 300): array
+    public static function all(int $limit = 300, ?int $assignedTo = null): array
     {
         $limit = max(1, min(1000, $limit));
+        $where = $assignedTo ? ' WHERE d.assigned_to = ' . (int)$assignedTo : '';
         return Db::pdo()->query(
             "SELECT d.*, u.username AS agent_username, u.full_name AS agent_name
              FROM deals d LEFT JOIN users u ON u.id = d.assigned_to
-             ORDER BY d.id DESC LIMIT $limit"
+             $where ORDER BY d.id DESC LIMIT $limit"
         )->fetchAll();
     }
 
-    /** Open deals grouped by stage_code (for the kanban board). */
-    public static function byStage(): array
+    /** Open deals grouped by stage_code (for the kanban board). $assignedTo scopes to one seller. */
+    public static function byStage(?int $assignedTo = null): array
     {
+        $where = "WHERE d.status = 'open'" . ($assignedTo ? ' AND d.assigned_to = ' . (int)$assignedTo : '');
         $rows = Db::pdo()->query(
             "SELECT d.*, u.username AS agent_username, u.full_name AS agent_name
              FROM deals d LEFT JOIN users u ON u.id = d.assigned_to
-             WHERE d.status = 'open' ORDER BY d.id DESC"
+             $where ORDER BY d.id DESC"
         )->fetchAll();
         $out = [];
         foreach ($rows as $r) {
@@ -176,10 +178,11 @@ final class Deals
         return $out;
     }
 
-    /** Total value of open deals (pipeline weight for the overview). */
-    public static function openValue(): float
+    /** Total value of open deals (pipeline weight for the overview). $assignedTo scopes to one seller. */
+    public static function openValue(?int $assignedTo = null): float
     {
-        return (float)Db::pdo()->query("SELECT COALESCE(SUM(amount),0) FROM deals WHERE status='open'")->fetchColumn();
+        $where = "WHERE status='open'" . ($assignedTo ? ' AND assigned_to = ' . (int)$assignedTo : '');
+        return (float)Db::pdo()->query("SELECT COALESCE(SUM(amount),0) FROM deals $where")->fetchColumn();
     }
 
     public static function count(string $where = ''): int

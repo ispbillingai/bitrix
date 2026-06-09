@@ -3,13 +3,14 @@
  * Tasks — assign work to sellers, complete with a KPI score, and an aggregate
  * leaderboard (the doc's "Score Evaluation (KPI)"). In scope: $t, $h, $agents, $uid.
  */
-$rows = \Glue\Crm\Tasks::all(300);
-$board = \Glue\Crm\Tasks::leaderboard();
+$rows = \Glue\Crm\Tasks::all(300, $scopeId ?? null);
+$board = \Glue\Crm\Tasks::leaderboard($scopeId ?? null);
 ?>
 <h2><?= $h($t('nav_tasks')) ?></h2>
 
 <div class="cols c-2-1">
   <div>
+    <?php if (empty($isAgent)): ?>
     <details class="drawer">
       <summary class="btn ghost" style="margin-bottom:14px"><?= svg('tasks') ?> <?= $h($t('task_new')) ?></summary>
       <form method="post" class="card" style="margin-top:12px">
@@ -27,6 +28,7 @@ $board = \Glue\Crm\Tasks::leaderboard();
         <button class="btn"><?= $h($t('save')) ?></button>
       </form>
     </details>
+    <?php endif; ?>
 
     <table><thead><tr>
       <th><?= $h($t('f_title')) ?></th><th><?= $h($t('th_agent')) ?></th><th><?= $h($t('task_due')) ?></th>

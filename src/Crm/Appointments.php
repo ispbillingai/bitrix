@@ -129,13 +129,14 @@ final class Appointments
         return $stmt->fetch() ?: null;
     }
 
-    public static function all(int $limit = 300): array
+    public static function all(int $limit = 300, ?int $agentId = null): array
     {
         $limit = max(1, min(1000, $limit));
+        $where = $agentId ? ' WHERE a.agent_id = ' . (int)$agentId : '';
         return Db::pdo()->query(
             "SELECT a.*, u.username AS agent_username, u.full_name AS agent_name
              FROM appointments a LEFT JOIN users u ON u.id = a.agent_id
-             ORDER BY (a.starts_at IS NULL) DESC, a.starts_at ASC, a.id DESC LIMIT $limit"
+             $where ORDER BY (a.starts_at IS NULL) DESC, a.starts_at ASC, a.id DESC LIMIT $limit"
         )->fetchAll();
     }
 

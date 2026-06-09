@@ -5,11 +5,12 @@
  * to a deal, annotated, and its timeline read. In scope: $t, $h, $pdo, $agents, $uid.
  */
 $stages = \Glue\Crm\Pipelines::stagesForEntity('lead');
-$byStage = \Glue\Crm\Leads::byStage();
-$rows = \Glue\Crm\Leads::all(300);
+$byStage = \Glue\Crm\Leads::byStage($scopeId ?? null);
+$rows = \Glue\Crm\Leads::all(300, $scopeId ?? null);
 ?>
 <h2><?= $h($t('nav_leads')) ?></h2>
 
+<?php if (empty($isAgent)): ?>
 <details class="drawer">
   <summary class="btn ghost" style="margin-bottom:14px"><?= svg('leads') ?> <?= $h($t('lead_new')) ?></summary>
   <form method="post" class="card" style="margin-top:12px">
@@ -29,6 +30,7 @@ $rows = \Glue\Crm\Leads::all(300);
     <button class="btn"><?= $h($t('save')) ?></button>
   </form>
 </details>
+<?php endif; ?>
 
 <div class="kanban" id="kb-lead">
   <?php foreach ($stages as $s): $cards = $byStage[$s['code']] ?? []; ?>
@@ -70,10 +72,12 @@ $rows = \Glue\Crm\Leads::all(300);
       <div class="cols c-1-1" style="margin-bottom:0">
         <div>
           <h3><?= $h($t('actions')) ?></h3>
+          <?php if (empty($isAgent)): ?>
           <form method="post" class="inline"><input type="hidden" name="do" value="lead_assign">
             <input type="hidden" name="id" value="<?= $h($r['id']) ?>">
             <?php agent_select($h, $agents, 'agent_id', $r['assigned_to'], $t('assign_seller')); ?>
             <button class="btn tiny"><?= $h($t('assign')) ?></button></form>
+          <?php endif; ?>
           <form method="post" class="inline"><input type="hidden" name="do" value="lead_move">
             <input type="hidden" name="id" value="<?= $h($r['id']) ?>">
             <select name="stage">

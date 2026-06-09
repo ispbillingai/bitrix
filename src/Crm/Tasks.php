@@ -61,13 +61,14 @@ final class Tasks
         return $stmt->fetch() ?: null;
     }
 
-    public static function all(int $limit = 300): array
+    public static function all(int $limit = 300, ?int $assignedTo = null): array
     {
         $limit = max(1, min(1000, $limit));
+        $where = $assignedTo ? ' WHERE t.assigned_to = ' . (int)$assignedTo : '';
         return Db::pdo()->query(
             "SELECT t.*, u.username AS agent_username, u.full_name AS agent_name
              FROM tasks t LEFT JOIN users u ON u.id = t.assigned_to
-             ORDER BY (t.status='open') DESC, (t.due_at IS NULL), t.due_at ASC, t.id DESC LIMIT $limit"
+             $where ORDER BY (t.status='open') DESC, (t.due_at IS NULL), t.due_at ASC, t.id DESC LIMIT $limit"
         )->fetchAll();
     }
 
@@ -81,8 +82,9 @@ final class Tasks
      * KPI leaderboard: per seller, the number of completed tasks and the
      * weighted average score. Weighted by kpi_weight so important tasks count more.
      */
-    public static function leaderboard(): array
+    public static function leaderboard(?int $userId = null): array
     {
+        $where = 'WHERE u.active = 1' . ($userId ? ' AND u.id = ' . (int)$userId : '');
         return Db::pdo()->query(
             "SELECT u.id, u.username, u.full_name,
                     COUNT(t.id) AS total,
@@ -90,7 +92,7 @@ final class Tasks
                     SUM(t.status='open' AND t.due_at IS NOT NULL AND t.due_at < NOW()) AS overdue,
                     ROUND(SUM(t.kpi_score * t.kpi_weight) / NULLIF(SUM(CASE WHEN t.kpi_score IS NOT NULL THEN t.kpi_weight END),0), 1) AS kpi
              FROM users u LEFT JOIN tasks t ON t.assigned_to = u.id
-             WHERE u.active = 1
+             $where
              GROUP BY u.id, u.username, u.full_name
              ORDER BY kpi DESC, done DESC"
         )->fetchAll();

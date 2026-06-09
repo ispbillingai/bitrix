@@ -6,8 +6,8 @@
  * In scope: $t, $h, $pdo, $agents, $money, $uid.
  */
 $stages = \Glue\Crm\Pipelines::stagesForEntity('deal');
-$byStage = \Glue\Crm\Deals::byStage();
-$rows = \Glue\Crm\Deals::all(300);
+$byStage = \Glue\Crm\Deals::byStage($scopeId ?? null);
+$rows = \Glue\Crm\Deals::all(300, $scopeId ?? null);
 
 $stageTotals = [];
 foreach ($byStage as $code => $cards) {
@@ -16,6 +16,7 @@ foreach ($byStage as $code => $cards) {
 ?>
 <h2><?= $h($t('nav_deals')) ?></h2>
 
+<?php if (empty($isAgent)): ?>
 <details class="drawer">
   <summary class="btn ghost" style="margin-bottom:14px"><?= svg('deals') ?> <?= $h($t('deal_new')) ?></summary>
   <form method="post" class="card" style="margin-top:12px">
@@ -35,6 +36,7 @@ foreach ($byStage as $code => $cards) {
     <button class="btn"><?= $h($t('save')) ?></button>
   </form>
 </details>
+<?php endif; ?>
 
 <div class="kanban" id="kb-deal">
   <?php foreach ($stages as $s): $cards = $byStage[$s['code']] ?? []; ?>
@@ -76,10 +78,12 @@ foreach ($byStage as $code => $cards) {
       <div class="cols c-1-1" style="margin-bottom:0">
         <div>
           <h3><?= $h($t('actions')) ?></h3>
+          <?php if (empty($isAgent)): ?>
           <form method="post" class="inline"><input type="hidden" name="do" value="deal_assign">
             <input type="hidden" name="id" value="<?= $h($r['id']) ?>">
             <?php agent_select($h, $agents, 'agent_id', $r['assigned_to'], $t('assign_seller')); ?>
             <button class="btn tiny"><?= $h($t('assign')) ?></button></form>
+          <?php endif; ?>
           <form method="post" class="inline"><input type="hidden" name="do" value="deal_move">
             <input type="hidden" name="id" value="<?= $h($r['id']) ?>">
             <select name="stage">
