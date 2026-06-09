@@ -36,6 +36,7 @@ return [
     // common
     'save'           => 'Salva',
     'saved'          => 'Salvato.',
+    'settings_saved_n' => 'campi salvati',
     'configured'     => 'Configurato',
     'not_configured' => 'Non configurato',
     'none_yet'       => 'Ancora niente.',

@@ -97,19 +97,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'logistics.email', 'logistics.phone',
                     'bitrix.sync_enabled', 'bitrix.base_url', 'bitrix.outbound_secret',
                 ];
+                // PHP rewrites dots in POST field names to underscores, so a field
+                // named 'mail.from_email' actually arrives as 'mail_from_email'.
+                // Read the rewritten key (fall back to the exact one just in case).
+                $post = static function (string $k) {
+                    $mangled = str_replace('.', '_', $k);
+                    if (array_key_exists($mangled, $_POST)) { return $_POST[$mangled]; }
+                    if (array_key_exists($k, $_POST))       { return $_POST[$k]; }
+                    return null;
+                };
                 $pairs = [];
                 foreach ($allowed as $k) {
-                    if (array_key_exists($k, $_POST)) {
-                        $pairs[$k] = trim((string)$_POST[$k]);
+                    $v = $post($k);
+                    if ($v !== null) {
+                        $pairs[$k] = trim((string)$v);
                     }
                 }
                 // checkbox: present only when ticked
-                $pairs['bitrix.sync_enabled'] = isset($_POST['bitrix.sync_enabled']) ? 'true' : 'false';
+                $pairs['bitrix.sync_enabled'] = $post('bitrix.sync_enabled') !== null ? 'true' : 'false';
                 Settings::setMany($pairs);
                 // Config was overlaid once at boot; re-apply so the form below this
                 // request reflects the values we just saved (not the pre-save snapshot).
                 Config::applyOverlay(Settings::nested());
-                $flash = $t('saved');
+                $flash = $t('saved') . ' · ' . count($pairs) . ' ' . $t('settings_saved_n');
                 $tab = 'settings';
                 break;
 

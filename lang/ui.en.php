@@ -36,6 +36,7 @@ return [
     // common
     'save'           => 'Save',
     'saved'          => 'Saved.',
+    'settings_saved_n' => 'fields saved',
     'configured'     => 'Configured',
     'not_configured' => 'Not configured',
     'none_yet'       => 'Nothing yet.',
