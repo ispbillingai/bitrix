@@ -60,6 +60,14 @@ return [
         'sign_otp' =>
             "{company}: your signing code is *{code}*. "
             . "It is valid for {minutes} minutes. Do not share it with anyone.",
+
+        'ticket_staff' => // to the assigned agent
+            "💬 New customer message from {customer_name} — \"{subject}\" (ticket #{id}). "
+            . "Reply from the CRM.",
+
+        'ticket_reply' => // to the customer
+            "{company}: you have a new reply to \"{subject}\". "
+            . "Open your area to read and reply: {link}",
     ],
 
     'email' => [
@@ -125,6 +133,16 @@ return [
             'html'    => '<p>Hello {name},</p><p>Your one-time code to sign your contract is:</p>'
                 . '<p style="font-size:24px;font-weight:bold;letter-spacing:4px">{code}</p>'
                 . '<p>It is valid for {minutes} minutes. Do not share it with anyone.</p>',
+        ],
+        'ticket_staff' => [
+            'subject' => 'New customer message — {subject} (#{id})',
+            'html'    => '<p>{customer_name} sent a new message on ticket <strong>#{id}</strong> — "{subject}".</p>'
+                . '<p>Open the CRM to reply.</p>',
+        ],
+        'ticket_reply' => [
+            'subject' => 'New reply to your request — {subject}',
+            'html'    => '<p>Hello {name},</p><p>You have a new reply to your request "{subject}".</p>'
+                . '<p><a href="{link}">Open my customer area</a> to read and reply.</p>',
         ],
     ],
 ];

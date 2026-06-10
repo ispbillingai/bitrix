@@ -21,6 +21,7 @@ use Glue\Crm\Deals;
 use Glue\Crm\Leads;
 use Glue\Crm\Pipelines;
 use Glue\Crm\Tasks;
+use Glue\Crm\Tickets;
 use Glue\Db;
 use Glue\Notify\Notifier;
 use Glue\Notify\TextMeBot;
@@ -84,12 +85,12 @@ $uid = (int)($_SESSION['glue_user']['id'] ?? 0) ?: null;
 $role    = (string)($_SESSION['glue_user']['role'] ?? 'admin');
 $isAgent = $role === 'agent';
 $scopeId = $isAgent ? (int)($_SESSION['glue_user']['id'] ?? 0) : null; // null = no scope (admin)
-$agentViews   = ['overview', 'leads', 'deals', 'appointments', 'tasks', 'instructions'];
+$agentViews   = ['overview', 'leads', 'deals', 'appointments', 'tasks', 'tickets', 'instructions'];
 $agentActions = [
     'lead_move', 'lead_convert', 'lead_note',
     'deal_move', 'deal_note', 'deal_invite',
     'appt_create', 'appt_schedule', 'appt_status',
-    'task_complete', 'task_status', 'change_my_password',
+    'task_complete', 'task_status', 'ticket_reply', 'ticket_status', 'change_my_password',
 ];
 
 // ---- POST actions ----
@@ -108,7 +109,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     if ($isAgent && $do !== '') {
         $rid = (int)($_POST['id'] ?? 0);
         $ownerCol = ['lead_' => ['leads', 'assigned_to'], 'deal_' => ['deals', 'assigned_to'],
-                     'appt_' => ['appointments', 'agent_id'], 'task_' => ['tasks', 'assigned_to']];
+                     'appt_' => ['appointments', 'agent_id'], 'task_' => ['tasks', 'assigned_to'],
+                     'ticket_' => ['tickets', 'assigned_agent_id']];
         $needsOwner = null;
         foreach ($ownerCol as $prefix => $tc) {
             if (str_starts_with($do, $prefix)) { $needsOwner = $tc; break; }
@@ -325,6 +327,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $tab = 'tasks';
                 break;
 
+            // ---------- tickets ----------
+            case 'ticket_reply':
+                $senderName = (string)($_SESSION['glue_user']['full_name'] ?? $_SESSION['glue_user']['username'] ?? 'Staff');
+                Tickets::reply((int)$_POST['id'], $isAgent ? 'agent' : 'admin', $uid, $senderName, (string)($_POST['body'] ?? ''));
+                $flash = $t('saved');
+                $tab = 'tickets';
+                break;
+            case 'ticket_status':
+                Tickets::setStatus((int)$_POST['id'], (string)$_POST['status']);
+                $tab = 'tickets';
+                break;
+
             // ---------- reminders / scheduler / campaigns ----------
             case 'cancel_reminder':
                 $pdo->prepare("UPDATE reminders SET status='cancelled' WHERE id=? AND status='pending'")
@@ -424,7 +438,7 @@ $cfg = fn(string $k, $d = '') => Config::get($k, $d);
 $agents = Auth::agents();
 $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_format((float)$n, 0);
 
-$views = ['overview', 'leads', 'deals', 'contacts', 'appointments', 'tasks',
+$views = ['overview', 'leads', 'deals', 'contacts', 'appointments', 'tasks', 'tickets',
           'campaigns', 'messages', 'reminders', 'events', 'agents', 'settings', 'instructions'];
 $view = in_array($tab, $views, true) ? $tab : 'overview';
 // Agents can't reach admin views, even by typing the URL.
@@ -464,11 +478,12 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
     $nav = [
         'overview' => 'nav_overview', 'leads' => 'nav_leads', 'deals' => 'nav_deals',
         'contacts' => 'nav_contacts', 'appointments' => 'nav_appointments', 'tasks' => 'nav_tasks',
+        'tickets' => 'nav_tickets',
         'campaigns' => 'nav_campaigns', 'messages' => 'nav_messages', 'reminders' => 'nav_reminders',
         'events' => 'nav_events', 'agents' => 'nav_agents', 'instructions' => 'nav_instr', 'settings' => 'nav_settings',
     ];
     if ($isAgent) { // agents only see their own work
-        $nav = array_intersect_key($nav, array_flip(['overview', 'leads', 'deals', 'appointments', 'tasks', 'instructions']));
+        $nav = array_intersect_key($nav, array_flip(['overview', 'leads', 'deals', 'appointments', 'tasks', 'tickets', 'instructions']));
     } ?>
 <!DOCTYPE html><html lang="<?= $h($lang) ?>"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

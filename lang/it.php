@@ -60,6 +60,14 @@ return [
         'sign_otp' =>
             "{company}: il tuo codice di firma è *{code}*. "
             . "È valido per {minutes} minuti. Non condividerlo con nessuno.",
+
+        'ticket_staff' => // all'agente assegnato
+            "💬 Nuovo messaggio dal cliente {customer_name} — \"{subject}\" (ticket #{id}). "
+            . "Rispondi dal CRM.",
+
+        'ticket_reply' => // al cliente
+            "{company}: hai una nuova risposta a \"{subject}\". "
+            . "Apri la tua area per leggere e rispondere: {link}",
     ],
 
     'email' => [
@@ -125,6 +133,16 @@ return [
             'html'    => '<p>Ciao {name},</p><p>Il tuo codice monouso per firmare il contratto è:</p>'
                 . '<p style="font-size:24px;font-weight:bold;letter-spacing:4px">{code}</p>'
                 . '<p>È valido per {minutes} minuti. Non condividerlo con nessuno.</p>',
+        ],
+        'ticket_staff' => [
+            'subject' => 'Nuovo messaggio dal cliente — {subject} (#{id})',
+            'html'    => '<p>{customer_name} ha inviato un nuovo messaggio sul ticket <strong>#{id}</strong> — "{subject}".</p>'
+                . '<p>Apri il CRM per rispondere.</p>',
+        ],
+        'ticket_reply' => [
+            'subject' => 'Nuova risposta alla tua richiesta — {subject}',
+            'html'    => '<p>Ciao {name},</p><p>Hai una nuova risposta alla tua richiesta "{subject}".</p>'
+                . '<p><a href="{link}">Apri la mia area clienti</a> per leggere e rispondere.</p>',
         ],
     ],
 ];

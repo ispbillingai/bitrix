@@ -314,6 +314,36 @@ CREATE TABLE IF NOT EXISTS otp_codes (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------------
+-- Customer support tickets / customer<->agent messaging
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS tickets (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    contact_id BIGINT UNSIGNED NOT NULL,
+    assigned_agent_id INT UNSIGNED NULL,
+    deal_id BIGINT UNSIGNED NULL,
+    subject VARCHAR(190) NOT NULL,
+    status ENUM('open','pending','closed') NOT NULL DEFAULT 'open',
+    last_sender VARCHAR(16) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    KEY idx_contact (contact_id),
+    KEY idx_agent (assigned_agent_id, status),
+    KEY idx_status (status, updated_at)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE IF NOT EXISTS ticket_messages (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    ticket_id BIGINT UNSIGNED NOT NULL,
+    sender_type VARCHAR(16) NOT NULL,
+    sender_id BIGINT UNSIGNED NULL,
+    sender_name VARCHAR(190) NULL,
+    body TEXT NOT NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_ticket (ticket_id, id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
 -- Seed: default Leads and Deals pipelines with stages
 -- ---------------------------------------------------------------------------
 

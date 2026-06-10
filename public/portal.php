@@ -14,6 +14,7 @@ require __DIR__ . '/../src/Bootstrap.php';
 use Glue\Bootstrap;
 use Glue\Config;
 use Glue\Crm\Deals;
+use Glue\Crm\Tickets;
 use Glue\Db;
 use Glue\Portal\Account;
 use Glue\Portal\Otp;
@@ -93,6 +94,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         }
     }
 
+    if ($cid && $do === 'ticket_open') {
+        if (trim((string)($_POST['body'] ?? '')) !== '') {
+            Tickets::open($cid, (string)($_POST['subject'] ?? ''), (string)$_POST['body']);
+            $flash = $t('tk_opened');
+        }
+    }
+    if ($cid && $do === 'ticket_reply') {
+        $tid = (int)($_POST['ticket_id'] ?? 0);
+        if (owns_ticket($cid, $tid) && trim((string)($_POST['body'] ?? '')) !== '') {
+            Tickets::reply($tid, 'customer', $cid, (string)($me['name'] ?? ''), (string)$_POST['body']);
+            $flash = $t('tk_sent');
+        } else {
+            $flash = $t('err_generic');
+            $flashType = 'err';
+        }
+    }
+
     // signing — only ever on a deal that belongs to this customer
     if ($cid && in_array($do, ['sign_start', 'sign_resend', 'sign_verify'], true)) {
         $dealId = (int)($_POST['deal_id'] ?? 0);
@@ -119,7 +137,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 // ---- data for the logged-in customer ----
-$deals = $appts = [];
+$deals = $appts = $tickets = [];
 if ($cid) {
     $st = Db::pdo()->prepare('SELECT * FROM deals WHERE contact_id = ? ORDER BY id DESC');
     $st->execute([$cid]);
@@ -128,6 +146,8 @@ if ($cid) {
     $st = Db::pdo()->prepare('SELECT * FROM appointments WHERE contact_id = ? ORDER BY (starts_at IS NULL), starts_at DESC, id DESC');
     $st->execute([$cid]);
     $appts = $st->fetchAll();
+
+    $tickets = Tickets::forContact($cid);
 }
 $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
 
@@ -227,6 +247,44 @@ $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
     <?php endforeach; ?>
   <?php endif; ?>
 
+  <h2><?= $h($t('support')) ?></h2>
+  <div class="card">
+    <details>
+      <summary class="newreq"><?= $h($t('tk_new')) ?></summary>
+      <form method="post" style="margin-top:12px">
+        <input type="hidden" name="do" value="ticket_open">
+        <label><?= $h($t('tk_subject')) ?><input name="subject" maxlength="190" required></label>
+        <label><?= $h($t('tk_message')) ?><textarea name="body" rows="3" required></textarea></label>
+        <button class="btn"><?= $h($t('tk_send')) ?></button>
+      </form>
+    </details>
+  </div>
+  <?php foreach ($tickets as $tk): $thread = \Glue\Crm\Tickets::thread((int)$tk['id']); ?>
+    <div class="card">
+      <div class="order-h">
+        <b><?= $h($tk['subject']) ?></b>
+        <span class="status <?= $tk['status'] === 'closed' ? 'grey' : ($tk['last_sender'] === 'customer' ? 'amber' : 'blue') ?>"><?= $h($t('tkst_' . $tk['status'])) ?></span>
+      </div>
+      <div class="chat">
+        <?php foreach ($thread as $m): $mine = $m['sender_type'] === 'customer'; ?>
+          <div class="msg <?= $mine ? 'me' : 'them' ?>">
+            <div><?= nl2br($h($m['body'])) ?></div>
+            <div class="msg-m"><?= $h($mine ? $t('tk_you') : ($m['sender_name'] ?: $brand)) ?> · <?= $h(date('d/m H:i', strtotime((string)$m['created_at']))) ?></div>
+          </div>
+        <?php endforeach; ?>
+      </div>
+      <?php if ($tk['status'] !== 'closed'): ?>
+        <form method="post" class="reply">
+          <input type="hidden" name="do" value="ticket_reply"><input type="hidden" name="ticket_id" value="<?= $h($tk['id']) ?>">
+          <input name="body" placeholder="<?= $h($t('tk_reply_ph')) ?>" required>
+          <button class="btn"><?= $h($t('tk_send')) ?></button>
+        </form>
+      <?php else: ?>
+        <p class="muted small"><?= $h($t('tk_closed_note')) ?></p>
+      <?php endif; ?>
+    </div>
+  <?php endforeach; ?>
+
   <h2><?= $h($t('account')) ?></h2>
   <div class="card">
     <form method="post" class="pw">
@@ -254,6 +312,17 @@ function owns_deal(int $cid, int $dealId): ?array
     $st = Db::pdo()->prepare('SELECT * FROM deals WHERE id = ? AND contact_id = ?');
     $st->execute([$dealId, $cid]);
     return $st->fetch() ?: null;
+}
+
+/** True if the ticket belongs to this customer. */
+function owns_ticket(int $cid, int $ticketId): bool
+{
+    if ($ticketId <= 0) {
+        return false;
+    }
+    $st = Db::pdo()->prepare('SELECT 1 FROM tickets WHERE id = ? AND contact_id = ?');
+    $st->execute([$ticketId, $cid]);
+    return (bool)$st->fetchColumn();
 }
 
 /** Customer-friendly order status: [label, css-class]. */
@@ -301,6 +370,11 @@ function portal_strings(string $lang): array
         'account' => 'Your account', 'set_pw' => 'Set a password', 'change_pw' => 'Change password',
         'pw_help' => 'Set a password to sign in any time with your email or phone.',
         'pw_saved' => 'Password saved.', 'pw_short' => 'Password must be at least 6 characters.', 'save' => 'Save',
+        'support' => 'Support', 'tk_new' => '+ New request', 'tk_subject' => 'Subject', 'tk_message' => 'Message',
+        'tk_send' => 'Send', 'tk_reply_ph' => 'Write a reply…', 'tk_you' => 'You',
+        'tk_opened' => 'Your request has been sent. We will get back to you.', 'tk_sent' => 'Message sent.',
+        'tk_closed_note' => 'This request is closed. Open a new one if you still need help.',
+        'tkst_open' => 'Open', 'tkst_pending' => 'Replied', 'tkst_closed' => 'Closed',
     ];
     $it = [
         'portal' => 'Area clienti', 'welcome' => 'Benvenuto', 'logout' => 'Esci',
@@ -325,6 +399,11 @@ function portal_strings(string $lang): array
         'account' => 'Il tuo account', 'set_pw' => 'Imposta una password', 'change_pw' => 'Cambia password',
         'pw_help' => 'Imposta una password per accedere quando vuoi con email o telefono.',
         'pw_saved' => 'Password salvata.', 'pw_short' => 'La password deve avere almeno 6 caratteri.', 'save' => 'Salva',
+        'support' => 'Assistenza', 'tk_new' => '+ Nuova richiesta', 'tk_subject' => 'Oggetto', 'tk_message' => 'Messaggio',
+        'tk_send' => 'Invia', 'tk_reply_ph' => 'Scrivi una risposta…', 'tk_you' => 'Tu',
+        'tk_opened' => 'La tua richiesta è stata inviata. Ti risponderemo a breve.', 'tk_sent' => 'Messaggio inviato.',
+        'tk_closed_note' => 'Questa richiesta è chiusa. Aprine una nuova se hai ancora bisogno.',
+        'tkst_open' => 'Aperta', 'tkst_pending' => 'Risposta', 'tkst_closed' => 'Chiusa',
     ];
     return $lang === 'it' ? $it : $en;
 }
@@ -366,6 +445,13 @@ input:focus{border-color:#5b6cff}
 .flash.err{background:#fdeced;border-color:#e5616e;color:#c0394a}
 .empty{color:#7b8494;text-align:center;padding:24px;background:#fff;border:1px solid #e6e9f0;border-radius:14px}
 .foot{text-align:center;padding:20px}
+.newreq{cursor:pointer;font-weight:600;color:#4453d6}
+.chat{display:flex;flex-direction:column;gap:8px;margin:12px 0;max-height:340px;overflow-y:auto}
+.msg{max-width:80%;padding:9px 13px;border-radius:13px;font-size:14px;line-height:1.45}
+.msg .msg-m{font-size:11px;color:#8a93a6;margin-top:5px}
+.msg.me{align-self:flex-end;background:#e9ecff;border-bottom-right-radius:3px}
+.msg.them{align-self:flex-start;background:#f1f3f8;border-bottom-left-radius:3px}
+.reply{display:flex;gap:8px;margin-top:6px}.reply input{margin:0}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <?php }

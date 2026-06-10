@@ -25,6 +25,7 @@ return [
     'nav_contacts'     => 'Contacts',
     'nav_appointments' => 'Appointments',
     'nav_tasks'        => 'Tasks',
+    'nav_tickets'      => 'Tickets',
     'nav_campaigns'    => 'Campaigns',
     'nav_messages'     => 'Messages',
     'nav_reminders'    => 'Reminders',
@@ -103,6 +104,19 @@ return [
     'stt_sent'        => 'Sent',
     'stt_failed'      => 'Failed',
     'stt_skipped'     => 'Skipped',
+    'stt_closed'      => 'Closed',
+
+    // tickets
+    'tickets_intro'  => 'Customer support threads. Reply to your assigned customers and close when resolved.',
+    'tk_new_reply'   => 'New reply',
+    'tk_staff'       => 'Staff',
+    'tk_reply'       => 'Reply',
+    'tk_send'        => 'Send',
+    'tk_close'       => 'Close',
+    'tk_reopen'      => 'Reopen',
+    'evt_ticket_opened' => 'Ticket opened',
+    'evt_ticket_reply'  => 'Ticket reply',
+    'evt_ticket_status' => 'Ticket status changed',
 
     // reminder rule keys
     'rk_welcome'              => 'Welcome',

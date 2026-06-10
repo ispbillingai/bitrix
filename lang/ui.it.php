@@ -25,6 +25,7 @@ return [
     'nav_contacts'     => 'Contatti',
     'nav_appointments' => 'Appuntamenti',
     'nav_tasks'        => 'Attività',
+    'nav_tickets'      => 'Ticket',
     'nav_campaigns'    => 'Campagne',
     'nav_messages'     => 'Messaggi',
     'nav_reminders'    => 'Promemoria',
@@ -103,6 +104,19 @@ return [
     'stt_sent'        => 'Inviato',
     'stt_failed'      => 'Fallito',
     'stt_skipped'     => 'Saltato',
+    'stt_closed'      => 'Chiuso',
+
+    // ticket
+    'tickets_intro'  => 'Conversazioni di assistenza. Rispondi ai tuoi clienti assegnati e chiudi quando risolto.',
+    'tk_new_reply'   => 'Nuova risposta',
+    'tk_staff'       => 'Staff',
+    'tk_reply'       => 'Rispondi',
+    'tk_send'        => 'Invia',
+    'tk_close'       => 'Chiudi',
+    'tk_reopen'      => 'Riapri',
+    'evt_ticket_opened' => 'Ticket aperto',
+    'evt_ticket_reply'  => 'Risposta ticket',
+    'evt_ticket_status' => 'Stato ticket modificato',
 
     // chiavi regola promemoria
     'rk_welcome'              => 'Benvenuto',
