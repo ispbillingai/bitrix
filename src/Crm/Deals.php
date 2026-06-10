@@ -142,6 +142,29 @@ final class Deals
         self::pushSync($dealId);
     }
 
+    /**
+     * Record the customer's electronic signature (after OTP verification) and move
+     * the deal to its won stage, which fires the thank-you + logistics automations.
+     * Idempotent: a deal already signed is left untouched.
+     */
+    public static function markSigned(int $dealId, string $signerName, string $ip): bool
+    {
+        $deal = self::find($dealId);
+        if (!$deal || !empty($deal['signed_at'])) {
+            return false;
+        }
+        Db::pdo()->prepare(
+            'UPDATE deals SET signed_at = NOW(), signed_name = ?, signed_ip = ? WHERE id = ?'
+        )->execute([$signerName, $ip, $dealId]);
+
+        Activities::add('deal', $dealId, 'system', 'Contract signed by customer (OTP)');
+        Log::write('crm', 'deal_signed', 'deal', $dealId, ['name' => $signerName, 'ip' => $ip]);
+
+        $won = Pipelines::wonStageCode('deal') ?? 'WON';
+        self::moveStage($dealId, $won);
+        return true;
+    }
+
     // ---- reads ----------------------------------------------------------------
 
     public static function find(int $id): ?array

@@ -52,6 +52,14 @@ return [
         'logistics_notify' => // to the logistics team
             "📦 New signed deal #{id}. Customer: {name} ({customer_phone}). "
             . "Please arrange delivery.",
+
+        'portal_invite' =>
+            "Hi {name}! 👋 Your {company} customer area is ready. "
+            . "Here you can follow your order and sign your contract: {link}",
+
+        'sign_otp' =>
+            "{company}: your signing code is *{code}*. "
+            . "It is valid for {minutes} minutes. Do not share it with anyone.",
     ],
 
     'email' => [
@@ -104,6 +112,19 @@ return [
             'html'    => '<p>Deal <strong>#{id}</strong> has been signed.</p>'
                 . '<p>Customer: {name}<br>Phone: {customer_phone}<br>Email: {customer_email}</p>'
                 . '<p>Please arrange delivery.</p>',
+        ],
+        'portal_invite' => [
+            'subject' => 'Your {company} customer area',
+            'html'    => '<p>Hi {name},</p><p>Your {company} customer area is ready. There you can '
+                . 'follow your order and sign your contract.</p>'
+                . '<p><a href="{link}">Open my customer area</a></p>'
+                . '<p>Or paste this link into your browser:<br>{link}</p>',
+        ],
+        'sign_otp' => [
+            'subject' => 'Your {company} signing code: {code}',
+            'html'    => '<p>Hello {name},</p><p>Your one-time code to sign your contract is:</p>'
+                . '<p style="font-size:24px;font-weight:bold;letter-spacing:4px">{code}</p>'
+                . '<p>It is valid for {minutes} minutes. Do not share it with anyone.</p>',
         ],
     ],
 ];

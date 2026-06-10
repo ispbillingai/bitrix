@@ -87,7 +87,7 @@ $scopeId = $isAgent ? (int)($_SESSION['glue_user']['id'] ?? 0) : null; // null =
 $agentViews   = ['overview', 'leads', 'deals', 'appointments', 'tasks', 'instructions'];
 $agentActions = [
     'lead_move', 'lead_convert', 'lead_note',
-    'deal_move', 'deal_note',
+    'deal_move', 'deal_note', 'deal_invite',
     'appt_create', 'appt_schedule', 'appt_status',
     'task_complete', 'task_status', 'change_my_password',
 ];
@@ -243,6 +243,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
             case 'deal_note':
                 Activities::add('deal', (int)$_POST['id'], 'note', (string)$_POST['body'], $uid);
+                $tab = 'deals';
+                break;
+            case 'deal_invite': // create/refresh the customer's portal access and send the magic link
+                $dealId = (int)$_POST['id'];
+                $deal = Deals::find($dealId);
+                if ($deal) {
+                    $contactId = (int)($deal['contact_id'] ?? 0);
+                    if ($contactId <= 0) {
+                        $contactId = Contacts::findOrCreate([
+                            'name' => $deal['customer_name'] ?? '', 'phone' => $deal['customer_phone'] ?? '',
+                            'email' => $deal['customer_email'] ?? '', 'lang' => $deal['lang'] ?? null,
+                        ]);
+                        $pdo->prepare('UPDATE deals SET contact_id = ? WHERE id = ?')->execute([$contactId, $dealId]);
+                    }
+                    $token = \Glue\Portal\Account::invite($contactId);
+                    \Glue\Portal\Account::sendInvite($contactId, $token);
+                    Activities::add('deal', $dealId, 'system', 'Portal access sent to customer', $uid);
+                    $flash = $t('portal_sent');
+                } else {
+                    $flash = $t('not_allowed');
+                    $flashType = 'err';
+                }
                 $tab = 'deals';
                 break;
 

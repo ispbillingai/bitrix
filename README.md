@@ -63,7 +63,7 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 ```
 config/config.sample.php   copy to config.php (gitignored); only `db` is required here
 db/schema.sql              full reference schema (+ seed pipelines)
-migrations/                versioned changes applied by migrate.php (005–009 add the CRM)
+migrations/                versioned changes applied by migrate.php (005–010 add the CRM + portal)
 migrate.php                migration runner (CLI or ?key=)
 bin/scheduler.php          cron: dispatch due reminders + campaign batches
 lang/  en.php it.php        customer message copy (WhatsApp + email)
@@ -71,6 +71,8 @@ lang/  ui.en.php ui.it.php  dashboard UI strings
 public/
   index.php                health check
   request.php              public customer request form
+  portal.php               customer portal (magic-link/password login; view
+                           estimate + order status; sign the contract via OTP)
   dashboard.php            CRM control panel (controller; renders /views)
   campaign.php             create a mass campaign
   webhooks/
@@ -82,6 +84,7 @@ src/
   Bootstrap, Config, Db, Settings, Auth, Event/Log
   Crm/   Pipelines, Contacts, Leads, Deals, Appointments, Tasks, Automation,
          Activities, EntityResolver           — the CRM domain
+  Portal/  Account (customer login + magic link), Otp (signing codes)
   Reminder/  Scheduler (queue), Templates (copy)
   Notify/    Notifier, TextMeBot (WhatsApp), Mailer
   Campaign/  Sender (mass send)

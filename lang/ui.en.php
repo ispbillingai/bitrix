@@ -159,6 +159,7 @@ return [
     'evt_deal_push_failed'             => 'Deal push failed',
     'evt_deal_push_error'              => 'Deal push error',
     'evt_lead_pushed'                  => 'Lead pushed',
+    'evt_deal_signed'                  => 'Contract signed (customer)',
     'evt_lead_push_failed'             => 'Lead push failed',
     'evt_lead_push_error'              => 'Lead push error',
 
@@ -196,6 +197,10 @@ return [
     'lead_converted' => 'Converted to deal',
     'deal_new'       => 'New deal',
     'contact_new'    => 'New contact',
+    'portal_send'    => 'Send portal access',
+    'portal_confirm' => 'Send the customer a link to their portal (email + WhatsApp)?',
+    'portal_signed'  => 'Signed',
+    'portal_sent'    => 'Portal access sent to the customer.',
 
     // appointments
     'appt_new'         => 'New appointment',

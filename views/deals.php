@@ -93,6 +93,11 @@ foreach ($byStage as $code => $cards) {
             </select>
             <input type="date" name="sign_due_date" value="<?= $h($r['sign_due_date'] ?? '') ?>" title="<?= $h($t('f_sign_due_h')) ?>">
             <button class="btn tiny ghost"><?= $h($t('move')) ?></button></form>
+          <form method="post" class="inline" style="margin-top:10px" onsubmit="return confirm('<?= $h($t('portal_confirm')) ?>')">
+            <input type="hidden" name="do" value="deal_invite"><input type="hidden" name="id" value="<?= $h($r['id']) ?>">
+            <button class="btn tiny"><?= svg('link') ?> <?= $h($t('portal_send')) ?></button>
+            <?php if (!empty($r['signed_at'])): ?><span class="muted small" style="margin-left:8px">✓ <?= $h($t('portal_signed')) ?> <?= $h(short_time($r['signed_at'])) ?></span><?php endif; ?>
+          </form>
           <form method="post" style="margin-top:12px"><input type="hidden" name="do" value="deal_note">
             <input type="hidden" name="id" value="<?= $h($r['id']) ?>">
             <label class="fld"><span><?= $h($t('add_note')) ?></span><textarea name="body" rows="2" required></textarea></label>

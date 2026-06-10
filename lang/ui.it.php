@@ -159,6 +159,7 @@ return [
     'evt_deal_push_failed'             => 'Invio trattativa fallito',
     'evt_deal_push_error'              => 'Errore invio trattativa',
     'evt_lead_pushed'                  => 'Lead inviato',
+    'evt_deal_signed'                  => 'Contratto firmato (cliente)',
     'evt_lead_push_failed'             => 'Invio lead fallito',
     'evt_lead_push_error'              => 'Errore invio lead',
 
@@ -196,6 +197,10 @@ return [
     'lead_converted' => 'Convertito in trattativa',
     'deal_new'       => 'Nuova trattativa',
     'contact_new'    => 'Nuovo contatto',
+    'portal_send'    => 'Invia accesso portale',
+    'portal_confirm' => 'Inviare al cliente il link al suo portale (email + WhatsApp)?',
+    'portal_signed'  => 'Firmato',
+    'portal_sent'    => 'Accesso al portale inviato al cliente.',
 
     // appointments
     'appt_new'         => 'Nuovo appuntamento',

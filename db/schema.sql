@@ -87,11 +87,17 @@ CREATE TABLE IF NOT EXISTS contacts (
     source VARCHAR(48) NULL,
     assigned_to INT UNSIGNED NULL,
     notes TEXT NULL,
+    password_hash VARCHAR(255) NULL,         -- customer portal login (optional)
+    portal_token VARCHAR(64) NULL,           -- magic-link token
+    portal_token_expires DATETIME NULL,
+    portal_enabled TINYINT(1) NOT NULL DEFAULT 0,
+    last_login_at DATETIME NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     KEY idx_phone (phone),
     KEY idx_email (email),
-    KEY idx_assigned (assigned_to)
+    KEY idx_assigned (assigned_to),
+    KEY idx_portal_token (portal_token)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS leads (
@@ -131,6 +137,9 @@ CREATE TABLE IF NOT EXISTS deals (
     status ENUM('open','won','lost') NOT NULL DEFAULT 'open',
     expected_close_date DATE NULL,
     sign_due_date DATE NULL,
+    signed_at DATETIME NULL,
+    signed_name VARCHAR(190) NULL,
+    signed_ip VARCHAR(45) NULL,
     customer_name VARCHAR(190) NULL,
     customer_phone VARCHAR(32) NULL,
     customer_email VARCHAR(190) NULL,
@@ -284,6 +293,24 @@ CREATE TABLE IF NOT EXISTS sync_map (
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     UNIQUE KEY uk_local (local_type, local_id),
     KEY idx_bitrix (local_type, bitrix_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- ---------------------------------------------------------------------------
+-- Customer portal: one-time codes (contract signing, future verifications)
+-- ---------------------------------------------------------------------------
+
+CREATE TABLE IF NOT EXISTS otp_codes (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    contact_id BIGINT UNSIGNED NOT NULL,
+    deal_id BIGINT UNSIGNED NULL,
+    purpose VARCHAR(24) NOT NULL DEFAULT 'sign',
+    code VARCHAR(10) NOT NULL,
+    channel VARCHAR(16) NOT NULL DEFAULT 'both',
+    attempts INT NOT NULL DEFAULT 0,
+    expires_at DATETIME NOT NULL,
+    used_at DATETIME NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_lookup (contact_id, deal_id, purpose, used_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- ---------------------------------------------------------------------------

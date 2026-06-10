@@ -52,6 +52,14 @@ return [
         'logistics_notify' => // al reparto logistica
             "📦 Nuova trattativa firmata #{id}. Cliente: {name} ({customer_phone}). "
             . "Si prega di organizzare la consegna.",
+
+        'portal_invite' =>
+            "Ciao {name}! 👋 La tua area clienti {company} è pronta. "
+            . "Qui puoi seguire il tuo ordine e firmare il contratto: {link}",
+
+        'sign_otp' =>
+            "{company}: il tuo codice di firma è *{code}*. "
+            . "È valido per {minutes} minuti. Non condividerlo con nessuno.",
     ],
 
     'email' => [
@@ -104,6 +112,19 @@ return [
             'html'    => '<p>La trattativa <strong>#{id}</strong> è stata firmata.</p>'
                 . '<p>Cliente: {name}<br>Telefono: {customer_phone}<br>Email: {customer_email}</p>'
                 . '<p>Si prega di organizzare la consegna.</p>',
+        ],
+        'portal_invite' => [
+            'subject' => 'La tua area clienti {company}',
+            'html'    => '<p>Ciao {name},</p><p>La tua area clienti {company} è pronta. Qui puoi '
+                . 'seguire il tuo ordine e firmare il contratto.</p>'
+                . '<p><a href="{link}">Apri la mia area clienti</a></p>'
+                . '<p>Oppure incolla questo link nel browser:<br>{link}</p>',
+        ],
+        'sign_otp' => [
+            'subject' => 'Il tuo codice di firma {company}: {code}',
+            'html'    => '<p>Ciao {name},</p><p>Il tuo codice monouso per firmare il contratto è:</p>'
+                . '<p style="font-size:24px;font-weight:bold;letter-spacing:4px">{code}</p>'
+                . '<p>È valido per {minutes} minuti. Non condividerlo con nessuno.</p>',
         ],
     ],
 ];
