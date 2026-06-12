@@ -157,15 +157,26 @@ $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
 <?php portal_css(); ?></head>
 <body>
 <header class="top">
-  <div class="brand"><span class="logo"><?= $h(strtoupper(substr($brand, 0, 1)) ?: 'C') ?></span><strong><?= $h($brand) ?></strong></div>
+  <div class="brand"><span class="logo"><?= $h(strtoupper(substr($brand, 0, 1)) ?: 'C') ?></span><strong><?= $h($brand) ?></strong><span class="brand-sub"><?= $h($t('portal')) ?></span></div>
   <div class="top-r">
     <span class="lang">
       <a class="<?= $lang === 'en' ? 'on' : '' ?>" href="?lang=en">EN</a>
       <a class="<?= $lang === 'it' ? 'on' : '' ?>" href="?lang=it">IT</a>
     </span>
-    <?php if ($cid): ?><a class="btn ghost" href="?action=logout"><?= $h($t('logout')) ?></a><?php endif; ?>
+    <?php if ($cid): ?><a class="btn ghost sm" href="?action=logout"><?= $h($t('logout')) ?></a><?php endif; ?>
   </div>
 </header>
+<?php if ($cid): ?>
+<div class="hero">
+  <div class="hero-in">
+    <div class="avatar"><?= $h(strtoupper(substr((string)($me['name'] ?? ''), 0, 1)) ?: '☺') ?></div>
+    <div>
+      <h1><?= $h($t('hello')) ?>, <?= $h($me['name'] ?: '') ?> 👋</h1>
+      <p><?= $h($t('home_sub')) ?></p>
+    </div>
+  </div>
+</div>
+<?php endif; ?>
 
 <main class="wrap">
 <?php if ($flash): ?><div class="flash <?= $flashType === 'err' ? 'err' : '' ?>"><?= $h($flash) ?></div><?php endif; ?>
@@ -173,22 +184,20 @@ $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
 <?php if (!$cid): ?>
   <!-- ---------- login ---------- -->
   <div class="card login">
+    <div class="login-logo"><?= $h(strtoupper(substr($brand, 0, 1)) ?: 'C') ?></div>
     <h1><?= $h($t('welcome')) ?></h1>
     <p class="muted"><?= $h($t('login_sub')) ?></p>
     <form method="post">
       <input type="hidden" name="do" value="login">
       <label><?= $h($t('login_id')) ?><input name="login" autofocus></label>
       <label><?= $h($t('password')) ?><input type="password" name="password"></label>
-      <button class="btn"><?= $h($t('login_btn')) ?></button>
+      <button class="btn wide"><?= $h($t('login_btn')) ?></button>
     </form>
-    <p class="muted small"><?= $h($t('login_hint')) ?></p>
+    <div class="login-hint"><span>✉️</span><?= $h($t('login_hint')) ?></div>
   </div>
 <?php else: ?>
   <!-- ---------- customer home ---------- -->
-  <h1><?= $h($t('hello')) ?>, <?= $h($me['name'] ?: '') ?></h1>
-  <p class="muted"><?= $h($t('home_sub')) ?></p>
-
-  <h2><?= $h($t('your_orders')) ?></h2>
+  <h2><span class="sec-ic">📦</span><?= $h($t('your_orders')) ?></h2>
   <?php if (!$deals): ?><div class="empty"><?= $h($t('no_orders')) ?></div><?php endif; ?>
   <?php foreach ($deals as $d):
       $signed   = !empty($d['signed_at']) || $d['status'] === 'won';
@@ -237,7 +246,7 @@ $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
   <?php endforeach; ?>
 
   <?php if ($appts): ?>
-    <h2><?= $h($t('your_appts')) ?></h2>
+    <h2><span class="sec-ic">📅</span><?= $h($t('your_appts')) ?></h2>
     <?php foreach ($appts as $a): $when = $a['starts_at'] ?: $a['preferred_at']; ?>
       <div class="card row-line">
         <div><b><?= $h($when ? date('D d M Y, H:i', strtotime((string)$when)) : $t('to_be_scheduled')) ?></b>
@@ -247,7 +256,7 @@ $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
     <?php endforeach; ?>
   <?php endif; ?>
 
-  <h2><?= $h($t('support')) ?></h2>
+  <h2><span class="sec-ic">💬</span><?= $h($t('support')) ?></h2>
   <div class="card">
     <details>
       <summary class="newreq"><?= $h($t('tk_new')) ?></summary>
@@ -285,7 +294,7 @@ $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
     </div>
   <?php endforeach; ?>
 
-  <h2><?= $h($t('account')) ?></h2>
+  <h2><span class="sec-ic">🔒</span><?= $h($t('account')) ?></h2>
   <div class="card">
     <form method="post" class="pw">
       <input type="hidden" name="do" value="set_password">
@@ -409,49 +418,103 @@ function portal_strings(string $lang): array
 }
 
 function portal_css(): void { ?>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <style>
+:root{
+  --accent:#5b6cff; --accent2:#7c5bff; --ink:#1c2533; --muted:#7b8494;
+  --line:#e8ebf3; --card:#fff; --bg:#f3f5fb;
+  --shadow:0 1px 2px rgba(28,37,51,.04),0 8px 24px -12px rgba(28,37,51,.12);
+}
 *{margin:0;padding:0;box-sizing:border-box}
-body{font-family:'Inter',system-ui,Arial,sans-serif;background:#f4f6fb;color:#1c2533;font-size:15px;line-height:1.5}
-.top{display:flex;justify-content:space-between;align-items:center;padding:14px 22px;background:#fff;border-bottom:1px solid #e6e9f0}
-.brand{display:flex;align-items:center;gap:10px;font-size:16px}
-.logo{width:34px;height:34px;border-radius:9px;background:#5b6cff;color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800}
+body{font-family:'Inter',system-ui,Arial,sans-serif;background:var(--bg);color:var(--ink);font-size:15px;line-height:1.55;-webkit-font-smoothing:antialiased}
+
+/* ---- header ---- */
+.top{display:flex;justify-content:space-between;align-items:center;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
+.brand{display:flex;align-items:center;gap:11px;font-size:16px}
+.brand-sub{color:var(--muted);font-size:12.5px;font-weight:500;border-left:1px solid var(--line);padding-left:11px}
+.logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;box-shadow:0 4px 12px -4px rgba(91,108,255,.5)}
 .top-r{display:flex;align-items:center;gap:12px}
-.lang{display:inline-flex;border:1px solid #e0e4ee;border-radius:8px;overflow:hidden}
-.lang a{padding:5px 10px;color:#8a93a6;font-weight:600;font-size:12px;text-decoration:none}
-.lang a.on{background:#5b6cff;color:#fff}
-.wrap{max-width:760px;margin:0 auto;padding:26px 18px 60px}
-h1{font-size:24px;margin-bottom:4px}h2{font-size:17px;margin:26px 0 12px}
-.muted{color:#7b8494}.small{font-size:13px}
-.card{background:#fff;border:1px solid #e6e9f0;border-radius:14px;padding:18px 20px;margin-bottom:14px}
-.login{max-width:400px;margin:8vh auto 0}
-label{display:block;margin:12px 0;font-size:13px;color:#5a6477}
-input{width:100%;margin-top:6px;padding:11px 13px;border:1px solid #d8dde8;border-radius:9px;font-size:15px;outline:none;background:#fff}
-input:focus{border-color:#5b6cff}
-.btn{display:inline-block;margin-top:6px;padding:11px 18px;border:none;border-radius:9px;background:#5b6cff;color:#fff;font-weight:600;font-size:15px;cursor:pointer}
-.btn:hover{filter:brightness(1.06)}
-.btn.ghost{background:#eef0f6;color:#2a3344;margin-left:8px}
+.lang{display:inline-flex;background:#eef0f6;border-radius:9px;padding:3px}
+.lang a{padding:5px 11px;color:var(--muted);font-weight:700;font-size:12px;text-decoration:none;border-radius:7px;transition:.15s}
+.lang a.on{background:#fff;color:var(--accent);box-shadow:0 1px 3px rgba(28,37,51,.12)}
+
+/* ---- hero ---- */
+.hero{background:linear-gradient(120deg,#5b6cff 0%,#7c5bff 55%,#9a5bff 100%);color:#fff;padding:34px 24px 56px}
+.hero-in{max-width:760px;margin:0 auto;display:flex;align-items:center;gap:18px}
+.hero h1{font-size:25px;font-weight:800;letter-spacing:-.3px}
+.hero p{opacity:.85;font-size:14.5px;margin-top:2px}
+.avatar{width:54px;height:54px;border-radius:50%;background:rgba(255,255,255,.18);border:2px solid rgba(255,255,255,.45);display:flex;align-items:center;justify-content:center;font-size:23px;font-weight:800;flex-shrink:0}
+
+/* ---- layout ---- */
+.wrap{max-width:760px;margin:0 auto;padding:24px 18px 60px}
+.hero + .wrap{margin-top:-30px}
+h1{font-size:24px;margin-bottom:4px}
+h2{font-size:16px;margin:30px 0 12px;display:flex;align-items:center;gap:9px;letter-spacing:-.2px}
+h2:first-child{margin-top:0}
+.sec-ic{width:30px;height:30px;border-radius:9px;background:#fff;border:1px solid var(--line);display:inline-flex;align-items:center;justify-content:center;font-size:15px;box-shadow:var(--shadow)}
+.muted{color:var(--muted)}.small{font-size:13px}
+
+/* ---- cards ---- */
+.card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-bottom:14px;box-shadow:var(--shadow)}
+
+/* ---- forms ---- */
+label{display:block;margin:13px 0;font-size:13px;font-weight:600;color:#49536a}
+input,textarea{width:100%;margin-top:7px;padding:12px 14px;border:1.5px solid #dde2ec;border-radius:11px;font-size:15px;outline:none;background:#fbfcfe;font-family:inherit;transition:.15s}
+input:focus,textarea:focus{border-color:var(--accent);background:#fff;box-shadow:0 0 0 3px rgba(91,108,255,.13)}
+.btn{display:inline-block;margin-top:6px;padding:12px 20px;border:none;border-radius:11px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:700;font-size:14.5px;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px -5px rgba(91,108,255,.55);transition:.15s}
+.btn:hover{transform:translateY(-1px);box-shadow:0 7px 18px -5px rgba(91,108,255,.6)}
+.btn:active{transform:none}
+.btn.ghost{background:#eef0f6;color:#2a3344;margin-left:8px;box-shadow:none}
+.btn.ghost:hover{background:#e4e7f0;transform:none}
+.btn.sm{padding:8px 14px;font-size:13px;margin:0}
+.btn.wide{width:100%;margin-top:14px}
+
+/* ---- login ---- */
+.login{max-width:410px;margin:7vh auto 0;text-align:center;padding:34px 30px}
+.login form{text-align:left}
+.login-logo{width:58px;height:58px;border-radius:16px;margin:0 auto 16px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:26px;box-shadow:0 8px 20px -6px rgba(91,108,255,.55)}
+.login h1{font-size:22px}
+.login-hint{display:flex;gap:9px;align-items:flex-start;text-align:left;margin-top:18px;padding:12px 14px;background:#f6f8ff;border:1px solid #e3e8ff;border-radius:11px;font-size:13px;color:#5a6477}
+
+/* ---- orders ---- */
 .order-h{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
-.order-b{display:flex;gap:30px;margin:14px 0;flex-wrap:wrap}
-.amt b{font-size:20px}
-.status{padding:5px 12px;border-radius:20px;font-size:12.5px;font-weight:700;white-space:nowrap}
-.status.green{background:#e4f7ec;color:#1f9d57}.status.amber{background:#fdf2da;color:#b9860b}
-.status.blue{background:#e9ecff;color:#4453d6}.status.grey{background:#eef0f4;color:#7b8494}
-.sign-box{background:#f7f9ff;border:1px dashed #b9c2f5;border-radius:11px;padding:14px;margin-top:8px}
-.code{letter-spacing:8px;text-align:center;font-size:22px;font-weight:700;max-width:200px}
-.ok-line{color:#1f9d57;font-weight:600;margin-top:8px}
+.order-b{display:flex;gap:34px;margin:16px 0;flex-wrap:wrap}
+.amt b{font-size:22px;letter-spacing:-.4px}
+.status{padding:5px 13px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;letter-spacing:.2px}
+.status.green{background:#e2f7ea;color:#188a4c}.status.amber{background:#fdf1d7;color:#a87908}
+.status.blue{background:#e8ecff;color:#4453d6}.status.grey{background:#eef0f4;color:#7b8494}
+.sign-box{background:linear-gradient(180deg,#f7f9ff,#f2f5ff);border:1.5px dashed #b9c2f5;border-radius:13px;padding:18px;margin-top:10px;text-align:center}
+.sign-box p{font-weight:600;font-size:14px;margin-bottom:10px}
+.code{letter-spacing:9px;text-align:center;font-size:24px;font-weight:800;max-width:220px;margin:0 auto 6px;display:block}
+.ok-line{display:inline-flex;align-items:center;gap:7px;color:#188a4c;font-weight:700;margin-top:10px;background:#e2f7ea;padding:8px 14px;border-radius:10px;font-size:14px}
 .row-line{display:flex;justify-content:space-between;align-items:center;gap:12px}
 .pw{display:flex;gap:10px;align-items:flex-end;flex-wrap:wrap}.pw label{flex:1;min-width:200px;margin:0}
-.flash{background:#e4f7ec;border:1px solid #1f9d57;color:#1a854a;padding:12px 16px;border-radius:10px;margin-bottom:16px;font-weight:500}
-.flash.err{background:#fdeced;border-color:#e5616e;color:#c0394a}
-.empty{color:#7b8494;text-align:center;padding:24px;background:#fff;border:1px solid #e6e9f0;border-radius:14px}
-.foot{text-align:center;padding:20px}
-.newreq{cursor:pointer;font-weight:600;color:#4453d6}
-.chat{display:flex;flex-direction:column;gap:8px;margin:12px 0;max-height:340px;overflow-y:auto}
-.msg{max-width:80%;padding:9px 13px;border-radius:13px;font-size:14px;line-height:1.45}
+
+/* ---- flash / empty ---- */
+.flash{background:#e2f7ea;border:1px solid #b5e6c8;color:#1a854a;padding:13px 17px;border-radius:12px;margin-bottom:18px;font-weight:600;box-shadow:var(--shadow)}
+.flash.err{background:#fdeced;border-color:#f3c2c8;color:#c0394a}
+.empty{color:var(--muted);text-align:center;padding:34px;background:#fff;border:1px dashed #d8dde8;border-radius:16px}
+.foot{text-align:center;padding:26px;color:#a5acbb;font-size:12.5px}
+
+/* ---- tickets / chat ---- */
+.newreq{cursor:pointer;font-weight:700;color:var(--accent);font-size:14px;list-style:none}
+.newreq::-webkit-details-marker{display:none}
+.newreq::before{content:'';display:none}
+.chat{display:flex;flex-direction:column;gap:9px;margin:14px 0;max-height:340px;overflow-y:auto;padding-right:4px}
+.msg{max-width:80%;padding:10px 14px;border-radius:15px;font-size:14px;line-height:1.5}
 .msg .msg-m{font-size:11px;color:#8a93a6;margin-top:5px}
-.msg.me{align-self:flex-end;background:#e9ecff;border-bottom-right-radius:3px}
-.msg.them{align-self:flex-start;background:#f1f3f8;border-bottom-left-radius:3px}
-.reply{display:flex;gap:8px;margin-top:6px}.reply input{margin:0}
+.msg.me{align-self:flex-end;background:linear-gradient(135deg,#e9ecff,#eee9ff);border-bottom-right-radius:4px}
+.msg.them{align-self:flex-start;background:#f1f3f8;border-bottom-left-radius:4px}
+.reply{display:flex;gap:9px;margin-top:8px}.reply input{margin:0}.reply .btn{margin:0;flex-shrink:0}
+
+@media (max-width:560px){
+  .top{padding:12px 16px}
+  .brand-sub{display:none}
+  .hero{padding:26px 18px 50px}
+  .hero h1{font-size:21px}
+  .order-b{gap:22px}
+  .msg{max-width:90%}
+}
 </style>
-<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
 <?php }
