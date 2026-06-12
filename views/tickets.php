@@ -24,19 +24,41 @@ $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
 <?php else: ?>
 <div class="tk-wrap">
   <aside class="tk-list">
-    <?php foreach ($rows as $r):
-        $waiting = $r['last_sender'] === 'customer' && $r['status'] !== 'closed'; ?>
-      <a class="tk-item<?= (int)$r['id'] === $sel ? ' on' : '' ?><?= $waiting ? ' wait' : '' ?>"
-         href="?tab=<?= $h($backTab) ?>&tk=<?= $h($r['id']) ?>">
-        <span class="tk-row1"><b><?= $h($r['customer_name'] ?: '#' . $r['contact_id']) ?></b>
-          <span class="tk-time"><?= $h(short_time($r['updated_at'])) ?></span></span>
-        <span class="tk-row2"><span class="tk-subj"><?= $h($r['subject']) ?></span>
-          <?php if ($waiting): ?><span class="tk-dot" title="<?= $h($t('tk_new_reply')) ?>"></span><?php endif; ?>
-        </span>
-        <span class="tk-row3"><?= pill($h, $r['status'], $t) ?>
-          <?php if (empty($isAgent)): ?><span class="muted small"><?= $h($r['agent_name'] ?: $r['agent_username'] ?: $t('unassigned')) ?></span><?php endif; ?>
-        </span>
-      </a>
+    <?php
+    // Admin sees every agent's conversations — group them per agent so it's
+    // obvious who is handling what. Agents see a flat list (it's all theirs).
+    if (empty($isAgent)) {
+        $groups = [];
+        foreach ($rows as $r) {
+            $key = (int)($r['assigned_agent_id'] ?? 0);
+            $groups[$key]['name'] ??= $r['agent_name'] ?: $r['agent_username'] ?: $t('unassigned');
+            $groups[$key]['rows'][] = $r;
+            $groups[$key]['wait'] = ($groups[$key]['wait'] ?? 0)
+                + (int)($r['last_sender'] === 'customer' && $r['status'] !== 'closed');
+        }
+        uksort($groups, fn($a, $b) => ($a === 0) <=> ($b === 0)); // unassigned last
+    } else {
+        $groups = [['name' => null, 'rows' => $rows, 'wait' => 0]];
+    }
+    foreach ($groups as $g): ?>
+      <?php if ($g['name'] !== null): ?>
+        <div class="tk-group">
+          <span class="tk-group-n">👤 <?= $h($g['name']) ?></span>
+          <span class="tk-group-c"><?= count($g['rows']) ?><?= $g['wait'] ? ' · <b>' . (int)$g['wait'] . '</b>' : '' ?></span>
+        </div>
+      <?php endif; ?>
+      <?php foreach ($g['rows'] as $r):
+          $waiting = $r['last_sender'] === 'customer' && $r['status'] !== 'closed'; ?>
+        <a class="tk-item<?= (int)$r['id'] === $sel ? ' on' : '' ?><?= $waiting ? ' wait' : '' ?>"
+           href="?tab=<?= $h($backTab) ?>&tk=<?= $h($r['id']) ?>">
+          <span class="tk-row1"><b><?= $h($r['customer_name'] ?: '#' . $r['contact_id']) ?></b>
+            <span class="tk-time"><?= $h(short_time($r['updated_at'])) ?></span></span>
+          <span class="tk-row2"><span class="tk-subj"><?= $h($r['subject']) ?></span>
+            <?php if ($waiting): ?><span class="tk-dot" title="<?= $h($t('tk_new_reply')) ?>"></span><?php endif; ?>
+          </span>
+          <span class="tk-row3"><?= pill($h, $r['status'], $t) ?></span>
+        </a>
+      <?php endforeach; ?>
     <?php endforeach; ?>
   </aside>
 
@@ -47,7 +69,8 @@ $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
           <b><?= $h($cur['subject']) ?></b>
           <div class="muted small"><?= $h($cur['customer_name']) ?>
             <?= $cur['customer_phone'] ? ' · ' . $h($cur['customer_phone']) : '' ?>
-            <?= $cur['customer_email'] ? ' · ' . $h($cur['customer_email']) : '' ?></div>
+            <?= $cur['customer_email'] ? ' · ' . $h($cur['customer_email']) : '' ?>
+            <?php if (empty($isAgent)): ?> · 👤 <?= $h($cur['agent_name'] ?: $cur['agent_username'] ?: $t('unassigned')) ?><?php endif; ?></div>
         </div>
         <div class="tk-head-r">
           <?= pill($h, $cur['status'], $t) ?>
@@ -100,6 +123,10 @@ $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
 <style>
 .tk-wrap{display:flex;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface);height:calc(100vh - 215px);min-height:440px}
 .tk-list{width:300px;flex-shrink:0;border-right:1px solid var(--line);overflow-y:auto}
+.tk-group{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 14px 7px;background:var(--surface2);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}
+.tk-group-n{font-size:12px;font-weight:700;letter-spacing:.3px}
+.tk-group-c{font-size:11.5px;color:var(--muted)}
+.tk-group-c b{color:var(--accent)}
 .tk-item{display:block;padding:12px 14px;border-bottom:1px solid var(--line);text-decoration:none;color:var(--txt)}
 .tk-item:hover{background:var(--surface2)}
 .tk-item.on{background:var(--surface2);box-shadow:inset 3px 0 0 var(--accent)}
