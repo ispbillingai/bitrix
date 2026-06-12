@@ -112,6 +112,8 @@ return [
     'tk_staff'       => 'Staff',
     'tk_reply'       => 'Rispondi',
     'tk_send'        => 'Invia',
+    'tk_attach'      => 'Allega un file (facoltativo)',
+    'tk_attachment'  => 'Allegato',
     'tk_close'       => 'Chiudi',
     'tk_reopen'      => 'Riapri',
     'evt_ticket_opened' => 'Ticket aperto',

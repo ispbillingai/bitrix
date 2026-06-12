@@ -52,6 +52,15 @@ if (isset($_GET['token'])) {
     header('Location: portal.php');
     exit;
 }
+// ---- ticket attachment download (?dl=<message_id>) — only the owning customer ----
+if (isset($_GET['dl']) && !empty($_SESSION['portal_cid'])) {
+    $msg = Tickets::messageFile((int)$_GET['dl']);
+    if ($msg && (int)$msg['contact_id'] === (int)$_SESSION['portal_cid']) {
+        Tickets::streamAttachment($msg);
+    }
+    http_response_code(404);
+    exit('Not found');
+}
 if (($_GET['action'] ?? '') === 'logout') {
     session_destroy();
     header('Location: portal.php');
@@ -96,14 +105,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($cid && $do === 'ticket_open') {
         if (trim((string)($_POST['body'] ?? '')) !== '') {
-            Tickets::open($cid, (string)($_POST['subject'] ?? ''), (string)$_POST['body']);
+            Tickets::open($cid, (string)($_POST['subject'] ?? ''), (string)$_POST['body'],
+                null, Tickets::storeUpload($_FILES['attachment'] ?? null));
             $flash = $t('tk_opened');
         }
     }
     if ($cid && $do === 'ticket_reply') {
         $tid = (int)($_POST['ticket_id'] ?? 0);
-        if (owns_ticket($cid, $tid) && trim((string)($_POST['body'] ?? '')) !== '') {
-            Tickets::reply($tid, 'customer', $cid, (string)($me['name'] ?? ''), (string)$_POST['body']);
+        $att = Tickets::storeUpload($_FILES['attachment'] ?? null);
+        if (owns_ticket($cid, $tid)
+            && Tickets::reply($tid, 'customer', $cid, (string)($me['name'] ?? ''), (string)($_POST['body'] ?? ''), $att)) {
             $flash = $t('tk_sent');
         } else {
             $flash = $t('err_generic');
@@ -260,10 +271,11 @@ $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
   <div class="card">
     <details>
       <summary class="newreq"><?= $h($t('tk_new')) ?></summary>
-      <form method="post" style="margin-top:12px">
+      <form method="post" enctype="multipart/form-data" style="margin-top:12px">
         <input type="hidden" name="do" value="ticket_open">
         <label><?= $h($t('tk_subject')) ?><input name="subject" maxlength="190" required></label>
         <label><?= $h($t('tk_message')) ?><textarea name="body" rows="3" required></textarea></label>
+        <label><?= $h($t('tk_attach')) ?><input type="file" name="attachment"></label>
         <button class="btn"><?= $h($t('tk_send')) ?></button>
       </form>
     </details>
@@ -277,15 +289,19 @@ $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
       <div class="chat">
         <?php foreach ($thread as $m): $mine = $m['sender_type'] === 'customer'; ?>
           <div class="msg <?= $mine ? 'me' : 'them' ?>">
-            <div><?= nl2br($h($m['body'])) ?></div>
+            <?php if ((string)$m['body'] !== ''): ?><div><?= nl2br($h($m['body'])) ?></div><?php endif; ?>
+            <?php if (!empty($m['attachment_path'])): ?>
+              <div><a href="?dl=<?= $h($m['id']) ?>">📎 <?= $h($m['attachment_name'] ?: $t('tk_attachment')) ?></a></div>
+            <?php endif; ?>
             <div class="msg-m"><?= $h($mine ? $t('tk_you') : ($m['sender_name'] ?: $brand)) ?> · <?= $h(date('d/m H:i', strtotime((string)$m['created_at']))) ?></div>
           </div>
         <?php endforeach; ?>
       </div>
       <?php if ($tk['status'] !== 'closed'): ?>
-        <form method="post" class="reply">
+        <form method="post" enctype="multipart/form-data" class="reply">
           <input type="hidden" name="do" value="ticket_reply"><input type="hidden" name="ticket_id" value="<?= $h($tk['id']) ?>">
-          <input name="body" placeholder="<?= $h($t('tk_reply_ph')) ?>" required>
+          <input name="body" placeholder="<?= $h($t('tk_reply_ph')) ?>">
+          <label class="att" title="<?= $h($t('tk_attach')) ?>">📎<input type="file" name="attachment"></label>
           <button class="btn"><?= $h($t('tk_send')) ?></button>
         </form>
       <?php else: ?>
@@ -381,6 +397,7 @@ function portal_strings(string $lang): array
         'pw_saved' => 'Password saved.', 'pw_short' => 'Password must be at least 6 characters.', 'save' => 'Save',
         'support' => 'Support', 'tk_new' => '+ New request', 'tk_subject' => 'Subject', 'tk_message' => 'Message',
         'tk_send' => 'Send', 'tk_reply_ph' => 'Write a reply…', 'tk_you' => 'You',
+        'tk_attach' => 'Attach a file (optional)', 'tk_attachment' => 'Attachment',
         'tk_opened' => 'Your request has been sent. We will get back to you.', 'tk_sent' => 'Message sent.',
         'tk_closed_note' => 'This request is closed. Open a new one if you still need help.',
         'tkst_open' => 'Open', 'tkst_pending' => 'Replied', 'tkst_closed' => 'Closed',
@@ -410,6 +427,7 @@ function portal_strings(string $lang): array
         'pw_saved' => 'Password salvata.', 'pw_short' => 'La password deve avere almeno 6 caratteri.', 'save' => 'Salva',
         'support' => 'Assistenza', 'tk_new' => '+ Nuova richiesta', 'tk_subject' => 'Oggetto', 'tk_message' => 'Messaggio',
         'tk_send' => 'Invia', 'tk_reply_ph' => 'Scrivi una risposta…', 'tk_you' => 'Tu',
+        'tk_attach' => 'Allega un file (facoltativo)', 'tk_attachment' => 'Allegato',
         'tk_opened' => 'La tua richiesta è stata inviata. Ti risponderemo a breve.', 'tk_sent' => 'Messaggio inviato.',
         'tk_closed_note' => 'Questa richiesta è chiusa. Aprine una nuova se hai ancora bisogno.',
         'tkst_open' => 'Aperta', 'tkst_pending' => 'Risposta', 'tkst_closed' => 'Chiusa',
@@ -506,7 +524,11 @@ input:focus,textarea:focus{border-color:var(--accent);background:#fff;box-shadow
 .msg .msg-m{font-size:11px;color:#8a93a6;margin-top:5px}
 .msg.me{align-self:flex-end;background:#e9ecff;border-bottom-right-radius:4px}
 .msg.them{align-self:flex-start;background:#f1f3f8;border-bottom-left-radius:4px}
-.reply{display:flex;gap:9px;margin-top:8px}.reply input{margin:0}.reply .btn{margin:0;flex-shrink:0}
+.reply{display:flex;gap:9px;margin-top:8px;align-items:center}.reply input{margin:0}.reply .btn{margin:0;flex-shrink:0}
+.att{flex-shrink:0;width:42px;height:42px;margin:0;display:flex;align-items:center;justify-content:center;border:1.5px solid #dde2ec;border-radius:11px;background:#fbfcfe;cursor:pointer;font-size:17px}
+.att input{display:none}
+input[type=file]{padding:9px;background:#fbfcfe}
+.msg a{color:#4453d6;font-weight:600}
 
 @media (max-width:560px){
   .top{padding:12px 16px}

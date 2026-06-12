@@ -29,23 +29,28 @@ $rows = \Glue\Crm\Tickets::forStaff($scopeId ?? null, 300);
       <div class="chat">
         <?php foreach ($thread as $m): $mine = $m['sender_type'] !== 'customer'; ?>
           <div class="msg <?= $mine ? 'staff' : 'cust' ?>">
-            <div class="msg-b"><?= nl2br($h($m['body'])) ?></div>
+            <?php if ((string)$m['body'] !== ''): ?><div class="msg-b"><?= nl2br($h($m['body'])) ?></div><?php endif; ?>
+            <?php if (!empty($m['attachment_path'])): ?>
+              <div class="msg-b"><a href="?dl=<?= $h($m['id']) ?>">📎 <?= $h($m['attachment_name'] ?: $t('tk_attachment')) ?></a></div>
+            <?php endif; ?>
             <div class="msg-m"><?= $h($m['sender_name'] ?: ($mine ? $t('tk_staff') : $t('th_customer'))) ?> · <?= $h(short_time($m['created_at'])) ?></div>
           </div>
         <?php endforeach; ?>
       </div>
+      <?php $back = !empty($ticketBack) ? '<input type="hidden" name="back" value="' . $h($ticketBack) . '">' : ''; ?>
       <?php if ($r['status'] !== 'closed'): ?>
-        <form method="post" style="margin-top:12px">
-          <input type="hidden" name="do" value="ticket_reply"><input type="hidden" name="id" value="<?= $h($r['id']) ?>">
-          <label class="fld"><span><?= $h($t('tk_reply')) ?></span><textarea name="body" rows="2" required></textarea></label>
+        <form method="post" enctype="multipart/form-data" style="margin-top:12px">
+          <input type="hidden" name="do" value="ticket_reply"><input type="hidden" name="id" value="<?= $h($r['id']) ?>"><?= $back ?>
+          <label class="fld"><span><?= $h($t('tk_reply')) ?></span><textarea name="body" rows="2"></textarea></label>
+          <label class="fld"><span><?= $h($t('tk_attach')) ?></span><input type="file" name="attachment"></label>
           <button class="btn tiny"><?= svg('send') ?> <?= $h($t('tk_send')) ?></button>
         </form>
         <form method="post" class="inline" style="margin-top:6px"><input type="hidden" name="do" value="ticket_status">
-          <input type="hidden" name="id" value="<?= $h($r['id']) ?>"><input type="hidden" name="status" value="closed">
+          <input type="hidden" name="id" value="<?= $h($r['id']) ?>"><input type="hidden" name="status" value="closed"><?= $back ?>
           <button class="btn tiny ghost"><?= $h($t('tk_close')) ?></button></form>
       <?php else: ?>
         <form method="post" class="inline" style="margin-top:10px"><input type="hidden" name="do" value="ticket_status">
-          <input type="hidden" name="id" value="<?= $h($r['id']) ?>"><input type="hidden" name="status" value="open">
+          <input type="hidden" name="id" value="<?= $h($r['id']) ?>"><input type="hidden" name="status" value="open"><?= $back ?>
           <button class="btn tiny ghost"><?= $h($t('tk_reopen')) ?></button></form>
       <?php endif; ?>
     </div>

@@ -20,7 +20,7 @@ use Glue\Reminder\Templates;
 final class Tickets
 {
     /** Customer opens a new ticket (first message). Returns the ticket id. */
-    public static function open(int $contactId, string $subject, string $body, ?int $dealId = null): int
+    public static function open(int $contactId, string $subject, string $body, ?int $dealId = null, ?array $attachment = null): int
     {
         $agentId = self::agentForContact($contactId);
         $subject = trim($subject) !== '' ? mb_substr(trim($subject), 0, 190) : 'Support request';
@@ -33,7 +33,7 @@ final class Tickets
         $ticketId = (int)Db::pdo()->lastInsertId();
 
         $contact = Account::find($contactId);
-        self::addMessage($ticketId, 'customer', $contactId, (string)($contact['name'] ?? ''), $body);
+        self::addMessage($ticketId, 'customer', $contactId, (string)($contact['name'] ?? ''), $body, $attachment);
 
         Log::write('crm', 'ticket_opened', 'ticket', $ticketId, ['contact_id' => $contactId, 'agent_id' => $agentId]);
         self::notifyStaff($ticketId);
@@ -44,14 +44,14 @@ final class Tickets
      * Post a reply. $senderType is customer|agent|admin. Updates the thread status
      * and notifies the other party.
      */
-    public static function reply(int $ticketId, string $senderType, ?int $senderId, string $senderName, string $body): bool
+    public static function reply(int $ticketId, string $senderType, ?int $senderId, string $senderName, string $body, ?array $attachment = null): bool
     {
         $body = trim($body);
         $ticket = self::find($ticketId);
-        if (!$ticket || $body === '') {
+        if (!$ticket || ($body === '' && $attachment === null)) {
             return false;
         }
-        self::addMessage($ticketId, $senderType, $senderId, $senderName, $body);
+        self::addMessage($ticketId, $senderType, $senderId, $senderName, $body, $attachment);
 
         // A staff reply marks the ticket pending-on-customer; a customer reply reopens it.
         $status = $senderType === 'customer' ? 'open' : 'pending';
@@ -76,12 +76,82 @@ final class Tickets
         Log::write('crm', 'ticket_status', 'ticket', $ticketId, ['status' => $status]);
     }
 
-    private static function addMessage(int $ticketId, string $type, ?int $senderId, string $name, string $body): void
+    private static function addMessage(int $ticketId, string $type, ?int $senderId, string $name, string $body, ?array $attachment = null): void
     {
         Db::pdo()->prepare(
-            'INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, sender_name, body)
-             VALUES (?, ?, ?, ?, ?)'
-        )->execute([$ticketId, $type, $senderId ?: null, trim($name) ?: null, trim($body)]);
+            'INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, sender_name, body, attachment_path, attachment_name)
+             VALUES (?, ?, ?, ?, ?, ?, ?)'
+        )->execute([
+            $ticketId, $type, $senderId ?: null, trim($name) ?: null, trim($body),
+            $attachment['path'] ?? null, $attachment['name'] ?? null,
+        ]);
+    }
+
+    // ---- attachments ------------------------------------------------------------
+
+    private const UPLOAD_MAX_BYTES = 10485760; // 10 MB
+    private const UPLOAD_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx',
+                                'xls', 'xlsx', 'csv', 'txt', 'zip'];
+
+    public static function uploadDir(): string
+    {
+        return dirname(__DIR__, 2) . '/storage/uploads/tickets';
+    }
+
+    /**
+     * Validate + store a $_FILES entry. Returns ['path' => stored-filename,
+     * 'name' => original-filename] or null if nothing usable was uploaded.
+     */
+    public static function storeUpload(?array $file): ?array
+    {
+        if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+            return null;
+        }
+        if ((int)$file['size'] <= 0 || (int)$file['size'] > self::UPLOAD_MAX_BYTES) {
+            return null;
+        }
+        $orig = (string)($file['name'] ?? 'file');
+        $ext = strtolower(pathinfo($orig, PATHINFO_EXTENSION));
+        if (!in_array($ext, self::UPLOAD_EXT, true)) {
+            return null;
+        }
+        $dir = self::uploadDir();
+        if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
+            return null;
+        }
+        $stored = bin2hex(random_bytes(16)) . '.' . $ext;
+        if (!move_uploaded_file((string)$file['tmp_name'], $dir . '/' . $stored)) {
+            return null;
+        }
+        return ['path' => $stored, 'name' => mb_substr($orig, 0, 190)];
+    }
+
+    /** A message row + its ticket's owners, for download permission checks. */
+    public static function messageFile(int $messageId): ?array
+    {
+        $stmt = Db::pdo()->prepare(
+            'SELECT m.id, m.attachment_path, m.attachment_name, t.contact_id, t.assigned_agent_id
+             FROM ticket_messages m JOIN tickets t ON t.id = m.ticket_id
+             WHERE m.id = ? AND m.attachment_path IS NOT NULL'
+        );
+        $stmt->execute([$messageId]);
+        return $stmt->fetch() ?: null;
+    }
+
+    /** Stream a stored attachment and exit. Call only after a permission check. */
+    public static function streamAttachment(array $msg): void
+    {
+        $path = self::uploadDir() . '/' . basename((string)$msg['attachment_path']);
+        if (!is_file($path)) {
+            http_response_code(404);
+            exit('Not found');
+        }
+        $name = (string)($msg['attachment_name'] ?: 'attachment');
+        header('Content-Type: application/octet-stream');
+        header('Content-Disposition: attachment; filename="' . str_replace('"', '', $name) . '"');
+        header('Content-Length: ' . (string)filesize($path));
+        readfile($path);
+        exit;
     }
 
     // ---- reads ----------------------------------------------------------------

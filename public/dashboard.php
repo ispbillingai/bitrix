@@ -85,13 +85,24 @@ $uid = (int)($_SESSION['glue_user']['id'] ?? 0) ?: null;
 $role    = (string)($_SESSION['glue_user']['role'] ?? 'admin');
 $isAgent = $role === 'agent';
 $scopeId = $isAgent ? (int)($_SESSION['glue_user']['id'] ?? 0) : null; // null = no scope (admin)
-$agentViews   = ['overview', 'leads', 'deals', 'appointments', 'tasks', 'tickets', 'instructions'];
+$agentViews   = ['overview', 'leads', 'deals', 'appointments', 'tasks', 'messages', 'tickets', 'instructions'];
 $agentActions = [
     'lead_move', 'lead_convert', 'lead_note',
     'deal_move', 'deal_note', 'deal_invite',
     'appt_create', 'appt_schedule', 'appt_status',
     'task_complete', 'task_status', 'ticket_reply', 'ticket_status', 'change_my_password',
 ];
+
+// ---- ticket attachment download (?dl=<message_id>) ----
+if (isset($_GET['dl'])) {
+    $msg = Tickets::messageFile((int)$_GET['dl']);
+    // Admin can fetch anything; an agent only files on tickets assigned to them.
+    if ($msg && (!$isAgent || (int)$msg['assigned_agent_id'] === $scopeId)) {
+        Tickets::streamAttachment($msg);
+    }
+    http_response_code(404);
+    exit('Not found');
+}
 
 // ---- POST actions ----
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -330,13 +341,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // ---------- tickets ----------
             case 'ticket_reply':
                 $senderName = (string)($_SESSION['glue_user']['full_name'] ?? $_SESSION['glue_user']['username'] ?? 'Staff');
-                Tickets::reply((int)$_POST['id'], $isAgent ? 'agent' : 'admin', $uid, $senderName, (string)($_POST['body'] ?? ''));
-                $flash = $t('saved');
-                $tab = 'tickets';
+                $ok = Tickets::reply((int)$_POST['id'], $isAgent ? 'agent' : 'admin', $uid, $senderName,
+                    (string)($_POST['body'] ?? ''), Tickets::storeUpload($_FILES['attachment'] ?? null));
+                $flash = $ok ? $t('saved') : $t('test_fail');
+                $flashType = $ok ? 'ok' : 'err';
+                $tab = ($_POST['back'] ?? '') === 'messages' ? 'messages' : 'tickets';
                 break;
             case 'ticket_status':
                 Tickets::setStatus((int)$_POST['id'], (string)$_POST['status']);
-                $tab = 'tickets';
+                $tab = ($_POST['back'] ?? '') === 'messages' ? 'messages' : 'tickets';
                 break;
 
             // ---------- reminders / scheduler / campaigns ----------
@@ -483,7 +496,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
         'events' => 'nav_events', 'agents' => 'nav_agents', 'instructions' => 'nav_instr', 'settings' => 'nav_settings',
     ];
     if ($isAgent) { // agents only see their own work
-        $nav = array_intersect_key($nav, array_flip(['overview', 'leads', 'deals', 'appointments', 'tasks', 'tickets', 'instructions']));
+        $nav = array_intersect_key($nav, array_flip(['overview', 'leads', 'deals', 'appointments', 'tasks', 'messages', 'instructions']));
     } ?>
 <!DOCTYPE html><html lang="<?= $h($lang) ?>"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

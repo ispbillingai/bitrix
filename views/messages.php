@@ -1,8 +1,16 @@
 <?php
-/** Messages outbox — every WhatsApp/email send. In scope: $t, $h, $pdo. */
-$rows = $pdo->query("SELECT * FROM messages ORDER BY id DESC LIMIT 300")->fetchAll();
+/**
+ * Messages — customer conversations (read & reply, no email needed) on top,
+ * then the delivery outbox of every WhatsApp/email send below.
+ * In scope: $t, $h, $pdo, $scopeId, $isAgent.
+ */
+$ticketBack = 'messages'; // replies from this page come back here
+include __DIR__ . '/tickets.php';
 ?>
-<h2><?= $h($t('msg_title')) ?></h2>
+
+<?php if (empty($isAgent)): // the global delivery outbox is admin-only ?>
+<h2 style="margin-top:30px"><?= $h($t('msg_title')) ?></h2>
+<?php $rows = $pdo->query("SELECT * FROM messages ORDER BY id DESC LIMIT 300")->fetchAll(); ?>
 <table><thead><tr>
   <th><?= $h($t('th_time')) ?></th><th><?= $h($t('th_channel')) ?></th><th><?= $h($t('th_recipient')) ?></th>
   <th><?= $h($t('th_subject')) ?></th><th><?= $h($t('th_status')) ?></th>
@@ -14,3 +22,4 @@ $rows = $pdo->query("SELECT * FROM messages ORDER BY id DESC LIMIT 300")->fetchA
     <td><?= pill($h, $r['status'], $t) ?></td></tr>
 <?php endforeach; ?>
 </tbody></table>
+<?php endif; ?>

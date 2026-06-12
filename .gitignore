@@ -4,6 +4,9 @@
 # Composer
 /vendor/
 
+# Uploaded ticket attachments (user data, never commit)
+/storage/uploads/
+
 # Local logs / scratch
 /logs/*.log
 *.log

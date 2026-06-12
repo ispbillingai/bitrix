@@ -112,6 +112,8 @@ return [
     'tk_staff'       => 'Staff',
     'tk_reply'       => 'Reply',
     'tk_send'        => 'Send',
+    'tk_attach'      => 'Attach a file (optional)',
+    'tk_attachment'  => 'Attachment',
     'tk_close'       => 'Close',
     'tk_reopen'      => 'Reopen',
     'evt_ticket_opened' => 'Ticket opened',

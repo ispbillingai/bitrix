@@ -339,6 +339,8 @@ CREATE TABLE IF NOT EXISTS ticket_messages (
     sender_id BIGINT UNSIGNED NULL,
     sender_name VARCHAR(190) NULL,
     body TEXT NOT NULL,
+    attachment_path VARCHAR(255) NULL,
+    attachment_name VARCHAR(190) NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_ticket (ticket_id, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
