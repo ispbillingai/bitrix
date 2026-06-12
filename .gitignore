@@ -17,3 +17,4 @@ grep.exe.stackdump
 Thumbs.db
 .idea/
 .vscode/
+mpesa_receipt_*.pdf
