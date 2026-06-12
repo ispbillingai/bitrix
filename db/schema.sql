@@ -325,6 +325,7 @@ CREATE TABLE IF NOT EXISTS tickets (
     subject VARCHAR(190) NOT NULL,
     status ENUM('open','pending','closed') NOT NULL DEFAULT 'open',
     last_sender VARCHAR(16) NULL,
+    customer_seen_at DATETIME NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
     KEY idx_contact (contact_id),
@@ -341,6 +342,8 @@ CREATE TABLE IF NOT EXISTS ticket_messages (
     body TEXT NOT NULL,
     attachment_path VARCHAR(255) NULL,
     attachment_name VARCHAR(190) NULL,
+    downloaded_at DATETIME NULL,
+    accepted_at DATETIME NULL,
     created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_ticket (ticket_id, id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

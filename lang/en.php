@@ -68,6 +68,14 @@ return [
         'ticket_reply' => // to the customer
             "{company}: you have a new reply to \"{subject}\". "
             . "Open your area to read and reply: {link}",
+
+        'offer_read' => // to the customer: the offer file is waiting
+            "Hi {name}, we sent you our offer \"{subject}\" in your {company} "
+            . "customer area. Please open it, read it and download the file: {link}",
+
+        'offer_accepted' => // to the assigned agent: send the contract!
+            "✅ {customer_name} ACCEPTED the offer \"{subject}\" (conversation #{id}). "
+            . "Please send them the contract for signature now.",
     ],
 
     'email' => [
@@ -143,6 +151,17 @@ return [
             'subject' => 'New reply to your request — {subject}',
             'html'    => '<p>Hello {name},</p><p>You have a new reply to your request "{subject}".</p>'
                 . '<p><a href="{link}">Open my customer area</a> to read and reply.</p>',
+        ],
+        'offer_read' => [
+            'subject' => 'Your {company} offer is waiting — {subject}',
+            'html'    => '<p>Hello {name},</p><p>We sent you our offer "{subject}" in your {company} '
+                . 'customer area. Please open it, read it and download the file.</p>'
+                . '<p><a href="{link}">Open my customer area</a></p>',
+        ],
+        'offer_accepted' => [
+            'subject' => 'Offer accepted by {customer_name} — send the contract',
+            'html'    => '<p><strong>{customer_name}</strong> accepted the offer "{subject}" '
+                . '(conversation #{id}).</p><p>Please send them the contract for signature now.</p>',
         ],
     ],
 ];

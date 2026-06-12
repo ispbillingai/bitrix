@@ -56,6 +56,7 @@ if (isset($_GET['token'])) {
 if (isset($_GET['dl']) && !empty($_SESSION['portal_cid'])) {
     $msg = Tickets::messageFile((int)$_GET['dl']);
     if ($msg && (int)$msg['contact_id'] === (int)$_SESSION['portal_cid']) {
+        Tickets::markDownloaded((int)$msg['id']); // receipt for the agent
         Tickets::streamAttachment($msg);
     }
     http_response_code(404);
@@ -123,6 +124,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $prg($t('tk_opened'), 'ok', 'portal.php?page=support&tk=' . $tid);
         }
         $prg($t('err_generic'), 'err', 'portal.php?page=support');
+    }
+    if ($cid && $do === 'offer_accept') {
+        $mid = (int)($_POST['message_id'] ?? 0);
+        $tid = (int)($_POST['ticket_id'] ?? 0);
+        if (Tickets::acceptOffer($mid, $cid)) {
+            $prg($t('offer_accept_done'), 'ok', 'portal.php?page=support&tk=' . $tid);
+        }
+        $prg($t('err_generic'), 'err', 'portal.php?page=support&tk=' . $tid);
     }
     if ($cid && $do === 'ticket_reply') {
         $tid = (int)($_POST['ticket_id'] ?? 0);
@@ -192,6 +201,9 @@ $tkSel = (int)($_GET['tk'] ?? ($_POST['ticket_id'] ?? 0));
 $tkCur = null;
 foreach ($tickets as $tk0) {
     if ((int)$tk0['id'] === $tkSel) { $tkCur = $tk0; break; }
+}
+if ($tkCur && $page === 'support') {
+    Tickets::markCustomerSeen((int)$tkCur['id']); // read receipt for the agent
 }
 
 ?><!DOCTYPE html><html lang="<?= $h($lang) ?>"><head>
@@ -326,6 +338,18 @@ foreach ($tickets as $tk0) {
           <?php if ((string)$m['body'] !== ''): ?><div><?= nl2br($h($m['body'])) ?></div><?php endif; ?>
           <?php if (!empty($m['attachment_path'])): ?>
             <div><a href="?dl=<?= $h($m['id']) ?>">📎 <?= $h($m['attachment_name'] ?: $t('tk_attachment')) ?></a></div>
+            <?php if (!$mine): // an offer file from us — the customer can accept it ?>
+              <?php if (!empty($m['accepted_at'])): ?>
+                <div class="accepted">✓ <?= $h($t('offer_accepted_on')) ?> <?= $h(date('d/m/Y', strtotime((string)$m['accepted_at']))) ?></div>
+              <?php else: ?>
+                <form method="post" class="accept-form">
+                  <input type="hidden" name="do" value="offer_accept">
+                  <input type="hidden" name="message_id" value="<?= $h($m['id']) ?>">
+                  <input type="hidden" name="ticket_id" value="<?= $h($tkCur['id']) ?>">
+                  <button class="btn sm accept"><?= $h($t('offer_accept')) ?></button>
+                </form>
+              <?php endif; ?>
+            <?php endif; ?>
           <?php endif; ?>
           <div class="msg-m"><?= $h($mine ? $t('tk_you') : ($m['sender_name'] ?: $brand)) ?> · <?= $h(date('d/m H:i', strtotime((string)$m['created_at']))) ?></div>
         </div>
@@ -472,6 +496,9 @@ function portal_strings(string $lang): array
         'att_too_big' => 'The file is too large (max 10 MB).',
         'att_bad_type' => 'This file type is not allowed. Use images, PDF, Office documents, txt or zip.',
         'att_save_failed' => 'The file could not be saved — please try again.',
+        'offer_accept' => '✓ Accept this offer',
+        'offer_accepted_on' => 'Offer accepted on',
+        'offer_accept_done' => 'Thank you! We received your acceptance — we will send you the contract to sign.',
     ];
     $it = [
         'portal' => 'Area clienti', 'welcome' => 'Benvenuto', 'logout' => 'Esci',
@@ -506,6 +533,9 @@ function portal_strings(string $lang): array
         'att_too_big' => 'Il file è troppo grande (max 10 MB).',
         'att_bad_type' => 'Tipo di file non consentito. Usa immagini, PDF, documenti Office, txt o zip.',
         'att_save_failed' => 'Impossibile salvare il file — riprova.',
+        'offer_accept' => '✓ Accetta questa offerta',
+        'offer_accepted_on' => 'Offerta accettata il',
+        'offer_accept_done' => 'Grazie! Abbiamo ricevuto la tua accettazione — ti invieremo il contratto da firmare.',
     ];
     return $lang === 'it' ? $it : $en;
 }
@@ -627,6 +657,11 @@ input:focus,textarea:focus{border-color:var(--accent);background:#fff;box-shadow
 .att input{display:none}
 input[type=file]{padding:9px;background:#fbfcfe}
 .msg a{color:#4453d6;font-weight:600}
+.accept-form{margin-top:7px}
+.btn.sm{padding:8px 14px;font-size:13px;margin:0}
+.btn.accept{background:#188a4c;box-shadow:none}
+.btn.accept:hover{background:#147a42;transform:none;box-shadow:none}
+.accepted{margin-top:7px;color:#188a4c;font-weight:700;font-size:13px}
 
 @media (max-width:860px){
   .app{flex-direction:column}

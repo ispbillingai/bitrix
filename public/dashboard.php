@@ -95,7 +95,7 @@ $agentActions = [
     'lead_move', 'lead_convert', 'lead_note',
     'deal_move', 'deal_note', 'deal_invite',
     'appt_create', 'appt_schedule', 'appt_status',
-    'task_complete', 'task_status', 'ticket_reply', 'ticket_status', 'change_my_password',
+    'task_complete', 'task_status', 'ticket_reply', 'ticket_status', 'ticket_open_staff', 'change_my_password',
 ];
 
 // ---- ticket attachment download (?dl=<message_id>) ----
@@ -358,6 +358,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $tab = ($_POST['back'] ?? '') === 'messages' ? 'messages' : 'tickets';
                 $_SESSION['dash_flash'] = [$flash, $flashType];
                 header('Location: ?tab=' . $tab . '&tk=' . (int)$_POST['id']);
+                exit;
+            case 'ticket_open_staff':
+                $contactId = (int)($_POST['contact_id'] ?? 0);
+                // Agents may only message their own customers.
+                $allowed = array_column(Tickets::customersForStaff($scopeId), 'id');
+                $att = Tickets::storeUpload($_FILES['attachment'] ?? null, $attErr);
+                $tab = ($_POST['back'] ?? '') === 'messages' ? 'messages' : 'tickets';
+                if ($attErr !== null) {
+                    $_SESSION['dash_flash'] = [$attErr === 'too_big' ? 'File too large (max 10 MB).'
+                        : ($attErr === 'bad_type' ? 'File type not allowed.' : 'Could not save the file.'), 'err'];
+                    header('Location: ?tab=' . $tab);
+                    exit;
+                }
+                if ($contactId && in_array($contactId, array_map('intval', $allowed), true)
+                    && (trim((string)($_POST['body'] ?? '')) !== '' || $att !== null)) {
+                    $senderName = (string)($_SESSION['glue_user']['full_name'] ?? $_SESSION['glue_user']['username'] ?? 'Staff');
+                    $newId = Tickets::openFromStaff($contactId, $isAgent ? 'agent' : 'admin', $uid, $senderName,
+                        (string)($_POST['subject'] ?? ''), (string)($_POST['body'] ?? ''), $att);
+                    $_SESSION['dash_flash'] = [$t('saved'), 'ok'];
+                    header('Location: ?tab=' . $tab . '&tk=' . $newId);
+                    exit;
+                }
+                $_SESSION['dash_flash'] = [$t('test_fail'), 'err'];
+                header('Location: ?tab=' . $tab);
                 exit;
             case 'ticket_status':
                 Tickets::setStatus((int)$_POST['id'], (string)$_POST['status']);

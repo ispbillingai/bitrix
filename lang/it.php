@@ -68,6 +68,14 @@ return [
         'ticket_reply' => // al cliente
             "{company}: hai una nuova risposta a \"{subject}\". "
             . "Apri la tua area per leggere e rispondere: {link}",
+
+        'offer_read' => // al cliente: l'offerta lo aspetta
+            "Ciao {name}, ti abbiamo inviato la nostra offerta \"{subject}\" nella tua "
+            . "area clienti {company}. Aprila, leggila e scarica il file: {link}",
+
+        'offer_accepted' => // all'agente assegnato: invia il contratto!
+            "✅ {customer_name} ha ACCETTATO l'offerta \"{subject}\" (conversazione #{id}). "
+            . "Inviagli subito il contratto da firmare.",
     ],
 
     'email' => [
@@ -143,6 +151,17 @@ return [
             'subject' => 'Nuova risposta alla tua richiesta — {subject}',
             'html'    => '<p>Ciao {name},</p><p>Hai una nuova risposta alla tua richiesta "{subject}".</p>'
                 . '<p><a href="{link}">Apri la mia area clienti</a> per leggere e rispondere.</p>',
+        ],
+        'offer_read' => [
+            'subject' => 'La tua offerta {company} ti aspetta — {subject}',
+            'html'    => '<p>Ciao {name},</p><p>Ti abbiamo inviato la nostra offerta "{subject}" nella tua '
+                . 'area clienti {company}. Aprila, leggila e scarica il file.</p>'
+                . '<p><a href="{link}">Apri la mia area clienti</a></p>',
+        ],
+        'offer_accepted' => [
+            'subject' => 'Offerta accettata da {customer_name} — invia il contratto',
+            'html'    => '<p><strong>{customer_name}</strong> ha accettato l\'offerta "{subject}" '
+                . '(conversazione #{id}).</p><p>Inviagli subito il contratto da firmare.</p>',
         ],
     ],
 ];

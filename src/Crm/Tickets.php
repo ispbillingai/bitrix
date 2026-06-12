@@ -53,6 +53,42 @@ final class Tickets
     }
 
     /**
+     * Staff starts a conversation with a customer (e.g. to ask for information
+     * or send the offer file). Notifies the customer; if the first message
+     * carries a file, the "please read and download the offer" reminder
+     * cadence is armed too. Returns the ticket id.
+     */
+    public static function openFromStaff(
+        int $contactId,
+        string $senderType,
+        ?int $senderId,
+        string $senderName,
+        string $subject,
+        string $body,
+        ?array $attachment = null
+    ): int {
+        $agentId = $senderType === 'agent' && $senderId ? $senderId : self::agentForContact($contactId);
+        $subject = trim($subject) !== '' ? mb_substr(trim($subject), 0, 190) : 'Message from us';
+
+        $stmt = Db::pdo()->prepare(
+            'INSERT INTO tickets (contact_id, assigned_agent_id, deal_id, subject, status, last_sender)
+             VALUES (?, ?, NULL, ?, "pending", ?)'
+        );
+        $stmt->execute([$contactId, $agentId, $subject, $senderType]);
+        $ticketId = (int)Db::pdo()->lastInsertId();
+
+        $messageId = self::addMessage($ticketId, $senderType, $senderId, $senderName, $body, $attachment);
+        Log::write('crm', 'ticket_opened_staff', 'ticket', $ticketId,
+            ['contact_id' => $contactId, 'by' => $senderType]);
+
+        self::notifyCustomer($ticketId);
+        if ($attachment !== null) {
+            self::armOfferReminders($ticketId, $messageId);
+        }
+        return $ticketId;
+    }
+
+    /**
      * Post a reply. $senderType is customer|agent|admin. Updates the thread status
      * and notifies the other party.
      */
@@ -63,7 +99,7 @@ final class Tickets
         if (!$ticket || ($body === '' && $attachment === null)) {
             return false;
         }
-        self::addMessage($ticketId, $senderType, $senderId, $senderName, $body, $attachment);
+        $messageId = self::addMessage($ticketId, $senderType, $senderId, $senderName, $body, $attachment);
 
         // A staff reply marks the ticket pending-on-customer; a customer reply reopens it.
         $status = $senderType === 'customer' ? 'open' : 'pending';
@@ -75,6 +111,10 @@ final class Tickets
             self::notifyStaff($ticketId);
         } else {
             self::notifyCustomer($ticketId);
+            if ($attachment !== null) {
+                // A staff file is (typically) the offer — chase until downloaded.
+                self::armOfferReminders($ticketId, $messageId);
+            }
         }
         return true;
     }
@@ -88,7 +128,7 @@ final class Tickets
         Log::write('crm', 'ticket_status', 'ticket', $ticketId, ['status' => $status]);
     }
 
-    private static function addMessage(int $ticketId, string $type, ?int $senderId, string $name, string $body, ?array $attachment = null): void
+    private static function addMessage(int $ticketId, string $type, ?int $senderId, string $name, string $body, ?array $attachment = null): int
     {
         Db::pdo()->prepare(
             'INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, sender_name, body, attachment_path, attachment_name)
@@ -97,6 +137,7 @@ final class Tickets
             $ticketId, $type, $senderId ?: null, trim($name) ?: null, trim($body),
             $attachment['path'] ?? null, $attachment['name'] ?? null,
         ]);
+        return (int)Db::pdo()->lastInsertId();
     }
 
     // ---- attachments ------------------------------------------------------------
@@ -195,6 +236,140 @@ final class Tickets
         header('Content-Length: ' . (string)filesize($path));
         readfile($path);
         exit;
+    }
+
+    // ---- offer tracking (seen / downloaded / accepted) -------------------------
+
+    /** The customer opened this thread — staff sees "seen" with a timestamp. */
+    public static function markCustomerSeen(int $ticketId): void
+    {
+        Db::pdo()->prepare('UPDATE tickets SET customer_seen_at = NOW() WHERE id = ?')
+            ->execute([$ticketId]);
+    }
+
+    /**
+     * The customer downloaded an attachment: stamp it (first time only) and stop
+     * the "please read the offer" chase for that message.
+     */
+    public static function markDownloaded(int $messageId): void
+    {
+        Db::pdo()->prepare(
+            'UPDATE ticket_messages SET downloaded_at = NOW() WHERE id = ? AND downloaded_at IS NULL'
+        )->execute([$messageId]);
+        Db::pdo()->prepare(
+            "UPDATE reminders SET status = 'cancelled'
+             WHERE status = 'pending' AND rule_key = 'offer_read' AND dedupe_key LIKE ?"
+        )->execute(['offer_read:msg:' . $messageId . ':%']);
+    }
+
+    /**
+     * The customer accepts the offer (a staff message with a file): stamp it,
+     * stop the read-reminders, and notify + urge the agent to send the contract.
+     * Returns false if the message isn't an acceptable offer of this customer.
+     */
+    public static function acceptOffer(int $messageId, int $contactId): bool
+    {
+        $stmt = Db::pdo()->prepare(
+            "SELECT m.id, m.ticket_id, m.accepted_at, m.sender_type, t.contact_id, t.subject
+             FROM ticket_messages m JOIN tickets t ON t.id = m.ticket_id
+             WHERE m.id = ? AND m.attachment_path IS NOT NULL AND m.sender_type <> 'customer'"
+        );
+        $stmt->execute([$messageId]);
+        $m = $stmt->fetch();
+        if (!$m || (int)$m['contact_id'] !== $contactId) {
+            return false;
+        }
+        if (!empty($m['accepted_at'])) {
+            return true; // already accepted — idempotent
+        }
+        Db::pdo()->prepare('UPDATE ticket_messages SET accepted_at = NOW() WHERE id = ?')
+            ->execute([$messageId]);
+        Db::pdo()->prepare(
+            "UPDATE reminders SET status = 'cancelled'
+             WHERE status = 'pending' AND rule_key = 'offer_read' AND dedupe_key LIKE ?"
+        )->execute(['offer_read:msg:' . $messageId . ':%']);
+        Log::write('crm', 'offer_accepted', 'ticket', (int)$m['ticket_id'],
+            ['message_id' => $messageId, 'contact_id' => $contactId]);
+
+        // Urge the agent (or the office) to send the contract for signature.
+        $t = self::find((int)$m['ticket_id']);
+        if ($t) {
+            $agent = null;
+            if (!empty($t['assigned_agent_id'])) {
+                $q = Db::pdo()->prepare('SELECT full_name, username, email, phone FROM users WHERE id = ?');
+                $q->execute([(int)$t['assigned_agent_id']]);
+                $agent = $q->fetch() ?: null;
+            }
+            (new Scheduler())->enqueue([
+                'entity_type'    => 'contact',
+                'entity_id'      => $contactId,
+                'rule_key'       => 'offer_accepted',
+                'recipient_type' => 'agent',
+                'channel'        => 'both',
+                'due_at'         => date('Y-m-d H:i:s'),
+                'payload'        => [
+                    'name'          => trim((string)($agent['full_name'] ?? '')) ?: (string)($agent['username'] ?? ''),
+                    'customer_name' => (string)($t['customer_name'] ?? 'the customer'),
+                    'subject'       => (string)$t['subject'],
+                    'id'            => (string)$m['ticket_id'],
+                    'agent_phone'   => (string)($agent['phone'] ?? ''),
+                    'agent_email'   => (string)($agent['email'] ?? ''),
+                ],
+                'dedupe_key'     => 'offer_accepted:msg:' . $messageId,
+            ]);
+        }
+        return true;
+    }
+
+    /**
+     * Chase the customer to read + download the offer file: one reminder per
+     * configured day offset (reminders.offer_read_days, default day 2 and 5).
+     * Cancelled automatically when they download or accept the offer.
+     */
+    private static function armOfferReminders(int $ticketId, int $messageId): void
+    {
+        $t = self::find($ticketId);
+        if (!$t) {
+            return;
+        }
+        $token = Account::invite((int)$t['contact_id']);
+        $sched = new Scheduler();
+        $days = (array)Config::get('reminders.offer_read_days', [2, 5]);
+        foreach ($days as $d) {
+            $d = max(1, (int)$d);
+            $sched->enqueue([
+                'entity_type'    => 'contact',
+                'entity_id'      => (int)$t['contact_id'],
+                'rule_key'       => 'offer_read',
+                'recipient_type' => 'customer',
+                'channel'        => 'both',
+                'due_at'         => date('Y-m-d H:i:s', time() + $d * 86400),
+                'payload'        => [
+                    'subject' => (string)$t['subject'],
+                    'id'      => (string)$ticketId,
+                    'link'    => Account::magicLink($token),
+                ],
+                'dedupe_key'     => 'offer_read:msg:' . $messageId . ':d' . $d,
+            ]);
+        }
+    }
+
+    /** Contacts a staff member may start a conversation with (admin: everyone). */
+    public static function customersForStaff(?int $agentId = null): array
+    {
+        if ($agentId === null) {
+            return Db::pdo()->query(
+                'SELECT id, name, email, phone FROM contacts ORDER BY name ASC LIMIT 500'
+            )->fetchAll();
+        }
+        $stmt = Db::pdo()->prepare(
+            'SELECT DISTINCT c.id, c.name, c.email, c.phone FROM contacts c
+             WHERE EXISTS (SELECT 1 FROM deals d WHERE d.contact_id = c.id AND d.assigned_to = ?)
+                OR EXISTS (SELECT 1 FROM leads l WHERE l.contact_id = c.id AND l.assigned_to = ?)
+             ORDER BY c.name ASC LIMIT 500'
+        );
+        $stmt->execute([$agentId, $agentId]);
+        return $stmt->fetchAll();
     }
 
     // ---- reads ----------------------------------------------------------------

@@ -17,7 +17,29 @@ foreach ($rows as $r) {
 if (!$cur && $rows) { $cur = $rows[0]; $sel = (int)$cur['id']; }
 $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
 ?>
-<h2 style="margin-bottom:12px"><?= $h($t('nav_tickets')) ?></h2>
+<div class="tk-topbar">
+  <h2 style="margin:0"><?= $h($t('nav_tickets')) ?></h2>
+  <button class="btn tiny" type="button" onclick="document.getElementById('tk-new').classList.toggle('show')">+ <?= $h($t('tk_new_msg')) ?></button>
+</div>
+
+<div id="tk-new" class="card tk-newcard">
+  <form method="post" enctype="multipart/form-data">
+    <input type="hidden" name="do" value="ticket_open_staff"><input type="hidden" name="back" value="<?= $h($backTab) ?>">
+    <div class="tk-new-grid">
+      <label><?= $h($t('tk_to')) ?>
+        <select name="contact_id" required>
+          <option value=""><?= $h($t('tk_to')) ?>…</option>
+          <?php foreach (\Glue\Crm\Tickets::customersForStaff($scopeId ?? null) as $c): ?>
+            <option value="<?= (int)$c['id'] ?>"><?= $h($c['name'] ?: '#' . $c['id']) ?><?= $c['email'] ? ' · ' . $h($c['email']) : ($c['phone'] ? ' · ' . $h($c['phone']) : '') ?></option>
+          <?php endforeach; ?>
+        </select></label>
+      <label><?= $h($t('tk_subject_l')) ?><input name="subject" maxlength="190" required></label>
+    </div>
+    <label><?= $h($t('tk_reply')) ?><textarea name="body" rows="3"></textarea></label>
+    <label><?= $h($t('tk_attach')) ?><input type="file" name="attachment"></label>
+    <button class="btn tiny"><?= $h($t('tk_send')) ?></button>
+  </form>
+</div>
 
 <?php if (!$rows): ?>
   <div class="empty"><?= $h($t('none_yet')) ?></div>
@@ -70,7 +92,10 @@ $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
           <div class="muted small"><?= $h($cur['customer_name']) ?>
             <?= $cur['customer_phone'] ? ' · ' . $h($cur['customer_phone']) : '' ?>
             <?= $cur['customer_email'] ? ' · ' . $h($cur['customer_email']) : '' ?>
-            <?php if (empty($isAgent)): ?> · 👤 <?= $h($cur['agent_name'] ?: $cur['agent_username'] ?: $t('unassigned')) ?><?php endif; ?></div>
+            <?php if (empty($isAgent)): ?> · 👤 <?= $h($cur['agent_name'] ?: $cur['agent_username'] ?: $t('unassigned')) ?><?php endif; ?>
+            · <?= !empty($cur['customer_seen_at'])
+                ? '👁 ' . $h($t('tk_seen')) . ' ' . $h(short_time($cur['customer_seen_at']))
+                : $h($t('tk_not_seen')) ?></div>
         </div>
         <div class="tk-head-r">
           <?= pill($h, $cur['status'], $t) ?>
@@ -93,6 +118,16 @@ $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
             <?php if ((string)$m['body'] !== ''): ?><div class="msg-b"><?= nl2br($h($m['body'])) ?></div><?php endif; ?>
             <?php if (!empty($m['attachment_path'])): ?>
               <div class="msg-b"><a href="?dl=<?= $h($m['id']) ?>">📎 <?= $h($m['attachment_name'] ?: $t('tk_attachment')) ?></a></div>
+              <?php if ($mine): // our file — show the customer's receipts ?>
+                <div class="msg-rcpt<?= $m['downloaded_at'] ? ' ok' : '' ?>">
+                  <?= $m['downloaded_at']
+                      ? '📥 ' . $h($t('tk_downloaded')) . ' ' . $h(short_time($m['downloaded_at']))
+                      : '· ' . $h($t('tk_not_downloaded')) ?>
+                  <?php if (!empty($m['accepted_at'])): ?>
+                    <span class="msg-acc">✅ <?= $h($t('tk_accepted')) ?> <?= $h(short_time($m['accepted_at'])) ?></span>
+                  <?php endif; ?>
+                </div>
+              <?php endif; ?>
             <?php endif; ?>
             <div class="msg-m"><?= $h($m['sender_name'] ?: ($mine ? $t('tk_staff') : $t('th_customer'))) ?> · <?= $h(short_time($m['created_at'])) ?></div>
           </div>
@@ -123,6 +158,14 @@ $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
 <style>
 .tk-wrap{display:flex;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--surface);height:calc(100vh - 215px);min-height:440px}
 .tk-list{width:300px;flex-shrink:0;border-right:1px solid var(--line);overflow-y:auto}
+.tk-topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:12px}
+.tk-newcard{display:none;margin-bottom:14px}
+.tk-newcard.show{display:block}
+.tk-new-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px}
+@media (max-width:700px){.tk-new-grid{grid-template-columns:1fr}}
+.msg-rcpt{font-size:11.5px;color:var(--muted);margin-top:4px}
+.msg-rcpt.ok{color:#3ecf8e}
+.msg-acc{margin-left:8px;font-weight:700}
 .tk-group{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:8px 14px 7px;background:var(--surface2);border-bottom:1px solid var(--line);position:sticky;top:0;z-index:2}
 .tk-group-n{font-size:12px;font-weight:700;letter-spacing:.3px}
 .tk-group-c{font-size:11.5px;color:var(--muted)}
