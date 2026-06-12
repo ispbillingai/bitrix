@@ -433,14 +433,14 @@ body{font-family:'Inter',system-ui,Arial,sans-serif;background:var(--bg);color:v
 .top{display:flex;justify-content:space-between;align-items:center;padding:14px 24px;background:#fff;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:10}
 .brand{display:flex;align-items:center;gap:11px;font-size:16px}
 .brand-sub{color:var(--muted);font-size:12.5px;font-weight:500;border-left:1px solid var(--line);padding-left:11px}
-.logo{width:36px;height:36px;border-radius:10px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;box-shadow:0 4px 12px -4px rgba(91,108,255,.5)}
+.logo{width:36px;height:36px;border-radius:10px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:17px;box-shadow:0 4px 12px -4px rgba(91,108,255,.5)}
 .top-r{display:flex;align-items:center;gap:12px}
 .lang{display:inline-flex;background:#eef0f6;border-radius:9px;padding:3px}
 .lang a{padding:5px 11px;color:var(--muted);font-weight:700;font-size:12px;text-decoration:none;border-radius:7px;transition:.15s}
 .lang a.on{background:#fff;color:var(--accent);box-shadow:0 1px 3px rgba(28,37,51,.12)}
 
 /* ---- hero ---- */
-.hero{background:linear-gradient(120deg,#5b6cff 0%,#7c5bff 55%,#9a5bff 100%);color:#fff;padding:34px 24px 56px}
+.hero{background:var(--accent);color:#fff;padding:34px 24px 56px}
 .hero-in{max-width:760px;margin:0 auto;display:flex;align-items:center;gap:18px}
 .hero h1{font-size:25px;font-weight:800;letter-spacing:-.3px}
 .hero p{opacity:.85;font-size:14.5px;margin-top:2px}
@@ -462,7 +462,7 @@ h2:first-child{margin-top:0}
 label{display:block;margin:13px 0;font-size:13px;font-weight:600;color:#49536a}
 input,textarea{width:100%;margin-top:7px;padding:12px 14px;border:1.5px solid #dde2ec;border-radius:11px;font-size:15px;outline:none;background:#fbfcfe;font-family:inherit;transition:.15s}
 input:focus,textarea:focus{border-color:var(--accent);background:#fff;box-shadow:0 0 0 3px rgba(91,108,255,.13)}
-.btn{display:inline-block;margin-top:6px;padding:12px 20px;border:none;border-radius:11px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;font-weight:700;font-size:14.5px;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px -5px rgba(91,108,255,.55);transition:.15s}
+.btn{display:inline-block;margin-top:6px;padding:12px 20px;border:none;border-radius:11px;background:var(--accent);color:#fff;font-weight:700;font-size:14.5px;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px -5px rgba(91,108,255,.55);transition:.15s}
 .btn:hover{transform:translateY(-1px);box-shadow:0 7px 18px -5px rgba(91,108,255,.6)}
 .btn:active{transform:none}
 .btn.ghost{background:#eef0f6;color:#2a3344;margin-left:8px;box-shadow:none}
@@ -473,7 +473,7 @@ input:focus,textarea:focus{border-color:var(--accent);background:#fff;box-shadow
 /* ---- login ---- */
 .login{max-width:410px;margin:7vh auto 0;text-align:center;padding:34px 30px}
 .login form{text-align:left}
-.login-logo{width:58px;height:58px;border-radius:16px;margin:0 auto 16px;background:linear-gradient(135deg,var(--accent),var(--accent2));color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:26px;box-shadow:0 8px 20px -6px rgba(91,108,255,.55)}
+.login-logo{width:58px;height:58px;border-radius:16px;margin:0 auto 16px;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-weight:800;font-size:26px;box-shadow:0 8px 20px -6px rgba(91,108,255,.55)}
 .login h1{font-size:22px}
 .login-hint{display:flex;gap:9px;align-items:flex-start;text-align:left;margin-top:18px;padding:12px 14px;background:#f6f8ff;border:1px solid #e3e8ff;border-radius:11px;font-size:13px;color:#5a6477}
 
@@ -484,7 +484,7 @@ input:focus,textarea:focus{border-color:var(--accent);background:#fff;box-shadow
 .status{padding:5px 13px;border-radius:20px;font-size:12px;font-weight:700;white-space:nowrap;letter-spacing:.2px}
 .status.green{background:#e2f7ea;color:#188a4c}.status.amber{background:#fdf1d7;color:#a87908}
 .status.blue{background:#e8ecff;color:#4453d6}.status.grey{background:#eef0f4;color:#7b8494}
-.sign-box{background:linear-gradient(180deg,#f7f9ff,#f2f5ff);border:1.5px dashed #b9c2f5;border-radius:13px;padding:18px;margin-top:10px;text-align:center}
+.sign-box{background:#f5f7ff;border:1.5px dashed #b9c2f5;border-radius:13px;padding:18px;margin-top:10px;text-align:center}
 .sign-box p{font-weight:600;font-size:14px;margin-bottom:10px}
 .code{letter-spacing:9px;text-align:center;font-size:24px;font-weight:800;max-width:220px;margin:0 auto 6px;display:block}
 .ok-line{display:inline-flex;align-items:center;gap:7px;color:#188a4c;font-weight:700;margin-top:10px;background:#e2f7ea;padding:8px 14px;border-radius:10px;font-size:14px}
@@ -504,7 +504,7 @@ input:focus,textarea:focus{border-color:var(--accent);background:#fff;box-shadow
 .chat{display:flex;flex-direction:column;gap:9px;margin:14px 0;max-height:340px;overflow-y:auto;padding-right:4px}
 .msg{max-width:80%;padding:10px 14px;border-radius:15px;font-size:14px;line-height:1.5}
 .msg .msg-m{font-size:11px;color:#8a93a6;margin-top:5px}
-.msg.me{align-self:flex-end;background:linear-gradient(135deg,#e9ecff,#eee9ff);border-bottom-right-radius:4px}
+.msg.me{align-self:flex-end;background:#e9ecff;border-bottom-right-radius:4px}
 .msg.them{align-self:flex-start;background:#f1f3f8;border-bottom-left-radius:4px}
 .reply{display:flex;gap:9px;margin-top:8px}.reply input{margin:0}.reply .btn{margin:0;flex-shrink:0}
 
