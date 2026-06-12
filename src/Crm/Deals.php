@@ -185,10 +185,13 @@ final class Deals
         )->fetchAll();
     }
 
-    /** Open deals grouped by stage_code (for the kanban board). $assignedTo scopes to one seller. */
+    /** Deals grouped by stage_code (for the kanban board). $assignedTo scopes to one seller. */
     public static function byStage(?int $assignedTo = null): array
     {
-        $where = "WHERE d.status = 'open'" . ($assignedTo ? ' AND d.assigned_to = ' . (int)$assignedTo : '');
+        // Open deals always; won/lost stay on the board for 60 days so a fresh
+        // signature shows up in the Won column instead of vanishing.
+        $where = "WHERE (d.status = 'open' OR d.updated_at >= DATE_SUB(NOW(), INTERVAL 60 DAY))"
+            . ($assignedTo ? ' AND d.assigned_to = ' . (int)$assignedTo : '');
         $rows = Db::pdo()->query(
             "SELECT d.*, u.username AS agent_username, u.full_name AS agent_name
              FROM deals d LEFT JOIN users u ON u.id = d.assigned_to
