@@ -114,16 +114,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     }
 
     if ($cid && $do === 'ticket_open') {
+        $att = Tickets::storeUpload($_FILES['attachment'] ?? null, $attErr);
+        if ($attErr !== null) {
+            $prg($t('att_' . $attErr), 'err', 'portal.php?page=support');
+        }
         if (trim((string)($_POST['body'] ?? '')) !== '') {
-            $tid = Tickets::open($cid, (string)($_POST['subject'] ?? ''), (string)$_POST['body'],
-                null, Tickets::storeUpload($_FILES['attachment'] ?? null));
+            $tid = Tickets::open($cid, (string)($_POST['subject'] ?? ''), (string)$_POST['body'], null, $att);
             $prg($t('tk_opened'), 'ok', 'portal.php?page=support&tk=' . $tid);
         }
         $prg($t('err_generic'), 'err', 'portal.php?page=support');
     }
     if ($cid && $do === 'ticket_reply') {
         $tid = (int)($_POST['ticket_id'] ?? 0);
-        $att = Tickets::storeUpload($_FILES['attachment'] ?? null);
+        $att = Tickets::storeUpload($_FILES['attachment'] ?? null, $attErr);
+        if ($attErr !== null) {
+            $prg($t('att_' . $attErr), 'err', 'portal.php?page=support&tk=' . $tid);
+        }
         if (owns_ticket($cid, $tid)
             && Tickets::reply($tid, 'customer', $cid, (string)($me['name'] ?? ''), (string)($_POST['body'] ?? ''), $att)) {
             $prg($t('tk_sent'), 'ok', 'portal.php?page=support&tk=' . $tid);
@@ -463,6 +469,9 @@ function portal_strings(string $lang): array
         'tk_closed_note' => 'This request is closed. Open a new one if you still need help.',
         'tkst_open' => 'Open', 'tkst_pending' => 'Replied', 'tkst_closed' => 'Closed',
         'tk_msgs' => 'messages', 'back' => 'All requests', 'no_appts' => 'No appointments yet.',
+        'att_too_big' => 'The file is too large (max 10 MB).',
+        'att_bad_type' => 'This file type is not allowed. Use images, PDF, Office documents, txt or zip.',
+        'att_save_failed' => 'The file could not be saved — please try again.',
     ];
     $it = [
         'portal' => 'Area clienti', 'welcome' => 'Benvenuto', 'logout' => 'Esci',
@@ -494,6 +503,9 @@ function portal_strings(string $lang): array
         'tk_closed_note' => 'Questa richiesta è chiusa. Aprine una nuova se hai ancora bisogno.',
         'tkst_open' => 'Aperta', 'tkst_pending' => 'Risposta', 'tkst_closed' => 'Chiusa',
         'tk_msgs' => 'messaggi', 'back' => 'Tutte le richieste', 'no_appts' => 'Ancora nessun appuntamento.',
+        'att_too_big' => 'Il file è troppo grande (max 10 MB).',
+        'att_bad_type' => 'Tipo di file non consentito. Usa immagini, PDF, documenti Office, txt o zip.',
+        'att_save_failed' => 'Impossibile salvare il file — riprova.',
     ];
     return $lang === 'it' ? $it : $en;
 }

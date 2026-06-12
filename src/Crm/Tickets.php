@@ -112,26 +112,42 @@ final class Tickets
     /**
      * Validate + store a $_FILES entry. Returns ['path' => stored-filename,
      * 'name' => original-filename] or null if nothing usable was uploaded.
+     * $err is set to 'too_big' | 'bad_type' | 'save_failed' when a file WAS
+     * chosen but couldn't be stored (null + empty $err = no file chosen).
      */
-    public static function storeUpload(?array $file): ?array
+    public static function storeUpload(?array $file, ?string &$err = null): ?array
     {
-        if (!$file || ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_OK) {
+        $err = null;
+        $code = (int)($file['error'] ?? UPLOAD_ERR_NO_FILE);
+        if (!$file || $code === UPLOAD_ERR_NO_FILE) {
+            return null;
+        }
+        if ($code === UPLOAD_ERR_INI_SIZE || $code === UPLOAD_ERR_FORM_SIZE) {
+            $err = 'too_big';
+            return null;
+        }
+        if ($code !== UPLOAD_ERR_OK) {
+            $err = 'save_failed';
             return null;
         }
         if ((int)$file['size'] <= 0 || (int)$file['size'] > self::UPLOAD_MAX_BYTES) {
+            $err = 'too_big';
             return null;
         }
         $orig = (string)($file['name'] ?? 'file');
         $ext = strtolower(pathinfo($orig, PATHINFO_EXTENSION));
         if (!in_array($ext, self::UPLOAD_EXT, true)) {
+            $err = 'bad_type';
             return null;
         }
         $dir = self::uploadDir();
         if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
+            $err = 'save_failed';
             return null;
         }
         $stored = bin2hex(random_bytes(16)) . '.' . $ext;
         if (!move_uploaded_file((string)$file['tmp_name'], $dir . '/' . $stored)) {
+            $err = 'save_failed';
             return null;
         }
         return ['path' => $stored, 'name' => mb_substr($orig, 0, 190)];

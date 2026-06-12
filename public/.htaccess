@@ -1,0 +1,10 @@
+# Raise upload limits when PHP runs as an Apache module
+# (FPM/CGI hosts use .user.ini instead).
+<IfModule mod_php.c>
+php_value upload_max_filesize 12M
+php_value post_max_size 14M
+</IfModule>
+<IfModule mod_php7.c>
+php_value upload_max_filesize 12M
+php_value post_max_size 14M
+</IfModule>

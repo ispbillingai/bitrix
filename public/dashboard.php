@@ -341,9 +341,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // ---------- tickets ----------
             case 'ticket_reply':
                 $senderName = (string)($_SESSION['glue_user']['full_name'] ?? $_SESSION['glue_user']['username'] ?? 'Staff');
-                $ok = Tickets::reply((int)$_POST['id'], $isAgent ? 'agent' : 'admin', $uid, $senderName,
-                    (string)($_POST['body'] ?? ''), Tickets::storeUpload($_FILES['attachment'] ?? null));
-                $flash = $ok ? $t('saved') : $t('test_fail');
+                $att = Tickets::storeUpload($_FILES['attachment'] ?? null, $attErr);
+                $ok = $attErr === null && Tickets::reply((int)$_POST['id'], $isAgent ? 'agent' : 'admin', $uid, $senderName,
+                    (string)($_POST['body'] ?? ''), $att);
+                $flash = $ok ? $t('saved')
+                    : ($attErr === 'too_big' ? 'File too large (max 10 MB).'
+                        : ($attErr === 'bad_type' ? 'File type not allowed.'
+                            : ($attErr === 'save_failed' ? 'Could not save the file.' : $t('test_fail'))));
                 $flashType = $ok ? 'ok' : 'err';
                 $tab = ($_POST['back'] ?? '') === 'messages' ? 'messages' : 'tickets';
                 break;
