@@ -78,6 +78,18 @@ $flash = null;
 $flashType = 'ok';
 $signFor = 0; // deal id we're currently entering a code for
 
+// flash left by a previous redirect (post/redirect/get)
+if (!empty($_SESSION['portal_flash'])) {
+    [$flash, $flashType] = $_SESSION['portal_flash'];
+    unset($_SESSION['portal_flash']);
+}
+/** Store a flash and redirect — so a browser refresh can never repost the form. */
+$prg = static function (string $msg, string $type, string $to): never {
+    $_SESSION['portal_flash'] = [$msg, $type];
+    header('Location: ' . $to);
+    exit;
+};
+
 // ---- POST actions ----
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $do = $_POST['do'] ?? '';
@@ -96,30 +108,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     if ($cid && $do === 'set_password') {
         if (Account::setPassword($cid, (string)($_POST['password'] ?? ''))) {
-            $flash = $t('pw_saved');
-        } else {
-            $flash = $t('pw_short');
-            $flashType = 'err';
+            $prg($t('pw_saved'), 'ok', 'portal.php?page=account');
         }
+        $prg($t('pw_short'), 'err', 'portal.php?page=account');
     }
 
     if ($cid && $do === 'ticket_open') {
         if (trim((string)($_POST['body'] ?? '')) !== '') {
-            Tickets::open($cid, (string)($_POST['subject'] ?? ''), (string)$_POST['body'],
+            $tid = Tickets::open($cid, (string)($_POST['subject'] ?? ''), (string)$_POST['body'],
                 null, Tickets::storeUpload($_FILES['attachment'] ?? null));
-            $flash = $t('tk_opened');
+            $prg($t('tk_opened'), 'ok', 'portal.php?page=support&tk=' . $tid);
         }
+        $prg($t('err_generic'), 'err', 'portal.php?page=support');
     }
     if ($cid && $do === 'ticket_reply') {
         $tid = (int)($_POST['ticket_id'] ?? 0);
         $att = Tickets::storeUpload($_FILES['attachment'] ?? null);
         if (owns_ticket($cid, $tid)
             && Tickets::reply($tid, 'customer', $cid, (string)($me['name'] ?? ''), (string)($_POST['body'] ?? ''), $att)) {
-            $flash = $t('tk_sent');
-        } else {
-            $flash = $t('err_generic');
-            $flashType = 'err';
+            $prg($t('tk_sent'), 'ok', 'portal.php?page=support&tk=' . $tid);
         }
+        $prg($t('err_generic'), 'err', 'portal.php?page=support');
     }
 
     // signing — only ever on a deal that belongs to this customer
@@ -162,43 +171,38 @@ if ($cid) {
 }
 $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
 
+// ---- page routing (one section per page, like a normal app) ----
+$pages = ['orders', 'appointments', 'support', 'account'];
+$page = in_array($_GET['page'] ?? '', $pages, true) ? (string)$_GET['page'] : 'orders';
+if ($signFor) {
+    $page = 'orders'; // an OTP form mid-flight always renders on the orders page
+}
+$titles = ['orders' => $t('your_orders'), 'appointments' => $t('your_appts'),
+           'support' => $t('support'), 'account' => $t('account')];
+$icons  = ['orders' => '📦', 'appointments' => '📅', 'support' => '💬', 'account' => '🔒'];
+
+// selected support conversation (?tk=) — only if it belongs to this customer
+$tkSel = (int)($_GET['tk'] ?? ($_POST['ticket_id'] ?? 0));
+$tkCur = null;
+foreach ($tickets as $tk0) {
+    if ((int)$tk0['id'] === $tkSel) { $tkCur = $tk0; break; }
+}
+
 ?><!DOCTYPE html><html lang="<?= $h($lang) ?>"><head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <title><?= $h($brand) ?> — <?= $h($t('portal')) ?></title>
 <?php portal_css(); ?></head>
 <body>
+<?php if (!$cid): ?>
 <header class="top">
   <div class="brand"><span class="logo"><?= $h(strtoupper(substr($brand, 0, 1)) ?: 'C') ?></span><strong><?= $h($brand) ?></strong><span class="brand-sub"><?= $h($t('portal')) ?></span></div>
-  <div class="top-r">
-    <span class="lang">
-      <a class="<?= $lang === 'en' ? 'on' : '' ?>" href="?lang=en">EN</a>
-      <a class="<?= $lang === 'it' ? 'on' : '' ?>" href="?lang=it">IT</a>
-    </span>
-    <?php if ($cid): ?><a class="btn ghost sm" href="?action=logout"><?= $h($t('logout')) ?></a><?php endif; ?>
-  </div>
+  <span class="lang">
+    <a class="<?= $lang === 'en' ? 'on' : '' ?>" href="?lang=en">EN</a>
+    <a class="<?= $lang === 'it' ? 'on' : '' ?>" href="?lang=it">IT</a>
+  </span>
 </header>
-<div class="shell">
-<?php if ($cid): ?>
-<aside class="side">
-  <div class="side-user">
-    <div class="avatar"><?= $h(strtoupper(substr((string)($me['name'] ?? ''), 0, 1)) ?: '☺') ?></div>
-    <div class="side-user-t"><b><?= $h($me['name'] ?: '') ?></b>
-      <span class="muted small"><?= $h($me['email'] ?: $me['phone'] ?: '') ?></span></div>
-  </div>
-  <nav>
-    <a href="#orders"><span class="nav-ic">📦</span><?= $h($t('your_orders')) ?></a>
-    <?php if ($appts): ?><a href="#appointments"><span class="nav-ic">📅</span><?= $h($t('your_appts')) ?></a><?php endif; ?>
-    <a href="#support"><span class="nav-ic">💬</span><?= $h($t('support')) ?></a>
-    <a href="#account"><span class="nav-ic">🔒</span><?= $h($t('account')) ?></a>
-  </nav>
-</aside>
-<?php endif; ?>
-
-<main class="wrap">
-<?php if ($flash): ?><div class="flash <?= $flashType === 'err' ? 'err' : '' ?>"><?= $h($flash) ?></div><?php endif; ?>
-
-<?php if (!$cid): ?>
-  <!-- ---------- login ---------- -->
+<main class="auth">
+  <?php if ($flash): ?><div class="flash <?= $flashType === 'err' ? 'err' : '' ?>"><?= $h($flash) ?></div><?php endif; ?>
   <div class="card login">
     <div class="login-logo"><?= $h(strtoupper(substr($brand, 0, 1)) ?: 'C') ?></div>
     <h1><?= $h($t('welcome')) ?></h1>
@@ -211,14 +215,39 @@ $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
     </form>
     <div class="login-hint"><span>✉️</span><?= $h($t('login_hint')) ?></div>
   </div>
+</main>
 <?php else: ?>
-  <!-- ---------- customer home ---------- -->
-  <div class="page-h">
-    <h1><?= $h($t('hello')) ?>, <?= $h($me['name'] ?: '') ?></h1>
-    <p class="muted"><?= $h($t('home_sub')) ?></p>
+<div class="app">
+<aside class="side">
+  <div class="side-brand"><span class="logo"><?= $h(strtoupper(substr($brand, 0, 1)) ?: 'C') ?></span><b><?= $h($brand) ?></b></div>
+  <nav>
+    <?php foreach ($pages as $p): ?>
+      <a class="<?= $page === $p ? 'active' : '' ?>" href="?page=<?= $h($p) ?>">
+        <span class="nav-ic"><?= $icons[$p] ?></span><?= $h($titles[$p]) ?></a>
+    <?php endforeach; ?>
+  </nav>
+  <div class="side-foot">
+    <div class="side-user">
+      <div class="avatar"><?= $h(strtoupper(substr((string)($me['name'] ?? ''), 0, 1)) ?: '☺') ?></div>
+      <div class="side-user-t"><b><?= $h($me['name'] ?: '') ?></b>
+        <span class="muted small"><?= $h($me['email'] ?: $me['phone'] ?: '') ?></span></div>
+    </div>
+    <div class="side-actions">
+      <span class="lang">
+        <a class="<?= $lang === 'en' ? 'on' : '' ?>" href="?page=<?= $h($page) ?>&lang=en">EN</a>
+        <a class="<?= $lang === 'it' ? 'on' : '' ?>" href="?page=<?= $h($page) ?>&lang=it">IT</a>
+      </span>
+      <a class="btn ghost sm" href="?action=logout"><?= $h($t('logout')) ?></a>
+    </div>
   </div>
+</aside>
 
-  <h2 id="orders"><span class="sec-ic">📦</span><?= $h($t('your_orders')) ?></h2>
+<div class="main">
+<header class="bar"><b><?= $h($titles[$page]) ?></b></header>
+<div class="content">
+<?php if ($flash): ?><div class="flash <?= $flashType === 'err' ? 'err' : '' ?>"><?= $h($flash) ?></div><?php endif; ?>
+
+<?php if ($page === 'orders'): ?>
   <?php if (!$deals): ?><div class="empty"><?= $h($t('no_orders')) ?></div><?php endif; ?>
   <?php foreach ($deals as $d):
       $signed   = !empty($d['signed_at']) || $d['status'] === 'won';
@@ -266,20 +295,55 @@ $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
     </div>
   <?php endforeach; ?>
 
-  <?php if ($appts): ?>
-    <h2 id="appointments"><span class="sec-ic">📅</span><?= $h($t('your_appts')) ?></h2>
-    <?php foreach ($appts as $a): $when = $a['starts_at'] ?: $a['preferred_at']; ?>
-      <div class="card row-line">
-        <div><b><?= $h($when ? date('D d M Y, H:i', strtotime((string)$when)) : $t('to_be_scheduled')) ?></b>
-          <div class="muted small"><?= $h($a['title'] ?: $t('appointment')) ?><?= $a['location'] ? ' · ' . $h($a['location']) : '' ?></div></div>
-        <span class="status <?= $a['status'] === 'confirmed' ? 'green' : 'amber' ?>"><?= $h($t('appt_' . $a['status']) !== 'appt_' . $a['status'] ? $t('appt_' . $a['status']) : $a['status']) ?></span>
-      </div>
-    <?php endforeach; ?>
-  <?php endif; ?>
+<?php elseif ($page === 'appointments'): ?>
+  <?php if (!$appts): ?><div class="empty"><?= $h($t('no_appts')) ?></div><?php endif; ?>
+  <?php foreach ($appts as $a): $when = $a['starts_at'] ?: $a['preferred_at']; ?>
+    <div class="card row-line">
+      <div><b><?= $h($when ? date('D d M Y, H:i', strtotime((string)$when)) : $t('to_be_scheduled')) ?></b>
+        <div class="muted small"><?= $h($a['title'] ?: $t('appointment')) ?><?= $a['location'] ? ' · ' . $h($a['location']) : '' ?></div></div>
+      <span class="status <?= $a['status'] === 'confirmed' ? 'green' : 'amber' ?>"><?= $h($t('appt_' . $a['status']) !== 'appt_' . $a['status'] ? $t('appt_' . $a['status']) : $a['status']) ?></span>
+    </div>
+  <?php endforeach; ?>
 
-  <h2 id="support"><span class="sec-ic">💬</span><?= $h($t('support')) ?></h2>
+<?php elseif ($page === 'support' && $tkCur):
+    // ---------- one conversation, Gmail-style ----------
+    $thread = Tickets::thread((int)$tkCur['id']); ?>
+  <a class="backlink" href="?page=support">← <?= $h($t('back')) ?></a>
+  <div class="card chatcard">
+    <div class="order-h">
+      <b><?= $h($tkCur['subject']) ?></b>
+      <span class="status <?= $tkCur['status'] === 'closed' ? 'grey' : ($tkCur['last_sender'] === 'customer' ? 'amber' : 'blue') ?>"><?= $h($t('tkst_' . $tkCur['status'])) ?></span>
+    </div>
+    <div class="chat" id="chat">
+      <?php foreach ($thread as $m): $mine = $m['sender_type'] === 'customer'; ?>
+        <div class="msg <?= $mine ? 'me' : 'them' ?>">
+          <?php if ((string)$m['body'] !== ''): ?><div><?= nl2br($h($m['body'])) ?></div><?php endif; ?>
+          <?php if (!empty($m['attachment_path'])): ?>
+            <div><a href="?dl=<?= $h($m['id']) ?>">📎 <?= $h($m['attachment_name'] ?: $t('tk_attachment')) ?></a></div>
+          <?php endif; ?>
+          <div class="msg-m"><?= $h($mine ? $t('tk_you') : ($m['sender_name'] ?: $brand)) ?> · <?= $h(date('d/m H:i', strtotime((string)$m['created_at']))) ?></div>
+        </div>
+      <?php endforeach; ?>
+    </div>
+    <?php if ($tkCur['status'] !== 'closed'): ?>
+      <form method="post" enctype="multipart/form-data" class="reply">
+        <input type="hidden" name="do" value="ticket_reply"><input type="hidden" name="ticket_id" value="<?= $h($tkCur['id']) ?>">
+        <input name="body" placeholder="<?= $h($t('tk_reply_ph')) ?>">
+        <label class="att" title="<?= $h($t('tk_attach')) ?>">📎<input type="file" name="attachment"
+          onchange="document.getElementById('fn').textContent=this.files.length?this.files[0].name:''"></label>
+        <button class="btn"><?= $h($t('tk_send')) ?></button>
+      </form>
+      <div class="muted small" id="fn" style="margin-top:6px"></div>
+    <?php else: ?>
+      <p class="muted small" style="margin-top:10px"><?= $h($t('tk_closed_note')) ?></p>
+    <?php endif; ?>
+  </div>
+  <script>(function(){var c=document.getElementById('chat');if(c)c.scrollTop=c.scrollHeight;})();</script>
+
+<?php elseif ($page === 'support'): ?>
+  <!-- ---------- conversation list ---------- -->
   <div class="card">
-    <details>
+    <details<?= !$tickets ? ' open' : '' ?>>
       <summary class="newreq"><?= $h($t('tk_new')) ?></summary>
       <form method="post" enctype="multipart/form-data" style="margin-top:12px">
         <input type="hidden" name="do" value="ticket_open">
@@ -290,37 +354,22 @@ $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
       </form>
     </details>
   </div>
-  <?php foreach ($tickets as $tk): $thread = \Glue\Crm\Tickets::thread((int)$tk['id']); ?>
-    <div class="card">
-      <div class="order-h">
-        <b><?= $h($tk['subject']) ?></b>
-        <span class="status <?= $tk['status'] === 'closed' ? 'grey' : ($tk['last_sender'] === 'customer' ? 'amber' : 'blue') ?>"><?= $h($t('tkst_' . $tk['status'])) ?></span>
-      </div>
-      <div class="chat">
-        <?php foreach ($thread as $m): $mine = $m['sender_type'] === 'customer'; ?>
-          <div class="msg <?= $mine ? 'me' : 'them' ?>">
-            <?php if ((string)$m['body'] !== ''): ?><div><?= nl2br($h($m['body'])) ?></div><?php endif; ?>
-            <?php if (!empty($m['attachment_path'])): ?>
-              <div><a href="?dl=<?= $h($m['id']) ?>">📎 <?= $h($m['attachment_name'] ?: $t('tk_attachment')) ?></a></div>
-            <?php endif; ?>
-            <div class="msg-m"><?= $h($mine ? $t('tk_you') : ($m['sender_name'] ?: $brand)) ?> · <?= $h(date('d/m H:i', strtotime((string)$m['created_at']))) ?></div>
-          </div>
-        <?php endforeach; ?>
-      </div>
-      <?php if ($tk['status'] !== 'closed'): ?>
-        <form method="post" enctype="multipart/form-data" class="reply">
-          <input type="hidden" name="do" value="ticket_reply"><input type="hidden" name="ticket_id" value="<?= $h($tk['id']) ?>">
-          <input name="body" placeholder="<?= $h($t('tk_reply_ph')) ?>">
-          <label class="att" title="<?= $h($t('tk_attach')) ?>">📎<input type="file" name="attachment"></label>
-          <button class="btn"><?= $h($t('tk_send')) ?></button>
-        </form>
-      <?php else: ?>
-        <p class="muted small"><?= $h($t('tk_closed_note')) ?></p>
-      <?php endif; ?>
+  <?php if ($tickets): ?>
+    <div class="tlist">
+      <?php foreach ($tickets as $tk): $unread = $tk['last_sender'] !== 'customer' && $tk['status'] !== 'closed'; ?>
+        <a class="trow<?= $unread ? ' unread' : '' ?>" href="?page=support&tk=<?= $h($tk['id']) ?>">
+          <span class="trow-l"><b><?= $h($tk['subject']) ?></b>
+            <span class="muted small"><?= (int)$tk['msgs'] ?> <?= $h($t('tk_msgs')) ?></span></span>
+          <span class="trow-r">
+            <span class="muted small"><?= $h(date('d/m/Y', strtotime((string)$tk['updated_at']))) ?></span>
+            <span class="status <?= $tk['status'] === 'closed' ? 'grey' : ($tk['last_sender'] === 'customer' ? 'amber' : 'blue') ?>"><?= $h($t('tkst_' . $tk['status'])) ?></span>
+          </span>
+        </a>
+      <?php endforeach; ?>
     </div>
-  <?php endforeach; ?>
+  <?php endif; ?>
 
-  <h2 id="account"><span class="sec-ic">🔒</span><?= $h($t('account')) ?></h2>
+<?php elseif ($page === 'account'): ?>
   <div class="card">
     <form method="post" class="pw">
       <input type="hidden" name="do" value="set_password">
@@ -331,9 +380,10 @@ $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
     <p class="muted small"><?= $h($t('pw_help')) ?></p>
   </div>
 <?php endif; ?>
-</main>
-</div>
-<footer class="foot muted small"><?= $h($brand) ?></footer>
+</div><!-- /content -->
+</div><!-- /main -->
+</div><!-- /app -->
+<?php endif; ?>
 </body></html>
 <?php
 
@@ -412,6 +462,7 @@ function portal_strings(string $lang): array
         'tk_opened' => 'Your request has been sent. We will get back to you.', 'tk_sent' => 'Message sent.',
         'tk_closed_note' => 'This request is closed. Open a new one if you still need help.',
         'tkst_open' => 'Open', 'tkst_pending' => 'Replied', 'tkst_closed' => 'Closed',
+        'tk_msgs' => 'messages', 'back' => 'All requests', 'no_appts' => 'No appointments yet.',
     ];
     $it = [
         'portal' => 'Area clienti', 'welcome' => 'Benvenuto', 'logout' => 'Esci',
@@ -442,6 +493,7 @@ function portal_strings(string $lang): array
         'tk_opened' => 'La tua richiesta è stata inviata. Ti risponderemo a breve.', 'tk_sent' => 'Messaggio inviato.',
         'tk_closed_note' => 'Questa richiesta è chiusa. Aprine una nuova se hai ancora bisogno.',
         'tkst_open' => 'Aperta', 'tkst_pending' => 'Risposta', 'tkst_closed' => 'Chiusa',
+        'tk_msgs' => 'messaggi', 'back' => 'Tutte le richieste', 'no_appts' => 'Ancora nessun appuntamento.',
     ];
     return $lang === 'it' ? $it : $en;
 }
@@ -468,28 +520,43 @@ body{font-family:'Inter',system-ui,Arial,sans-serif;background:var(--bg);color:v
 .lang a{padding:5px 11px;color:var(--muted);font-weight:700;font-size:12px;text-decoration:none;border-radius:7px;transition:.15s}
 .lang a.on{background:#fff;color:var(--accent);box-shadow:0 1px 3px rgba(28,37,51,.12)}
 
-/* ---- shell: sidebar + content ---- */
-.shell{display:flex;max-width:1080px;margin:0 auto;align-items:flex-start;gap:28px;padding:28px 20px 0}
-.side{width:248px;flex-shrink:0;position:sticky;top:80px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:var(--shadow)}
-.side-user{display:flex;align-items:center;gap:12px;padding:4px 6px 14px;border-bottom:1px solid var(--line);margin-bottom:10px}
-.side-user-t{min-width:0;display:flex;flex-direction:column}
-.side-user-t b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.side-user-t span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.avatar{width:42px;height:42px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;flex-shrink:0}
-.side nav{display:flex;flex-direction:column;gap:2px}
+/* ---- app shell: full-height fixed sidebar + content (Bitrix-style) ---- */
+.app{display:flex;min-height:100vh}
+.side{width:250px;flex-shrink:0;display:flex;flex-direction:column;background:#fff;border-right:1px solid var(--line);position:sticky;top:0;height:100vh}
+.side-brand{display:flex;align-items:center;gap:11px;padding:18px 18px 16px;border-bottom:1px solid var(--line);font-size:15px}
+.side nav{flex:1;display:flex;flex-direction:column;gap:2px;padding:12px 10px;overflow-y:auto}
 .side nav a{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:10px;color:#49536a;font-weight:600;font-size:14px;text-decoration:none;transition:.12s}
 .side nav a:hover{background:#f1f3fa;color:var(--ink)}
+.side nav a.active{background:var(--accent);color:#fff}
+.side nav a.active .nav-ic{background:rgba(255,255,255,.18)}
 .nav-ic{width:28px;height:28px;border-radius:8px;background:#f1f3fa;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.side-foot{border-top:1px solid var(--line);padding:14px}
+.side-user{display:flex;align-items:center;gap:11px;margin-bottom:12px}
+.side-user-t{min-width:0;display:flex;flex-direction:column}
+.side-user-t b{font-size:13.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side-user-t span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.avatar{width:38px;height:38px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:16px;font-weight:800;flex-shrink:0}
+.side-actions{display:flex;align-items:center;justify-content:space-between;gap:10px}
 
-/* ---- layout ---- */
-.wrap{flex:1;min-width:0;max-width:760px;margin:0 auto;padding:0 0 60px}
-.page-h{margin-bottom:22px}
+/* ---- main column ---- */
+.main{flex:1;min-width:0;display:flex;flex-direction:column}
+.bar{background:#fff;border-bottom:1px solid var(--line);padding:16px 28px;font-size:17px;position:sticky;top:0;z-index:5}
+.content{flex:1;max-width:840px;width:100%;padding:24px 28px 60px}
 h1{font-size:24px;margin-bottom:4px;letter-spacing:-.3px}
-h2{font-size:16px;margin:30px 0 12px;display:flex;align-items:center;gap:9px;letter-spacing:-.2px;scroll-margin-top:80px}
-h2:first-child{margin-top:0}
-html{scroll-behavior:smooth}
-.sec-ic{width:30px;height:30px;border-radius:9px;background:#fff;border:1px solid var(--line);display:inline-flex;align-items:center;justify-content:center;font-size:15px;box-shadow:var(--shadow)}
 .muted{color:var(--muted)}.small{font-size:13px}
+.backlink{display:inline-block;margin-bottom:14px;color:var(--accent);font-weight:700;font-size:13.5px;text-decoration:none}
+.backlink:hover{text-decoration:underline}
+
+/* ---- support: request list (Gmail-style) ---- */
+.tlist{background:#fff;border:1px solid var(--line);border-radius:16px;overflow:hidden;box-shadow:var(--shadow)}
+.trow{display:flex;justify-content:space-between;align-items:center;gap:14px;padding:15px 18px;text-decoration:none;color:var(--ink);border-bottom:1px solid var(--line);transition:.12s}
+.trow:last-child{border-bottom:none}
+.trow:hover{background:#f7f8fc}
+.trow-l{min-width:0;display:flex;flex-direction:column;gap:2px}
+.trow-l b{font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.trow-r{display:flex;align-items:center;gap:12px;flex-shrink:0}
+.trow.unread b{color:var(--accent)}
+.trow.unread::before{content:'';width:8px;height:8px;border-radius:50%;background:var(--accent);flex-shrink:0;order:-1}
 
 /* ---- cards ---- */
 .card{background:var(--card);border:1px solid var(--line);border-radius:16px;padding:20px 22px;margin-bottom:14px;box-shadow:var(--shadow)}
@@ -538,6 +605,7 @@ input:focus,textarea:focus{border-color:var(--accent);background:#fff;box-shadow
 .newreq::-webkit-details-marker{display:none}
 .newreq::before{content:'';display:none}
 .chat{display:flex;flex-direction:column;gap:9px;margin:14px 0;max-height:340px;overflow-y:auto;padding-right:4px}
+.chatcard .chat{max-height:60vh;min-height:200px}
 .msg{max-width:80%;padding:10px 14px;border-radius:15px;font-size:14px;line-height:1.5}
 .msg .msg-m{font-size:11px;color:#8a93a6;margin-top:5px}
 .msg.me{align-self:flex-end;background:#e9ecff;border-bottom-right-radius:4px}
@@ -549,13 +617,17 @@ input[type=file]{padding:9px;background:#fbfcfe}
 .msg a{color:#4453d6;font-weight:600}
 
 @media (max-width:860px){
-  .shell{flex-direction:column;gap:18px;padding:18px 16px 0}
-  .side{width:100%;position:static;padding:12px}
-  .side-user{display:none}
-  .side nav{flex-direction:row;overflow-x:auto;gap:6px}
+  .app{flex-direction:column}
+  .side{width:100%;height:auto;position:static;flex-direction:row;align-items:center;border-right:none;border-bottom:1px solid var(--line);padding:0 8px}
+  .side-brand{border-bottom:none;padding:12px 10px}
+  .side-brand b{display:none}
+  .side nav{flex-direction:row;overflow-x:auto;padding:8px 4px;gap:4px}
   .side nav a{white-space:nowrap;padding:8px 12px}
   .nav-ic{display:none}
-  .wrap{max-width:none;width:100%}
+  .side-foot{border-top:none;padding:8px;display:flex;align-items:center;gap:8px}
+  .side-user{display:none}
+  .content{padding:18px 16px 50px}
+  .bar{padding:14px 16px}
 }
 @media (max-width:560px){
   .top{padding:12px 16px}
@@ -563,6 +635,7 @@ input[type=file]{padding:9px;background:#fbfcfe}
   h1{font-size:21px}
   .order-b{gap:22px}
   .msg{max-width:90%}
+  .trow-r .small{display:none}
 }
 </style>
 <?php }

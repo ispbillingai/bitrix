@@ -23,6 +23,19 @@ final class Tickets
         $agentId = self::agentForContact($contactId);
         $subject = trim($subject) !== '' ? mb_substr(trim($subject), 0, 190) : 'Support request';
 
+        // Same subject, still open → it's the same conversation: append, don't fork.
+        $dup = Db::pdo()->prepare(
+            'SELECT id FROM tickets WHERE contact_id = ? AND subject = ? AND status <> "closed"
+             ORDER BY id DESC LIMIT 1'
+        );
+        $dup->execute([$contactId, $subject]);
+        $existing = (int)($dup->fetchColumn() ?: 0);
+        if ($existing > 0) {
+            $contact = Account::find($contactId);
+            self::reply($existing, 'customer', $contactId, (string)($contact['name'] ?? ''), $body, $attachment);
+            return $existing;
+        }
+
         $stmt = Db::pdo()->prepare(
             'INSERT INTO tickets (contact_id, assigned_agent_id, deal_id, subject, status, last_sender)
              VALUES (?, ?, ?, ?, "open", "customer")'
