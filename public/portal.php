@@ -177,16 +177,21 @@ $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
     <?php if ($cid): ?><a class="btn ghost sm" href="?action=logout"><?= $h($t('logout')) ?></a><?php endif; ?>
   </div>
 </header>
+<div class="shell">
 <?php if ($cid): ?>
-<div class="hero">
-  <div class="hero-in">
+<aside class="side">
+  <div class="side-user">
     <div class="avatar"><?= $h(strtoupper(substr((string)($me['name'] ?? ''), 0, 1)) ?: '☺') ?></div>
-    <div>
-      <h1><?= $h($t('hello')) ?>, <?= $h($me['name'] ?: '') ?> 👋</h1>
-      <p><?= $h($t('home_sub')) ?></p>
-    </div>
+    <div class="side-user-t"><b><?= $h($me['name'] ?: '') ?></b>
+      <span class="muted small"><?= $h($me['email'] ?: $me['phone'] ?: '') ?></span></div>
   </div>
-</div>
+  <nav>
+    <a href="#orders"><span class="nav-ic">📦</span><?= $h($t('your_orders')) ?></a>
+    <?php if ($appts): ?><a href="#appointments"><span class="nav-ic">📅</span><?= $h($t('your_appts')) ?></a><?php endif; ?>
+    <a href="#support"><span class="nav-ic">💬</span><?= $h($t('support')) ?></a>
+    <a href="#account"><span class="nav-ic">🔒</span><?= $h($t('account')) ?></a>
+  </nav>
+</aside>
 <?php endif; ?>
 
 <main class="wrap">
@@ -208,7 +213,12 @@ $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
   </div>
 <?php else: ?>
   <!-- ---------- customer home ---------- -->
-  <h2><span class="sec-ic">📦</span><?= $h($t('your_orders')) ?></h2>
+  <div class="page-h">
+    <h1><?= $h($t('hello')) ?>, <?= $h($me['name'] ?: '') ?></h1>
+    <p class="muted"><?= $h($t('home_sub')) ?></p>
+  </div>
+
+  <h2 id="orders"><span class="sec-ic">📦</span><?= $h($t('your_orders')) ?></h2>
   <?php if (!$deals): ?><div class="empty"><?= $h($t('no_orders')) ?></div><?php endif; ?>
   <?php foreach ($deals as $d):
       $signed   = !empty($d['signed_at']) || $d['status'] === 'won';
@@ -257,7 +267,7 @@ $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
   <?php endforeach; ?>
 
   <?php if ($appts): ?>
-    <h2><span class="sec-ic">📅</span><?= $h($t('your_appts')) ?></h2>
+    <h2 id="appointments"><span class="sec-ic">📅</span><?= $h($t('your_appts')) ?></h2>
     <?php foreach ($appts as $a): $when = $a['starts_at'] ?: $a['preferred_at']; ?>
       <div class="card row-line">
         <div><b><?= $h($when ? date('D d M Y, H:i', strtotime((string)$when)) : $t('to_be_scheduled')) ?></b>
@@ -267,7 +277,7 @@ $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
     <?php endforeach; ?>
   <?php endif; ?>
 
-  <h2><span class="sec-ic">💬</span><?= $h($t('support')) ?></h2>
+  <h2 id="support"><span class="sec-ic">💬</span><?= $h($t('support')) ?></h2>
   <div class="card">
     <details>
       <summary class="newreq"><?= $h($t('tk_new')) ?></summary>
@@ -310,7 +320,7 @@ $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
     </div>
   <?php endforeach; ?>
 
-  <h2><span class="sec-ic">🔒</span><?= $h($t('account')) ?></h2>
+  <h2 id="account"><span class="sec-ic">🔒</span><?= $h($t('account')) ?></h2>
   <div class="card">
     <form method="post" class="pw">
       <input type="hidden" name="do" value="set_password">
@@ -322,6 +332,7 @@ $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
   </div>
 <?php endif; ?>
 </main>
+</div>
 <footer class="foot muted small"><?= $h($brand) ?></footer>
 </body></html>
 <?php
@@ -457,19 +468,26 @@ body{font-family:'Inter',system-ui,Arial,sans-serif;background:var(--bg);color:v
 .lang a{padding:5px 11px;color:var(--muted);font-weight:700;font-size:12px;text-decoration:none;border-radius:7px;transition:.15s}
 .lang a.on{background:#fff;color:var(--accent);box-shadow:0 1px 3px rgba(28,37,51,.12)}
 
-/* ---- hero ---- */
-.hero{background:var(--accent);color:#fff;padding:34px 24px 56px}
-.hero-in{max-width:760px;margin:0 auto;display:flex;align-items:center;gap:18px}
-.hero h1{font-size:25px;font-weight:800;letter-spacing:-.3px}
-.hero p{opacity:.85;font-size:14.5px;margin-top:2px}
-.avatar{width:54px;height:54px;border-radius:50%;background:rgba(255,255,255,.18);border:2px solid rgba(255,255,255,.45);display:flex;align-items:center;justify-content:center;font-size:23px;font-weight:800;flex-shrink:0}
+/* ---- shell: sidebar + content ---- */
+.shell{display:flex;max-width:1080px;margin:0 auto;align-items:flex-start;gap:28px;padding:28px 20px 0}
+.side{width:248px;flex-shrink:0;position:sticky;top:80px;background:#fff;border:1px solid var(--line);border-radius:16px;padding:16px;box-shadow:var(--shadow)}
+.side-user{display:flex;align-items:center;gap:12px;padding:4px 6px 14px;border-bottom:1px solid var(--line);margin-bottom:10px}
+.side-user-t{min-width:0;display:flex;flex-direction:column}
+.side-user-t b{font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.side-user-t span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.avatar{width:42px;height:42px;border-radius:50%;background:var(--accent);color:#fff;display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;flex-shrink:0}
+.side nav{display:flex;flex-direction:column;gap:2px}
+.side nav a{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:10px;color:#49536a;font-weight:600;font-size:14px;text-decoration:none;transition:.12s}
+.side nav a:hover{background:#f1f3fa;color:var(--ink)}
+.nav-ic{width:28px;height:28px;border-radius:8px;background:#f1f3fa;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
 
 /* ---- layout ---- */
-.wrap{max-width:760px;margin:0 auto;padding:24px 18px 60px}
-.hero + .wrap{margin-top:-30px}
-h1{font-size:24px;margin-bottom:4px}
-h2{font-size:16px;margin:30px 0 12px;display:flex;align-items:center;gap:9px;letter-spacing:-.2px}
+.wrap{flex:1;min-width:0;max-width:760px;margin:0 auto;padding:0 0 60px}
+.page-h{margin-bottom:22px}
+h1{font-size:24px;margin-bottom:4px;letter-spacing:-.3px}
+h2{font-size:16px;margin:30px 0 12px;display:flex;align-items:center;gap:9px;letter-spacing:-.2px;scroll-margin-top:80px}
 h2:first-child{margin-top:0}
+html{scroll-behavior:smooth}
 .sec-ic{width:30px;height:30px;border-radius:9px;background:#fff;border:1px solid var(--line);display:inline-flex;align-items:center;justify-content:center;font-size:15px;box-shadow:var(--shadow)}
 .muted{color:var(--muted)}.small{font-size:13px}
 
@@ -530,11 +548,19 @@ input:focus,textarea:focus{border-color:var(--accent);background:#fff;box-shadow
 input[type=file]{padding:9px;background:#fbfcfe}
 .msg a{color:#4453d6;font-weight:600}
 
+@media (max-width:860px){
+  .shell{flex-direction:column;gap:18px;padding:18px 16px 0}
+  .side{width:100%;position:static;padding:12px}
+  .side-user{display:none}
+  .side nav{flex-direction:row;overflow-x:auto;gap:6px}
+  .side nav a{white-space:nowrap;padding:8px 12px}
+  .nav-ic{display:none}
+  .wrap{max-width:none;width:100%}
+}
 @media (max-width:560px){
   .top{padding:12px 16px}
   .brand-sub{display:none}
-  .hero{padding:26px 18px 50px}
-  .hero h1{font-size:21px}
+  h1{font-size:21px}
   .order-b{gap:22px}
   .msg{max-width:90%}
 }

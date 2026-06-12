@@ -3,12 +3,10 @@ declare(strict_types=1);
 
 namespace Glue\Crm;
 
-use Glue\Config;
 use Glue\Db;
 use Glue\Event\Log;
-use Glue\Notify\Notifier;
 use Glue\Portal\Account;
-use Glue\Reminder\Templates;
+use Glue\Reminder\Scheduler;
 
 /**
  * Support tickets — a threaded conversation between a customer (contact) and the
@@ -226,6 +224,10 @@ final class Tickets
 
     // ---- notifications --------------------------------------------------------
 
+    // Both notifications are queued (not sent inline) so a slow or unreachable
+    // SMTP/WhatsApp gateway can never hang the dashboard or the portal — the
+    // cron (bin/scheduler.php) delivers them within a minute.
+
     private static function notifyStaff(int $ticketId): void
     {
         $t = self::find($ticketId);
@@ -238,22 +240,24 @@ final class Tickets
         if (!$a) {
             return;
         }
-        $vars = [
-            'name'          => trim((string)($a['full_name'] ?? '')) ?: (string)($a['username'] ?? ''),
-            'customer_name' => (string)($t['customer_name'] ?? 'the customer'),
-            'company'       => self::company(),
-            'id'            => (string)$ticketId,
-            'subject'       => (string)$t['subject'],
-        ];
-        $lang = Config::get('app.default_lang', 'it'); // staff get the office language
-        $notifier = new Notifier();
-        if (!empty($a['phone'])) {
-            $notifier->whatsapp((string)$a['phone'], Templates::whatsapp('ticket_staff', $vars, $lang));
-        }
-        if (!empty($a['email'])) {
-            $mail = Templates::email('ticket_staff', $vars, $lang);
-            $notifier->email((string)$a['email'], $mail['subject'], $mail['html']);
-        }
+        (new Scheduler())->enqueue([
+            'entity_type'    => 'contact',
+            'entity_id'      => (int)$t['contact_id'],
+            'rule_key'       => 'ticket_staff',
+            'recipient_type' => 'agent',
+            'channel'        => 'both',
+            'due_at'         => date('Y-m-d H:i:s'),
+            // payload wins over resolved vars, so it carries the agent's contact
+            // details (the resolver can't derive them from a bare contact row).
+            'payload'        => [
+                'name'          => trim((string)($a['full_name'] ?? '')) ?: (string)($a['username'] ?? ''),
+                'customer_name' => (string)($t['customer_name'] ?? 'the customer'),
+                'id'            => (string)$ticketId,
+                'subject'       => (string)$t['subject'],
+                'agent_phone'   => (string)($a['phone'] ?? ''),
+                'agent_email'   => (string)($a['email'] ?? ''),
+            ],
+        ]);
     }
 
     private static function notifyCustomer(int $ticketId): void
@@ -263,32 +267,19 @@ final class Tickets
             return;
         }
         $token = Account::invite((int)$t['contact_id']); // fresh magic link so they can click straight in
-        $vars = [
-            'name'    => (string)($t['customer_name'] ?? 'there'),
-            'company' => self::company(),
-            'id'      => (string)$ticketId,
-            'subject' => (string)$t['subject'],
-            'link'    => Account::magicLink($token),
-        ];
-        $lang = self::contactLang((int)$t['contact_id']);
-        $notifier = new Notifier();
-        if (!empty($t['customer_phone'])) {
-            $notifier->whatsapp((string)$t['customer_phone'], Templates::whatsapp('ticket_reply', $vars, $lang));
-        }
-        if (!empty($t['customer_email'])) {
-            $mail = Templates::email('ticket_reply', $vars, $lang);
-            $notifier->email((string)$t['customer_email'], $mail['subject'], $mail['html']);
-        }
+        (new Scheduler())->enqueue([
+            'entity_type'    => 'contact',
+            'entity_id'      => (int)$t['contact_id'],
+            'rule_key'       => 'ticket_reply',
+            'recipient_type' => 'customer',
+            'channel'        => 'both',
+            'due_at'         => date('Y-m-d H:i:s'),
+            'payload'        => [
+                'id'      => (string)$ticketId,
+                'subject' => (string)$t['subject'],
+                'link'    => Account::magicLink($token),
+            ],
+        ]);
     }
 
-    private static function contactLang(int $contactId): ?string
-    {
-        $c = Account::find($contactId);
-        return $c['lang'] ?? null;
-    }
-
-    private static function company(): string
-    {
-        return (string)Config::get('mail.from_name', '') ?: (string)Config::get('app.company_name', 'our company');
-    }
 }

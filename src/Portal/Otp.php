@@ -3,10 +3,8 @@ declare(strict_types=1);
 
 namespace Glue\Portal;
 
-use Glue\Config;
 use Glue\Db;
-use Glue\Notify\Notifier;
-use Glue\Reminder\Templates;
+use Glue\Reminder\Scheduler;
 
 /**
  * One-time codes for the portal — currently the electronic signature of a quote.
@@ -38,23 +36,20 @@ final class Otp
              VALUES (?, ?, ?, ?, ?)'
         )->execute([$contactId, $dealId ?: null, $purpose, $code, $expires]);
 
-        $vars = [
-            'name'    => trim((string)($contact['name'] ?? '')) ?: 'there',
-            'company' => (string)Config::get('mail.from_name', '') ?: (string)Config::get('app.company_name', 'our company'),
-            'code'    => $code,
-            'minutes' => (string)self::TTL_MIN,
-        ];
-        $lang = $contact['lang'] ?? null;
-        $notifier = new Notifier();
-        $ok = false;
-        if (!empty($contact['phone'])) {
-            $ok = $notifier->whatsapp((string)$contact['phone'], Templates::whatsapp('sign_otp', $vars, $lang)) || $ok;
-        }
-        if (!empty($contact['email'])) {
-            $mail = Templates::email('sign_otp', $vars, $lang);
-            $ok = $notifier->email((string)$contact['email'], $mail['subject'], $mail['html']) || $ok;
-        }
-        return $ok;
+        // Queued, not sent inline: a hung SMTP must never block the signing page.
+        // The cron delivers within a minute; the code stays valid for TTL_MIN.
+        (new Scheduler())->enqueue([
+            'entity_type'    => 'contact',
+            'entity_id'      => $contactId,
+            'rule_key'       => 'sign_otp',
+            'recipient_type' => 'customer',
+            'channel'        => 'both',
+            'due_at'         => date('Y-m-d H:i:s'),
+            'payload'        => ['code' => $code, 'minutes' => (string)self::TTL_MIN],
+            'lang'           => $contact['lang'] ?? null,
+            'dedupe_key'     => 'sign_otp:' . $contactId . ':' . $dealId . ':' . $code,
+        ]);
+        return true;
     }
 
     /**

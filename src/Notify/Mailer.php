@@ -45,10 +45,11 @@ final class Mailer
         $secure = $s['secure'] ?? 'tls'; // 'tls' | 'ssl' | ''
         $prefix = $secure === 'ssl' ? 'ssl://' : '';
 
-        $fp = @stream_socket_client("$prefix$host:$port", $errno, $errstr, 20);
+        $fp = @stream_socket_client("$prefix$host:$port", $errno, $errstr, 8);
         if (!$fp) {
             return ['ok' => false, 'error' => "SMTP connect failed: $errstr ($errno)"];
         }
+        stream_set_timeout($fp, 10); // a silent server must not block the process
 
         $read = static function () use ($fp): string {
             $data = '';

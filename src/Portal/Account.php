@@ -6,6 +6,7 @@ namespace Glue\Portal;
 use Glue\Config;
 use Glue\Db;
 use Glue\Notify\Notifier;
+use Glue\Reminder\Scheduler;
 
 /**
  * Customer portal accounts. A customer IS a contact (contacts table); these
@@ -38,27 +39,28 @@ final class Account
         return "$base/portal.php?token=" . urlencode($token);
     }
 
-    /** Send the portal invitation (magic link) to the customer over email + WhatsApp. */
+    /**
+     * Queue the portal invitation (magic link) for the customer, email + WhatsApp.
+     * Enqueued (not sent inline) so a slow/unreachable SMTP can't hang the page —
+     * the cron (bin/scheduler.php) delivers it within a minute.
+     */
     public static function sendInvite(int $contactId, string $token): void
     {
         $c = self::find($contactId);
         if (!$c) {
             return;
         }
-        $vars = [
-            'name'    => trim((string)($c['name'] ?? '')) ?: 'there',
-            'company' => self::company(),
-            'link'    => self::magicLink($token),
-        ];
-        $lang = $c['lang'] ?? null;
-        $notifier = new Notifier();
-        if (!empty($c['phone'])) {
-            $notifier->whatsapp((string)$c['phone'], \Glue\Reminder\Templates::whatsapp('portal_invite', $vars, $lang));
-        }
-        if (!empty($c['email'])) {
-            $mail = \Glue\Reminder\Templates::email('portal_invite', $vars, $lang);
-            $notifier->email((string)$c['email'], $mail['subject'], $mail['html']);
-        }
+        (new Scheduler())->enqueue([
+            'entity_type'    => 'contact',
+            'entity_id'      => $contactId,
+            'rule_key'       => 'portal_invite',
+            'recipient_type' => 'customer',
+            'channel'        => 'both',
+            'due_at'         => date('Y-m-d H:i:s'),
+            'payload'        => ['link' => self::magicLink($token)],
+            'lang'           => $c['lang'] ?? null,
+            'dedupe_key'     => 'portal_invite:contact:' . $contactId . ':' . substr($token, 0, 12),
+        ]);
     }
 
     /** A valid, non-expired magic-link token resolves to its contact. */
