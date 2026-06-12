@@ -630,7 +630,7 @@ function stage_label(callable $t, string $code, ?string $name = null): string {
     static $seed = [
         'NEW' => 'New', 'CONTACTED' => 'Contacted', 'QUALIFIED' => 'Qualified',
         'CONVERTED' => 'Converted', 'JUNK' => 'Junk', 'QUOTE' => 'Quote sent',
-        'NEGOTIATION' => 'Negotiation', 'WON' => 'Won', 'LOST' => 'Lost',
+        'NEGOTIATION' => 'Negotiation', 'SIGNATURE' => 'Signature', 'WON' => 'Won', 'LOST' => 'Lost',
     ];
     if ($name !== null && $name !== '' && isset($seed[$code]) && strcasecmp($name, $seed[$code]) !== 0) {
         return $name; // operator-renamed → keep their label

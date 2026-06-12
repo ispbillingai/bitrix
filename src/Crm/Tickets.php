@@ -260,6 +260,56 @@ final class Tickets
             "UPDATE reminders SET status = 'cancelled'
              WHERE status = 'pending' AND rule_key = 'offer_read' AND dedupe_key LIKE ?"
         )->execute(['offer_read:msg:' . $messageId . ':%']);
+
+        // Downloading a staff file (the offer) advances the deal on the pipeline.
+        $q = Db::pdo()->prepare(
+            "SELECT t.contact_id FROM ticket_messages m JOIN tickets t ON t.id = m.ticket_id
+             WHERE m.id = ? AND m.sender_type <> 'customer'"
+        );
+        $q->execute([$messageId]);
+        $contactId = $q->fetchColumn();
+        if ($contactId) {
+            self::syncDealOffer((int)$contactId, 'downloaded');
+        }
+    }
+
+    /**
+     * Mirror the offer lifecycle onto the customer's open deal so the agent can
+     * follow it on the pipeline board without opening the chat:
+     *   sent       -> Quote sent stage, yellow LED
+     *   downloaded -> Negotiation stage, orange LED
+     *   accepted   -> green LED (signing then moves the deal to Won)
+     */
+    private static function syncDealOffer(int $contactId, string $status): void
+    {
+        $stmt = Db::pdo()->prepare(
+            "SELECT id, stage_code, offer_status FROM deals
+             WHERE contact_id = ? AND status = 'open' ORDER BY id DESC LIMIT 1"
+        );
+        $stmt->execute([$contactId]);
+        $deal = $stmt->fetch();
+        if (!$deal) {
+            return;
+        }
+        // Never move the LED backwards — except a brand-new offer, which restarts it.
+        $rank = ['sent' => 1, 'downloaded' => 2, 'accepted' => 3];
+        $cur  = (string)($deal['offer_status'] ?? '');
+        if ($status !== 'sent' && isset($rank[$cur]) && $rank[$cur] >= $rank[$status]) {
+            return;
+        }
+        Db::pdo()->prepare('UPDATE deals SET offer_status = ? WHERE id = ?')
+            ->execute([$status, (int)$deal['id']]);
+
+        $quote = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
+        $nego  = (string)Config::get('crm.deal_negotiation_stage', 'NEGOTIATION');
+        $sign  = (string)Config::get('crm.deal_signature_stage', 'SIGNATURE');
+        if ($status === 'sent' && $deal['stage_code'] !== $quote) {
+            Deals::moveStage((int)$deal['id'], $quote);
+        } elseif ($status === 'downloaded' && $deal['stage_code'] === $quote) {
+            Deals::moveStage((int)$deal['id'], $nego);
+        } elseif ($status === 'accepted' && in_array($deal['stage_code'], [$quote, $nego], true)) {
+            Deals::moveStage((int)$deal['id'], $sign);
+        }
     }
 
     /**
@@ -290,6 +340,7 @@ final class Tickets
         )->execute(['offer_read:msg:' . $messageId . ':%']);
         Log::write('crm', 'offer_accepted', 'ticket', (int)$m['ticket_id'],
             ['message_id' => $messageId, 'contact_id' => $contactId]);
+        self::syncDealOffer($contactId, 'accepted');
 
         // Urge the agent (or the office) to send the contract for signature.
         $t = self::find((int)$m['ticket_id']);
@@ -332,6 +383,7 @@ final class Tickets
         if (!$t) {
             return;
         }
+        self::syncDealOffer((int)$t['contact_id'], 'sent');
         $token = Account::invite((int)$t['contact_id']);
         $sched = new Scheduler();
         $days = (array)Config::get('reminders.offer_read_days', [2, 5]);

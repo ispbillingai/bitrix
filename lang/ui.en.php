@@ -86,8 +86,14 @@ return [
     'stg_JUNK'        => 'Junk',
     'stg_QUOTE'       => 'Quote sent',
     'stg_NEGOTIATION' => 'Negotiation',
+    'stg_SIGNATURE'   => 'Signature',
     'stg_WON'         => 'Won',
     'stg_LOST'        => 'Lost',
+
+    // offer LED on the pipeline card
+    'offer_led_sent'       => 'Offer sent — waiting for the customer to read it',
+    'offer_led_downloaded' => 'Offer downloaded by the customer',
+    'offer_led_accepted'   => 'Offer accepted — send the contract for signature',
 
     // record statuses (shown as pills)
     'stt_open'        => 'Open',

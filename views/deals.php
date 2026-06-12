@@ -9,6 +9,10 @@ $stages = \Glue\Crm\Pipelines::stagesForEntity('deal');
 $byStage = \Glue\Crm\Deals::byStage($scopeId ?? null);
 $rows = \Glue\Crm\Deals::all(300, $scopeId ?? null);
 
+// Offer LED: yellow = offer sent, orange = downloaded by customer, green = accepted.
+$ledColor = ['sent' => '#d9a40a', 'downloaded' => '#f07b22', 'accepted' => '#3fb868'];
+$ledLabel = fn($k) => $t('offer_led_' . $k);
+
 $stageTotals = [];
 foreach ($byStage as $code => $cards) {
     $stageTotals[$code] = array_sum(array_map(fn($c) => (float)$c['amount'], $cards));
@@ -48,7 +52,7 @@ foreach ($byStage as $code => $cards) {
       <div class="kbody" data-stage="<?= $h($s['code']) ?>">
         <?php foreach ($cards as $c): $ag = $c['agent_name'] ?: $c['agent_username']; ?>
           <div class="kcard" draggable="true" data-id="<?= $h($c['id']) ?>">
-            <b><?= $h($c['title']) ?></b>
+            <b><?php if (!empty($c['offer_status']) && isset($ledColor[$c['offer_status']])): ?><span class="dotc" style="background:<?= $ledColor[$c['offer_status']] ?>" title="<?= $h($ledLabel($c['offer_status'])) ?>"></span> <?php endif; ?><?= $h($c['title']) ?></b>
             <div class="meta">
               <span class="amt"><?= $h($money($c['amount'], $c['currency'])) ?></span>
               <?php if ($ag): ?><span><?= avatar($h, $ag) ?> <?= $h($ag) ?></span><?php endif; ?>
@@ -67,7 +71,7 @@ foreach ($byStage as $code => $cards) {
     $timeline = \Glue\Crm\Activities::forEntity('deal', (int)$r['id'], 20); ?>
   <details class="drawer card" style="padding:0;margin-bottom:8px">
     <summary style="display:flex;align-items:center;gap:12px;padding:13px 18px;cursor:pointer">
-      <span style="flex:1"><b><?= $h($r['title']) ?></b>
+      <span style="flex:1"><?php if (!empty($r['offer_status']) && isset($ledColor[$r['offer_status']])): ?><span class="dotc" style="background:<?= $ledColor[$r['offer_status']] ?>" title="<?= $h($ledLabel($r['offer_status'])) ?>"></span> <?php endif; ?><b><?= $h($r['title']) ?></b>
         <span class="muted small"> · <?= $h($r['customer_name']) ?></span></span>
       <span class="amt" style="color:var(--green);font-weight:600"><?= $h($money($r['amount'], $r['currency'])) ?></span>
       <span class="pill"><?= $h(stage_label($t, $r['stage_code'], \Glue\Crm\Pipelines::label('deal', $r['stage_code']))) ?></span>

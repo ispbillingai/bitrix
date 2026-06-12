@@ -86,8 +86,14 @@ return [
     'stg_JUNK'        => 'Scartato',
     'stg_QUOTE'       => 'Preventivo inviato',
     'stg_NEGOTIATION' => 'Negoziazione',
+    'stg_SIGNATURE'   => 'Firma',
     'stg_WON'         => 'Vinta',
     'stg_LOST'        => 'Persa',
+
+    // LED offerta sulla scheda pipeline
+    'offer_led_sent'       => 'Offerta inviata — in attesa che il cliente la legga',
+    'offer_led_downloaded' => 'Offerta scaricata dal cliente',
+    'offer_led_accepted'   => 'Offerta accettata — invia il contratto da firmare',
 
     // stati dei record (mostrati come pill)
     'stt_open'        => 'Aperto',

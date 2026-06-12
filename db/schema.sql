@@ -137,6 +137,7 @@ CREATE TABLE IF NOT EXISTS deals (
     status ENUM('open','won','lost') NOT NULL DEFAULT 'open',
     expected_close_date DATE NULL,
     sign_due_date DATE NULL,
+    offer_status VARCHAR(16) NULL,
     signed_at DATETIME NULL,
     signed_name VARCHAR(190) NULL,
     signed_ip VARCHAR(45) NULL,
@@ -366,6 +367,7 @@ INSERT INTO stages (pipeline_id, code, name, sort, is_first, is_won, is_lost, co
     (2, 'NEW',        'New',          0, 1, 0, 0, '#5b6cff'),
     (2, 'QUOTE',      'Quote sent',   1, 0, 0, 0, '#d9a40a'),
     (2, 'NEGOTIATION','Negotiation',  2, 0, 0, 0, '#7c5cff'),
-    (2, 'WON',        'Won',          3, 0, 1, 0, '#3fb868'),
-    (2, 'LOST',       'Lost',         4, 0, 0, 1, '#e5616e')
+    (2, 'SIGNATURE',  'Signature',    3, 0, 0, 0, '#1f9bb8'),
+    (2, 'WON',        'Won',          4, 0, 1, 0, '#3fb868'),
+    (2, 'LOST',       'Lost',         5, 0, 0, 1, '#e5616e')
 ON DUPLICATE KEY UPDATE id = id;
