@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Glue\Crm;
 
+use Glue\Config;
 use Glue\Db;
 use Glue\Event\Log;
 use Glue\Portal\Account;
@@ -104,9 +105,24 @@ final class Tickets
     private const UPLOAD_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx',
                                 'xls', 'xlsx', 'csv', 'txt', 'zip'];
 
+    /**
+     * Where attachments live. Preferred: storage/ above the web root. On hosts
+     * where that isn't writable (open_basedir, perms) fall back to a folder
+     * inside public/ that .htaccess blocks from direct download — files are
+     * only ever served through the permission-checked ?dl= endpoint.
+     */
     public static function uploadDir(): string
     {
-        return dirname(__DIR__, 2) . '/storage/uploads/tickets';
+        $cfg = (string)Config::get('app.upload_dir', '');
+        if ($cfg !== '') {
+            return rtrim($cfg, '/\\');
+        }
+        $root = dirname(__DIR__, 2);
+        $preferred = $root . '/storage/uploads/tickets';
+        if (is_dir($preferred) || @mkdir($preferred, 0775, true)) {
+            return $preferred;
+        }
+        return $root . '/public/uploads/tickets';
     }
 
     /**

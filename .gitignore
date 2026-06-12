@@ -6,6 +6,8 @@
 
 # Uploaded ticket attachments (user data, never commit)
 /storage/uploads/
+/public/uploads/*
+!/public/uploads/.htaccess
 
 # Local logs / scratch
 /logs/*.log

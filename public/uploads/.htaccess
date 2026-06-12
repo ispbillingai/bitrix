@@ -1,0 +1,3 @@
+# Ticket attachments are served only through the permission-checked
+# ?dl= endpoint — never directly.
+Require all denied
