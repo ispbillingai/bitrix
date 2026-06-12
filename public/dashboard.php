@@ -55,6 +55,11 @@ if (($_GET['action'] ?? '') === 'logout') {
 }
 $flash = null;
 $flashType = 'ok';
+// flash left by a previous redirect (post/redirect/get)
+if (!empty($_SESSION['dash_flash'])) {
+    [$flash, $flashType] = $_SESSION['dash_flash'];
+    unset($_SESSION['dash_flash']);
+}
 if (!isset($_SESSION['glue_auth'])) {
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['password'])) {
         $username = trim((string)($_POST['username'] ?? ''));
@@ -349,12 +354,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         : ($attErr === 'bad_type' ? 'File type not allowed.'
                             : ($attErr === 'save_failed' ? 'Could not save the file.' : $t('test_fail'))));
                 $flashType = $ok ? 'ok' : 'err';
+                // Redirect (PRG) so a browser refresh can't re-send the reply.
                 $tab = ($_POST['back'] ?? '') === 'messages' ? 'messages' : 'tickets';
-                break;
+                $_SESSION['dash_flash'] = [$flash, $flashType];
+                header('Location: ?tab=' . $tab . '&tk=' . (int)$_POST['id']);
+                exit;
             case 'ticket_status':
                 Tickets::setStatus((int)$_POST['id'], (string)$_POST['status']);
                 $tab = ($_POST['back'] ?? '') === 'messages' ? 'messages' : 'tickets';
-                break;
+                $_SESSION['dash_flash'] = [$t('saved'), 'ok'];
+                header('Location: ?tab=' . $tab . '&tk=' . (int)$_POST['id']);
+                exit;
 
             // ---------- reminders / scheduler / campaigns ----------
             case 'cancel_reminder':
