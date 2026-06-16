@@ -22,6 +22,10 @@ return [
         // Default message language when a record doesn't specify one (en|it).
         // Staff (agent/logistics) notifications always use this language.
         'default_lang'  => 'it',
+        // Dial code prepended to local phone numbers that have no +/00 prefix,
+        // so a customer can enter "3391234567" and WhatsApp gets "+393391234567".
+        // Digits only, no +. Italy = 39. Numbers entered with + or 00 are kept as-is.
+        'default_country_code' => '39',
         // Public base URL of this app (used to build the form/webhook URLs).
         'base_url'      => 'https://crm.yourcompany.com',
         // Shared secret required on the website + appointment intake webhooks.

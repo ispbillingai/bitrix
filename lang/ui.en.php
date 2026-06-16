@@ -346,6 +346,8 @@ return [
     'f_currency'     => 'Currency',
     'f_default_lang' => 'Default language',
     'f_tz'           => 'Timezone',
+    'f_country_code' => 'Default country code',
+    'f_country_code_h' => 'Digits only, no +. Added to local numbers (e.g. 39 = Italy). Numbers with + or 00 are kept as-is.',
     'f_base_url'     => 'Base URL',
     'f_base_url_h'   => 'Public address of this app (used to build the URLs above).',
     'f_intake'       => 'Intake secret',

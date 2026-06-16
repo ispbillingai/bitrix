@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Glue\Notify;
 
+use Glue\Config;
 use Glue\Db;
 
 /**
@@ -78,18 +79,47 @@ final class Notifier
         ]);
     }
 
-    /** Best-effort E.164. Keeps a leading +, strips spaces/dashes/parens. */
+    /**
+     * Best-effort E.164. Strips spaces/dashes/parens and resolves the country code:
+     *   +393391234567 / 00393391234567  -> +393391234567  (already international)
+     *   3391234567                       -> +393391234567  (local: prepend default)
+     *
+     * The default dial code comes from app.default_country_code (digits only, e.g.
+     * "39" for Italy), so a customer can enter a plain local number and WhatsApp
+     * still gets a valid international number. A single leading trunk "0" on a
+     * local number is dropped (Italian mobiles have none; landlines keep it via
+     * the explicit-international forms above).
+     */
     public static function normalizePhone(string $raw): string
     {
         $raw = trim($raw);
         if ($raw === '') {
             return '';
         }
-        $plus = str_starts_with($raw, '+');
+
+        // Already international: leading + or 00 prefix.
+        if (str_starts_with($raw, '+')) {
+            $digits = preg_replace('/\D+/', '', $raw) ?? '';
+            return $digits === '' ? '' : '+' . $digits;
+        }
         $digits = preg_replace('/\D+/', '', $raw) ?? '';
         if ($digits === '') {
             return '';
         }
-        return ($plus ? '+' : '') . $digits;
+        if (str_starts_with($digits, '00')) {
+            return '+' . substr($digits, 2);
+        }
+
+        // Local number (no + or 00): prepend the configured default country code.
+        // We do NOT try to detect an already-present country code here — for Italy
+        // that's ambiguous (a mobile like 339... starts with the "39" dial code),
+        // so callers wanting an explicit foreign number must use + or 00. A single
+        // leading trunk "0" is dropped before the national number.
+        $cc = preg_replace('/\D+/', '', (string)Config::get('app.default_country_code', '39')) ?? '';
+        $digits = ltrim($digits, '0');
+        if ($digits === '') {
+            return '';
+        }
+        return '+' . $cc . $digits;
     }
 }

@@ -37,6 +37,7 @@ $pipelines = \Glue\Crm\Pipelines::all();
     fld($h, 'crm.currency', $t('f_currency'), $cfg('crm.currency', 'EUR'));
     fld($h, 'app.default_lang', $t('f_default_lang'), $cfg('app.default_lang', 'it'));
     fld($h, 'app.timezone', $t('f_tz'), $cfg('app.timezone', 'Europe/Rome'));
+    fld($h, 'app.default_country_code', $t('f_country_code'), $cfg('app.default_country_code', '39'), $t('f_country_code_h'));
     ?>
   </div>
   <div class="row">

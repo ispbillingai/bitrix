@@ -159,6 +159,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'save_settings':
                 $allowed = [
                     'app.company_name', 'app.default_lang', 'app.timezone', 'app.base_url', 'app.intake_secret',
+                    'app.default_country_code',
                     'crm.currency', 'crm.deal_quote_stage',
                     'reminders.lead_inactivity_hours', 'reminders.deal_inactivity_hours',
                     'reminders.sign_after_sent_days',
@@ -552,7 +553,8 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script></head>
 <body>
 <div class="shell">
-  <aside class="sidebar">
+  <div class="nav-backdrop" id="navBackdrop" onclick="closeNav()"></div>
+  <aside class="sidebar" id="sidebar">
     <div class="brand"><div class="logo"><?= $h(strtoupper(substr($brand, 0, 1)) ?: 'C') ?></div>
       <div><strong><?= $h($brand) ?></strong><span class="muted small"><?= $h($t('app_subtitle')) ?></span></div></div>
     <nav>
@@ -563,14 +565,17 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
   </aside>
   <main>
     <header class="topbar">
+      <button class="navtoggle" id="navToggle" onclick="openNav()" aria-label="Menu">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+      </button>
       <div class="crumb"><?= $h($t('nav_' . ($tab === 'instructions' ? 'instr' : $tab))) ?></div>
       <div class="actions">
-        <a class="btn ghost tiny" href="request.php" target="_blank"><?= svg('link') ?> <?= $h($t('public_form')) ?></a>
+        <a class="btn ghost tiny pubform" href="request.php" target="_blank"><?= svg('link') ?> <?= $h($t('public_form')) ?></a>
         <span class="langsw">
           <a class="<?= $lang === 'en' ? 'on' : '' ?>" href="?tab=<?= $h($tab) ?>&lang=en">EN</a>
           <a class="<?= $lang === 'it' ? 'on' : '' ?>" href="?tab=<?= $h($tab) ?>&lang=it">IT</a>
         </span>
-        <span class="muted small"><?= $h($_SESSION['glue_user']['username'] ?? '') ?></span>
+        <span class="muted small who"><?= $h($_SESSION['glue_user']['username'] ?? '') ?></span>
         <a class="btn ghost" href="?action=logout"><?= $h($t('logout')) ?></a>
       </div>
     </header>
@@ -578,7 +583,26 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
     <?php if ($flash): ?><div class="flash <?= $flashType === 'err' ? 'flash-err' : '' ?>"><?= $h($flash) ?></div><?php endif; ?>
 <?php }
 
-function render_foot(): void { echo '</div></main></div></body></html>'; }
+function render_foot(): void { ?>
+</div></main></div>
+<script>
+// Mobile sidebar drawer: open/close + close on backdrop tap, Escape, or nav click.
+function openNav(){document.getElementById('sidebar').classList.add('open');
+  document.getElementById('navBackdrop').classList.add('show');}
+function closeNav(){document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('navBackdrop').classList.remove('show');}
+document.addEventListener('keydown',e=>{if(e.key==='Escape')closeNav();});
+// Make every table horizontally scrollable on small screens without editing each
+// view: wrap any unwrapped <table> in a .table-wrap container.
+document.querySelectorAll('main table').forEach(function(tb){
+  if(!tb.parentElement.classList.contains('table-wrap')){
+    var w=document.createElement('div');w.className='table-wrap';
+    tb.parentNode.insertBefore(w,tb);w.appendChild(tb);
+  }
+});
+</script>
+</body></html>
+<?php }
 
 /**
  * Turn a Notifier provider response into a short human-readable failure reason
@@ -858,8 +882,39 @@ tbody tr:hover{background:var(--surface2);} tr:last-child td{border-bottom:none;
 .lb .mini{font-size:11.5px;color:var(--muted);}
 details.drawer{margin-bottom:8px;} details.drawer>summary{cursor:pointer;list-style:none;}
 details.drawer>summary::-webkit-details-marker{display:none;}
-@media(max-width:760px){.sidebar{width:58px;padding:14px 8px;} .brand span,.brand strong,nav a span{display:none;}
-  .brand{justify-content:center;} nav a{justify-content:center;padding:11px;} .content{padding:16px;} .actions .btn.tiny span{display:none;}}
+/* hamburger (mobile only) + off-canvas backdrop */
+.navtoggle{display:none;background:var(--surface2);border:1px solid var(--line);color:var(--txt);
+  border-radius:8px;padding:7px;cursor:pointer;align-items:center;justify-content:center;margin-right:4px;}
+.navtoggle svg{width:20px;height:20px;display:block;}
+.nav-backdrop{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:40;}
+@media(max-width:900px){
+  /* Sidebar becomes a slide-in drawer with full labels — no more icon-only rail. */
+  .sidebar{position:fixed;top:0;left:0;height:100dvh;width:248px;z-index:50;
+    transform:translateX(-100%);transition:transform .22s ease;box-shadow:0 0 40px rgba(0,0,0,.4);}
+  .sidebar.open{transform:translateX(0);}
+  .nav-backdrop.show{display:block;}
+  .navtoggle{display:inline-flex;}
+  .topbar{padding:11px 16px;gap:10px;}
+  .crumb{font-size:16px;flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .content{padding:16px;}
+  /* Trim the topbar so it fits a phone: drop the public-form button + username. */
+  .actions{gap:8px;} .actions .btn.tiny span{display:none;}
+  .topbar .pubform,.topbar .who{display:none;}
+}
+@media(max-width:560px){
+  .row{flex-direction:column;gap:0;} .row .fld{min-width:0;}
+  .grid{grid-template-columns:1fr;}
+  .cols.c-2-1,.cols.c-1-1{grid-template-columns:1fr;}
+  .langsw a{padding:4px 8px;}
+  .login{width:100%;max-width:360px;padding:30px 22px;}
+  .tabs{display:flex;flex-wrap:wrap;}
+  th,td{padding:9px 11px;}
+}
+/* Wide tables scroll sideways inside their own box instead of overflowing the
+   page. .table-wrap is added around every table by JS (see render_foot). */
+.table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:16px;}
+.table-wrap table{margin-bottom:0;}
+@media(max-width:560px){.table-wrap table{min-width:520px;}}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <?php }

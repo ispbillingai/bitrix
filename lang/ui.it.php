@@ -346,6 +346,8 @@ return [
     'f_currency'     => 'Valuta',
     'f_default_lang' => 'Lingua predefinita',
     'f_tz'           => 'Fuso orario',
+    'f_country_code' => 'Prefisso internazionale predefinito',
+    'f_country_code_h' => 'Solo cifre, senza +. Aggiunto ai numeri locali (es. 39 = Italia). I numeri con + o 00 restano invariati.',
     'f_base_url'     => 'URL di base',
     'f_base_url_h'   => 'Indirizzo pubblico di questa app (usato per costruire gli URL sopra).',
     'f_intake'       => 'Segreto di acquisizione',

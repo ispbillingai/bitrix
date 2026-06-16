@@ -151,6 +151,13 @@ textarea{resize:vertical;min-height:84px;}
 .ghost{display:inline-block;padding:10px 18px;border:1px solid var(--line);border-radius:9px;color:var(--txt);
   text-decoration:none;background:var(--surface2);font-weight:600;font-size:14px;}
 .foot{text-align:center;color:var(--muted);font-size:12px;margin-top:18px;}
+@media(max-width:480px){
+  body{padding:16px 12px;}
+  .card{padding:22px 18px 20px;border-radius:14px;}
+  .row{flex-direction:column;gap:0;}
+  .head h1{font-size:19px;}
+  .langsw{top:14px;right:14px;}
+}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 </head>
