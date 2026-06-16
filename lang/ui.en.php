@@ -28,6 +28,7 @@ return [
     'nav_tickets'      => 'Tickets',
     'nav_campaigns'    => 'Campaigns',
     'nav_messages'     => 'Messages',
+    'nav_outbound'     => 'Outbound',
     'nav_reminders'    => 'Reminders',
     'nav_events'       => 'Activity log',
     'nav_agents'       => 'Agents',
@@ -269,6 +270,21 @@ return [
     'msg_title'      => 'Message outbox',
     'th_time'        => 'Time',
     'th_subject'     => 'Subject',
+
+    // outbound (outgoing email / WhatsApp)
+    'ob_title'        => 'Outgoing email & WhatsApp',
+    'ob_intro'       => 'Every automatic and manual message the system tries to send. Failed rows show the exact reason from the email/WhatsApp provider.',
+    'ob_sent'        => 'Sent',
+    'ob_failed'      => 'Failed',
+    'ob_queued'      => 'Queued',
+    'ob_f_all'       => 'All',
+    'ob_f_failed'    => 'Failed only',
+    'ob_f_queued'    => 'Queued only',
+    'ob_f_whatsapp'  => 'WhatsApp',
+    'ob_f_email'     => 'Email',
+    'th_reason'      => 'Result / reason',
+    'ob_queued_note' => 'queued — will send on the next dispatch',
+    'ob_when_due'    => 'due',
 
     // campaigns
     'camp_title'     => 'Campaigns',

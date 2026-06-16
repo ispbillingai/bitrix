@@ -40,9 +40,9 @@ final class Account
     }
 
     /**
-     * Queue the portal invitation (magic link) for the customer, email + WhatsApp.
-     * Enqueued (not sent inline) so a slow/unreachable SMTP can't hang the page —
-     * the cron (bin/scheduler.php) delivers it within a minute.
+     * Send the portal invitation (magic link) to the customer, email + WhatsApp.
+     * due_at is now, so enqueue() delivers it inline (no cron wait); the send is
+     * best-effort and recorded in the outbox.
      */
     public static function sendInvite(int $contactId, string $token): void
     {

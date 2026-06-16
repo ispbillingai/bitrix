@@ -32,8 +32,18 @@ final class Scheduler
     /**
      * Insert a reminder. dedupe_key makes repeated enqueues (double-submit, webhook
      * retry) a no-op via the unique index. due_at is a 'Y-m-d H:i:s' string.
+     *
+     * Instant delivery: if the reminder is due now (due_at <= now) it is dispatched
+     * immediately, in this same request, so the customer/agent gets the message
+     * without waiting for a cron tick. Future-dated reminders (inactivity, sign
+     * cadence, appointment/offer reminders) are just queued and fire later via the
+     * web dispatcher (tickWeb) or an external cron, if any. Pass $sendIfDue=false
+     * to force pure-queue behaviour.
+     *
+     * Returns the reminder id (the new row, or the existing one on a dedupe hit),
+     * or 0 if it could not be resolved.
      */
-    public function enqueue(array $r): void
+    public function enqueue(array $r, bool $sendIfDue = true): int
     {
         $sql = 'INSERT INTO reminders
                 (entity_type, entity_id, rule_key, recipient_type, channel, due_at,
@@ -54,6 +64,54 @@ final class Scheduler
             ':lang'           => $r['lang'] ?? null,
             ':dedupe'         => $r['dedupe_key'] ?? null,
         ]);
+
+        $id = (int)$this->db->lastInsertId();
+        $freshInsert = $id > 0; // 0 => dedupe hit (ON DUPLICATE KEY UPDATE id=id)
+        if (!$freshInsert && !empty($r['dedupe_key'])) {
+            // Dedupe hit: nothing inserted. Look the existing row up by its
+            // dedupe_key so the caller can still reference it.
+            $q = $this->db->prepare('SELECT id FROM reminders WHERE dedupe_key = ? LIMIT 1');
+            $q->execute([$r['dedupe_key']]);
+            $id = (int)($q->fetchColumn() ?: 0);
+        }
+
+        // Instant send for already-due reminders. Only a fresh insert sends; a
+        // dedupe hit means it was enqueued (and likely already sent) before, so
+        // re-sending would double-message on a double-submit / webhook retry.
+        if ($sendIfDue && $freshInsert && strtotime((string)$r['due_at']) <= time()) {
+            $this->sendNow($id);
+        }
+        return $id;
+    }
+
+    /**
+     * Send a single reminder immediately, by id — the "instant" path used when an
+     * event fires (new request, agent assigned, deal won) so the customer doesn't
+     * wait for a cron tick. Only dispatches if the reminder is still pending and
+     * already due. Never throws: a channel error is recorded on the reminder and
+     * in the messages outbox, exactly as the cron path does.
+     */
+    public function sendNow(int $reminderId): string
+    {
+        if ($reminderId <= 0) {
+            return 'skipped';
+        }
+        $stmt = $this->db->prepare(
+            "SELECT * FROM reminders WHERE id = ? AND status = 'pending' AND due_at <= NOW()"
+        );
+        $stmt->execute([$reminderId]);
+        $row = $stmt->fetch();
+        if (!$row) {
+            return 'skipped'; // future-dated, already sent, or cancelled
+        }
+        try {
+            return $this->dispatchOne($row);
+        } catch (Throwable $e) {
+            $this->markFailed($reminderId, $e->getMessage());
+            Log::write('scheduler', 'reminder_failed', $row['entity_type'], (int)$row['entity_id'],
+                ['reminder_id' => $reminderId, 'error' => $e->getMessage(), 'inline' => true]);
+            return 'failed';
+        }
     }
 
     /**
@@ -102,6 +160,37 @@ final class Scheduler
             }
         }
         return ['due' => count($rows), 'sent' => $sent, 'skipped' => $skipped, 'failed' => $failed];
+    }
+
+    /**
+     * Opportunistic, self-throttling dispatcher for the future-dated reminders
+     * (inactivity nudges, sign cadence, appointment reminders). The instant rules
+     * — welcome, agent-assigned, closing — already send the moment they fire via
+     * sendNow(); this only exists to flush time-delayed work WITHOUT a system cron.
+     *
+     * Called on dashboard page loads. Runs at most once per $minIntervalSec across
+     * the whole app (guarded by a timestamp in `settings`), and only when there is
+     * actually something due, so it adds no measurable cost to a normal page view.
+     * Any external cron calling bin/scheduler.php still works unchanged.
+     */
+    public function tickWeb(int $minIntervalSec = 60): array
+    {
+        $now  = time();
+        $last = (int)\Glue\Settings::get('scheduler.last_web_tick', 0);
+        if ($now - $last < $minIntervalSec) {
+            return ['ran' => false, 'reason' => 'throttled'];
+        }
+        // Claim the window first so concurrent requests don't all run runDue().
+        \Glue\Settings::set('scheduler.last_web_tick', (string)$now);
+
+        // Cheap existence check before the heavier runDue().
+        $due = (int)$this->db->query(
+            "SELECT COUNT(*) FROM reminders WHERE status='pending' AND due_at <= NOW()"
+        )->fetchColumn();
+        if ($due === 0) {
+            return ['ran' => true, 'due' => 0];
+        }
+        return ['ran' => true] + $this->runDue();
     }
 
     /** Returns 'sent' or 'skipped'. */

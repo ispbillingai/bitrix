@@ -22,7 +22,11 @@ final class Automation
         return new Scheduler();
     }
 
-    /** #2 Welcome — immediate message to the customer on a new lead. */
+    /**
+     * #2 Welcome — immediate message to the customer on a new lead. enqueue() sends
+     * it inline because due_at is now, so it goes out the moment the lead is created
+     * (no cron wait). Future-dated rules below just queue and fire later.
+     */
     public static function welcome(string $entityType, int $id, ?string $lang = null, string $rule = 'welcome'): void
     {
         self::sched()->enqueue([
@@ -190,7 +194,7 @@ final class Automation
         }
     }
 
-    /** #7 Closing — thank-you to the customer + notify logistics, on a won deal. */
+    /** #7 Closing — thank-you to the customer + notify logistics, on a won deal (sent inline). */
     public static function closing(int $dealId): void
     {
         $sched = self::sched();

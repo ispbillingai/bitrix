@@ -28,6 +28,7 @@ return [
     'nav_tickets'      => 'Ticket',
     'nav_campaigns'    => 'Campagne',
     'nav_messages'     => 'Messaggi',
+    'nav_outbound'     => 'In uscita',
     'nav_reminders'    => 'Promemoria',
     'nav_events'       => 'Registro attività',
     'nav_agents'       => 'Agenti',
@@ -269,6 +270,21 @@ return [
     'msg_title'      => 'Messaggi inviati',
     'th_time'        => 'Ora',
     'th_subject'     => 'Oggetto',
+
+    // outbound (email / WhatsApp in uscita)
+    'ob_title'        => 'Email e WhatsApp in uscita',
+    'ob_intro'       => 'Ogni messaggio, automatico o manuale, che il sistema prova a inviare. Le righe non riuscite mostrano il motivo esatto restituito dal provider email/WhatsApp.',
+    'ob_sent'        => 'Inviati',
+    'ob_failed'      => 'Non riusciti',
+    'ob_queued'      => 'In coda',
+    'ob_f_all'       => 'Tutti',
+    'ob_f_failed'    => 'Solo non riusciti',
+    'ob_f_queued'    => 'Solo in coda',
+    'ob_f_whatsapp'  => 'WhatsApp',
+    'ob_f_email'     => 'Email',
+    'th_reason'      => 'Esito / motivo',
+    'ob_queued_note' => 'in coda — verrà inviato al prossimo invio',
+    'ob_when_due'    => 'previsto',
 
     // campaigns
     'camp_title'     => 'Campagne',

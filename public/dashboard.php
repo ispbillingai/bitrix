@@ -23,6 +23,7 @@ use Glue\Crm\Pipelines;
 use Glue\Crm\Tasks;
 use Glue\Crm\Tickets;
 use Glue\Db;
+use Glue\Event\Log;
 use Glue\Notify\Notifier;
 use Glue\Notify\TextMeBot;
 use Glue\Reminder\Scheduler;
@@ -83,6 +84,14 @@ if (!isset($_SESSION['glue_auth'])) {
 $pdo = Db::pdo();
 $tab = $_GET['tab'] ?? 'overview';
 $uid = (int)($_SESSION['glue_user']['id'] ?? 0) ?: null;
+
+// Cron-less dispatch: flush any due time-delayed reminders on page load (throttled
+// to once a minute app-wide). Instant messages — welcome, agent-assigned, closing —
+// already send the moment they fire, so this only catches inactivity/sign cadences.
+// Best-effort: a dispatch error must never blank the dashboard.
+try { (new Scheduler())->tickWeb(); } catch (Throwable $e) {
+    Log::write('scheduler', 'web_tick_failed', null, null, ['error' => $e->getMessage()]);
+}
 
 // ---- role-based access ----
 // Agents see a restricted panel: only their own leads/deals/appointments/tasks,
@@ -490,7 +499,7 @@ $agents = Auth::agents();
 $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_format((float)$n, 0);
 
 $views = ['overview', 'leads', 'deals', 'contacts', 'appointments', 'tasks', 'tickets',
-          'campaigns', 'messages', 'reminders', 'events', 'agents', 'settings', 'instructions'];
+          'campaigns', 'messages', 'outbound', 'reminders', 'events', 'agents', 'settings', 'instructions'];
 $view = in_array($tab, $views, true) ? $tab : 'overview';
 // Agents can't reach admin views, even by typing the URL.
 if ($isAgent && !in_array($view, $agentViews, true)) {
@@ -530,7 +539,8 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
         'overview' => 'nav_overview', 'leads' => 'nav_leads', 'deals' => 'nav_deals',
         'contacts' => 'nav_contacts', 'appointments' => 'nav_appointments', 'tasks' => 'nav_tasks',
         'tickets' => 'nav_tickets',
-        'campaigns' => 'nav_campaigns', 'messages' => 'nav_messages', 'reminders' => 'nav_reminders',
+        'campaigns' => 'nav_campaigns', 'messages' => 'nav_messages', 'outbound' => 'nav_outbound',
+        'reminders' => 'nav_reminders',
         'events' => 'nav_events', 'agents' => 'nav_agents', 'instructions' => 'nav_instr', 'settings' => 'nav_settings',
     ];
     if ($isAgent) { // agents only see their own work
@@ -709,6 +719,7 @@ function svg(string $name): string {
         'link'        => '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
         'mail'        => '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/>',
         'send'        => '<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
+        'outbound'    => '<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
         'money'       => '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
         'alert'       => '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
         'check'       => '<path d="M20 6 9 17l-5-5"/>',
@@ -807,6 +818,7 @@ tbody tr:hover{background:var(--surface2);} tr:last-child td{border-bottom:none;
 .pill-pending,.pill-requested,.pill-open{color:var(--amber);background:var(--amber-bg);border-color:transparent;}
 .pill-sent,.pill-confirmed,.pill-done,.pill-won,.pill-converted{color:var(--green);background:var(--green-bg);border-color:transparent;}
 .pill-failed,.pill-cancelled,.pill-lost,.pill-junk,.pill-no_show{color:var(--red);background:var(--red-bg);border-color:transparent;}
+.reason-err{color:var(--red);word-break:break-word;max-width:340px;}
 .flash{background:var(--green-bg);border:1px solid var(--green);color:var(--green);padding:12px 16px;
   border-radius:8px;margin-bottom:18px;word-break:break-word;font-weight:500;}
 .flash-err{background:var(--red-bg);border-color:var(--red);color:var(--red);}

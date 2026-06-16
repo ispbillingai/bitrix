@@ -36,8 +36,9 @@ final class Otp
              VALUES (?, ?, ?, ?, ?)'
         )->execute([$contactId, $dealId ?: null, $purpose, $code, $expires]);
 
-        // Queued, not sent inline: a hung SMTP must never block the signing page.
-        // The cron delivers within a minute; the code stays valid for TTL_MIN.
+        // due_at is now, so enqueue() sends it inline — the code reaches the
+        // customer immediately while the signing page waits. A slow channel is
+        // best-effort (recorded in the outbox) and never throws here.
         (new Scheduler())->enqueue([
             'entity_type'    => 'contact',
             'entity_id'      => $contactId,
