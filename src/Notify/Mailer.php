@@ -44,55 +44,103 @@ final class Mailer
         $port   = (int)($s['port'] ?? 587);
         $secure = $s['secure'] ?? 'tls'; // 'tls' | 'ssl' | ''
         $prefix = $secure === 'ssl' ? 'ssl://' : '';
+        // EHLO name should be a hostname we own, not the server's — fall back to the
+        // from-address domain, never the remote host (some servers reject that).
+        $ehlo = substr(strrchr($fromEmail, '@') ?: '@localhost', 1) ?: 'localhost';
 
-        $fp = @stream_socket_client("$prefix$host:$port", $errno, $errstr, 8);
+        $fp = @stream_socket_client("$prefix$host:$port", $errno, $errstr, 15);
         if (!$fp) {
             return ['ok' => false, 'error' => "SMTP connect failed: $errstr ($errno)"];
         }
-        stream_set_timeout($fp, 10); // a silent server must not block the process
+        stream_set_timeout($fp, 15); // a silent server must not block the process
 
         $read = static function () use ($fp): string {
             $data = '';
-            while ($line = fgets($fp, 515)) {
+            while (($line = fgets($fp, 1024)) !== false) {
                 $data .= $line;
-                if (isset($line[3]) && $line[3] === ' ') {
+                // A multi-line reply has '-' as the 4th char on every line but the
+                // last, which has a space. Stop once we see the final line.
+                if (strlen($line) < 4 || $line[3] === ' ') {
                     break;
                 }
             }
-            return $data;
+            return rtrim($data);
         };
         $cmd = static function (string $c) use ($fp, $read): string {
             fwrite($fp, $c . "\r\n");
             return $read();
         };
+        // Did the server reply with one of the expected status codes?
+        $expect = static function (string $resp, array $codes): bool {
+            $code = substr(ltrim($resp), 0, 3);
+            return in_array($code, $codes, true);
+        };
+        $fail = static function (string $stage, string $resp) use ($fp): array {
+            @fwrite($fp, "QUIT\r\n");
+            @fclose($fp);
+            $resp = trim($resp);
+            return ['ok' => false, 'error' => "SMTP $stage failed" . ($resp !== '' ? ": $resp" : ' (no/empty response — connection may have dropped or timed out)')];
+        };
 
-        $read();
-        $cmd('EHLO ' . ($host ?: 'localhost'));
+        $greet = $read();
+        if (!$expect($greet, ['220'])) {
+            return $fail('greeting', $greet);
+        }
+        if (!$expect($r = $cmd("EHLO $ehlo"), ['250'])) {
+            return $fail('EHLO', $r);
+        }
         if ($secure === 'tls') {
-            $cmd('STARTTLS');
-            stream_socket_enable_crypto($fp, true, STREAM_CRYPTO_METHOD_TLS_CLIENT);
-            $cmd('EHLO ' . ($host ?: 'localhost'));
+            if (!$expect($r = $cmd('STARTTLS'), ['220'])) {
+                return $fail('STARTTLS', $r);
+            }
+            if (!@stream_socket_enable_crypto($fp, true, STREAM_CRYPTO_METHOD_TLS_CLIENT
+                | STREAM_CRYPTO_METHOD_TLSv1_1_CLIENT | STREAM_CRYPTO_METHOD_TLSv1_2_CLIENT)) {
+                return $fail('TLS handshake', '');
+            }
+            if (!$expect($r = $cmd("EHLO $ehlo"), ['250'])) {
+                return $fail('EHLO (post-TLS)', $r);
+            }
         }
         if (!empty($s['user'])) {
-            $cmd('AUTH LOGIN');
-            $cmd(base64_encode((string)$s['user']));
-            $cmd(base64_encode((string)($s['pass'] ?? '')));
+            if (!$expect($r = $cmd('AUTH LOGIN'), ['334'])) {
+                return $fail('AUTH', $r);
+            }
+            if (!$expect($r = $cmd(base64_encode((string)$s['user'])), ['334'])) {
+                return $fail('AUTH username', $r);
+            }
+            if (!$expect($r = $cmd(base64_encode((string)($s['pass'] ?? ''))), ['235'])) {
+                return $fail('AUTH password', $r);
+            }
         }
-        $cmd("MAIL FROM:<$fromEmail>");
-        $cmd("RCPT TO:<$to>");
-        $cmd('DATA');
+        if (!$expect($r = $cmd("MAIL FROM:<$fromEmail>"), ['250'])) {
+            return $fail('MAIL FROM', $r);
+        }
+        if (!$expect($r = $cmd("RCPT TO:<$to>"), ['250', '251'])) {
+            return $fail('RCPT TO', $r);
+        }
+        if (!$expect($r = $cmd('DATA'), ['354'])) {
+            return $fail('DATA', $r);
+        }
 
         $headers = "From: " . $this->encodeName($fromName) . " <$fromEmail>\r\n"
             . "To: <$to>\r\n"
             . "Subject: " . $this->encodeSubject($subject) . "\r\n"
             . "MIME-Version: 1.0\r\n"
             . "Content-Type: text/html; charset=UTF-8\r\n\r\n";
-        $resp = $cmd($headers . $html . "\r\n.");
+
+        // Normalise the body to CRLF and dot-stuff it (RFC 5321 §4.5.2): a line
+        // that starts with '.' must be sent as '..', else a body line of "." would
+        // prematurely end the message. Then terminate with a lone "." line.
+        $body = preg_replace('/\r\n|\r|\n/', "\r\n", $headers . $html);
+        $body = preg_replace('/^\./m', '..', (string)$body);
+        fwrite($fp, $body . "\r\n.\r\n");
+        $resp = $read();
         $cmd('QUIT');
         fclose($fp);
 
-        $ok = str_starts_with(trim($resp), '250');
-        return ['ok' => $ok, 'error' => $ok ? null : "SMTP data response: $resp"];
+        $ok = $expect($resp, ['250']);
+        return ['ok' => $ok, 'error' => $ok ? null
+            : 'SMTP message rejected' . (trim($resp) !== '' ? ': ' . trim($resp) : ' (no/empty response — connection dropped or timed out at DATA)')];
     }
 
     private function encodeSubject(string $s): string
