@@ -419,15 +419,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $tab = 'settings';
                 break;
             case 'test_whatsapp':
-                $ok = (new Notifier())->whatsapp((string)$_POST['to'], (string)Config::get('app.company_name', 'CRM') . ' — test ✅');
-                $flash = $ok ? $t('test_ok') : $t('test_fail');
-                $flashType = $ok ? 'ok' : 'err';
+                $res = (new Notifier())->whatsappResult((string)$_POST['to'], (string)Config::get('app.company_name', 'CRM') . ' — test ✅');
+                $flash = $res['ok'] ? $t('test_ok') : $t('test_fail') . ': ' . test_reason($res);
+                $flashType = $res['ok'] ? 'ok' : 'err';
                 $tab = 'settings';
                 break;
             case 'test_email':
-                $ok = (new Notifier())->email((string)$_POST['to'], 'CRM test', '<p>CRM — test ✅</p>');
-                $flash = $ok ? $t('test_ok') : $t('test_fail');
-                $flashType = $ok ? 'ok' : 'err';
+                $res = (new Notifier())->emailResult((string)$_POST['to'], 'CRM test', '<p>CRM — test ✅</p>');
+                $flash = $res['ok'] ? $t('test_ok') : $t('test_fail') . ': ' . test_reason($res);
+                $flashType = $res['ok'] ? 'ok' : 'err';
                 $tab = 'settings';
                 break;
 
@@ -569,6 +569,34 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
 <?php }
 
 function render_foot(): void { echo '</div></main></div></body></html>'; }
+
+/**
+ * Turn a Notifier provider response into a short human-readable failure reason
+ * for the Settings test buttons. Prefers the explicit 'error', then a non-200
+ * HTTP code + response body (TextMeBot), then any 'skipped' marker.
+ */
+function test_reason(array $res): string {
+    $parts = [];
+    if (!empty($res['skipped'])) {
+        $map = [
+            'no_phone'           => 'No phone number entered',
+            'no_email'           => 'No email address entered',
+            'textmebot_disabled' => 'WhatsApp (TextMeBot) API key is not configured',
+        ];
+        $parts[] = $map[$res['skipped']] ?? (string)$res['skipped'];
+    }
+    if (!empty($res['error']) && (empty($res['skipped']) || $res['error'] !== $res['skipped'])) {
+        $parts[] = (string)$res['error'];
+    }
+    if (isset($res['http']) && (int)$res['http'] !== 200 && (int)$res['http'] !== 0) {
+        $parts[] = 'HTTP ' . (int)$res['http'];
+    }
+    if (!empty($res['body']) && empty($res['error'])) {
+        $parts[] = 'Response: ' . trim((string)$res['body']);
+    }
+    $reason = trim(implode(' — ', array_filter($parts)));
+    return $reason !== '' ? $reason : 'unknown error';
+}
 
 
 // ============================ ui bits (shared by views) ============================

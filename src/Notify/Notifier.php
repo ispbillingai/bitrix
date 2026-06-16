@@ -23,26 +23,44 @@ final class Notifier
 
     public function whatsapp(string $phone, string $text, ?int $reminderId = null, ?int $campaignId = null): bool
     {
-        $phone = self::normalizePhone($phone);
-        if ($phone === '' || !$this->wa->enabled()) {
-            $this->record('whatsapp', $phone, null, $text, false,
-                ['skipped' => $phone === '' ? 'no_phone' : 'textmebot_disabled'], $reminderId, $campaignId);
-            return false;
-        }
-        $res = $this->wa->sendWhatsapp($phone, $text);
-        $this->record('whatsapp', $phone, null, $text, (bool)$res['ok'], $res, $reminderId, $campaignId);
-        return (bool)$res['ok'];
+        return (bool)$this->whatsappResult($phone, $text, $reminderId, $campaignId)['ok'];
     }
 
     public function email(string $to, string $subject, string $html, ?int $reminderId = null, ?int $campaignId = null): bool
     {
+        return (bool)$this->emailResult($to, $subject, $html, $reminderId, $campaignId)['ok'];
+    }
+
+    /**
+     * Same as whatsapp() but returns the full provider response — ['ok'=>bool,
+     * 'error'=>?string, 'http'=>int, 'body'=>..]. Use this when the caller wants
+     * to show the user *why* a send failed (e.g. the Settings test buttons).
+     */
+    public function whatsappResult(string $phone, string $text, ?int $reminderId = null, ?int $campaignId = null): array
+    {
+        $phone = self::normalizePhone($phone);
+        if ($phone === '' || !$this->wa->enabled()) {
+            $why = $phone === '' ? 'no_phone' : 'textmebot_disabled';
+            $res = ['ok' => false, 'error' => $why, 'skipped' => $why];
+            $this->record('whatsapp', $phone, null, $text, false, $res, $reminderId, $campaignId);
+            return $res;
+        }
+        $res = $this->wa->sendWhatsapp($phone, $text);
+        $this->record('whatsapp', $phone, null, $text, (bool)$res['ok'], $res, $reminderId, $campaignId);
+        return $res;
+    }
+
+    /** Same as email() but returns the full provider response — ['ok'=>bool, 'error'=>?string]. */
+    public function emailResult(string $to, string $subject, string $html, ?int $reminderId = null, ?int $campaignId = null): array
+    {
         if (trim($to) === '') {
-            $this->record('email', $to, $subject, $html, false, ['skipped' => 'no_email'], $reminderId, $campaignId);
-            return false;
+            $res = ['ok' => false, 'error' => 'no_email', 'skipped' => 'no_email'];
+            $this->record('email', $to, $subject, $html, false, $res, $reminderId, $campaignId);
+            return $res;
         }
         $res = $this->mail->send($to, $subject, $html);
         $this->record('email', $to, $subject, $html, (bool)$res['ok'], $res, $reminderId, $campaignId);
-        return (bool)$res['ok'];
+        return $res;
     }
 
     private function record(
