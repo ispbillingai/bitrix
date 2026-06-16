@@ -8,6 +8,7 @@ use Glue\Db;
 use Glue\Event\Log;
 use Glue\Portal\Account;
 use Glue\Reminder\Scheduler;
+use Throwable;
 
 /**
  * Support tickets — a threaded conversation between a customer (contact) and the
@@ -282,33 +283,43 @@ final class Tickets
      */
     private static function syncDealOffer(int $contactId, string $status): void
     {
-        $stmt = Db::pdo()->prepare(
-            "SELECT id, stage_code, offer_status FROM deals
-             WHERE contact_id = ? AND status = 'open' ORDER BY id DESC LIMIT 1"
-        );
-        $stmt->execute([$contactId]);
-        $deal = $stmt->fetch();
-        if (!$deal) {
-            return;
-        }
-        // Never move the LED backwards — except a brand-new offer, which restarts it.
-        $rank = ['sent' => 1, 'downloaded' => 2, 'accepted' => 3];
-        $cur  = (string)($deal['offer_status'] ?? '');
-        if ($status !== 'sent' && isset($rank[$cur]) && $rank[$cur] >= $rank[$status]) {
-            return;
-        }
-        Db::pdo()->prepare('UPDATE deals SET offer_status = ? WHERE id = ?')
-            ->execute([$status, (int)$deal['id']]);
+        // The offer LED is a nice-to-have driven by deals.offer_status (migration
+        // 014). If that migration hasn't been applied on this DB, the column is
+        // missing — degrade gracefully (skip the LED) instead of breaking the
+        // message send that triggered this. Run `php migrate.php` to enable it.
+        try {
+            $stmt = Db::pdo()->prepare(
+                "SELECT id, stage_code, offer_status FROM deals
+                 WHERE contact_id = ? AND status = 'open' ORDER BY id DESC LIMIT 1"
+            );
+            $stmt->execute([$contactId]);
+            $deal = $stmt->fetch();
+            if (!$deal) {
+                return;
+            }
+            // Never move the LED backwards — except a brand-new offer, which restarts it.
+            $rank = ['sent' => 1, 'downloaded' => 2, 'accepted' => 3];
+            $cur  = (string)($deal['offer_status'] ?? '');
+            if ($status !== 'sent' && isset($rank[$cur]) && $rank[$cur] >= $rank[$status]) {
+                return;
+            }
+            Db::pdo()->prepare('UPDATE deals SET offer_status = ? WHERE id = ?')
+                ->execute([$status, (int)$deal['id']]);
 
-        $quote = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
-        $nego  = (string)Config::get('crm.deal_negotiation_stage', 'NEGOTIATION');
-        $sign  = (string)Config::get('crm.deal_signature_stage', 'SIGNATURE');
-        if ($status === 'sent' && $deal['stage_code'] !== $quote) {
-            Deals::moveStage((int)$deal['id'], $quote);
-        } elseif ($status === 'downloaded' && $deal['stage_code'] === $quote) {
-            Deals::moveStage((int)$deal['id'], $nego);
-        } elseif ($status === 'accepted' && in_array($deal['stage_code'], [$quote, $nego], true)) {
-            Deals::moveStage((int)$deal['id'], $sign);
+            $quote = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
+            $nego  = (string)Config::get('crm.deal_negotiation_stage', 'NEGOTIATION');
+            $sign  = (string)Config::get('crm.deal_signature_stage', 'SIGNATURE');
+            if ($status === 'sent' && $deal['stage_code'] !== $quote) {
+                Deals::moveStage((int)$deal['id'], $quote);
+            } elseif ($status === 'downloaded' && $deal['stage_code'] === $quote) {
+                Deals::moveStage((int)$deal['id'], $nego);
+            } elseif ($status === 'accepted' && in_array($deal['stage_code'], [$quote, $nego], true)) {
+                Deals::moveStage((int)$deal['id'], $sign);
+            }
+        } catch (Throwable $e) {
+            Log::write('crm', 'offer_status_sync_skipped', 'contact', $contactId,
+                ['status' => $status, 'error' => $e->getMessage(),
+                 'hint' => 'run php migrate.php to add deals.offer_status (migration 014)']);
         }
     }
 
