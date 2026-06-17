@@ -238,7 +238,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
             case 'lead_convert':
                 $dealId = Leads::convert((int)$_POST['id'], $uid);
-                $flash = $t('lead_converted') . ' #' . $dealId;
+                // Also send the customer their portal login link on conversion, so a
+                // converted request gets into the portal straight away (same as the
+                // manual "Send portal access" button on the deal). Best-effort.
+                $portalNote = '';
+                $convDeal = $dealId ? Deals::find($dealId) : null;
+                $convContactId = (int)($convDeal['contact_id'] ?? 0);
+                if ($convContactId > 0) {
+                    $token = \Glue\Portal\Account::invite($convContactId);
+                    \Glue\Portal\Account::sendInvite($convContactId, $token);
+                    Activities::add('deal', $dealId, 'system', 'Portal access sent to customer', $uid);
+                    $portalNote = ' · ' . $t('portal_sent');
+                }
+                $flash = $t('lead_converted') . ' #' . $dealId . $portalNote;
                 $tab = 'deals';
                 break;
             case 'lead_note':
