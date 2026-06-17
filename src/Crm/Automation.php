@@ -106,6 +106,26 @@ final class Automation
     }
 
     /**
+     * Ask the customer to sign — sent the moment a deal enters the signature
+     * stage. Instant (due now), both channels, carries the portal link. No dedupe
+     * key: re-entering the stage re-sends, and moveStage's stage-change guard
+     * already prevents a double-submit from sending twice.
+     */
+    public static function signRequest(int $dealId, string $link, ?string $lang = null): void
+    {
+        self::sched()->enqueue([
+            'entity_type'    => 'deal',
+            'entity_id'      => $dealId,
+            'rule_key'       => 'sign_request',
+            'recipient_type' => 'customer',
+            'channel'        => 'both',
+            'due_at'         => date('Y-m-d H:i:s'),
+            'payload'        => ['link' => $link],
+            'lang'           => $lang,
+        ]);
+    }
+
+    /**
      * #5 Appointment reminders — to BOTH the customer and the agent, at each
      * configured offset before the start time. $whenTs is a unix timestamp.
      */

@@ -38,6 +38,10 @@ return [
         'appointment_agent' =>
             "⏰ Promemoria appuntamento: {customer_name} il {when} (#{id}).",
 
+        'sign_request' => // inviato quando la trattativa entra nella fase di firma
+            "Ciao {name}, il tuo contratto di {company} è pronto per la firma. "
+            . "Apri la tua area clienti per verificarlo e firmarlo: {link}",
+
         'sign_due' =>
             "Ciao {name}, il preventivo di {company} è pronto. "
             . "Ti invitiamo a verificarlo e firmarlo entro il {deadline}. "
@@ -124,6 +128,12 @@ return [
         'appointment_agent' => [
             'subject' => 'Promemoria appuntamento: {customer_name}',
             'html'    => '<p>Appuntamento con {customer_name} il <strong>{when}</strong> (#{id}).</p>',
+        ],
+        'sign_request' => [
+            'subject' => 'Firma il tuo contratto — {company}',
+            'html'    => '<p>Ciao {name},</p><p>Il tuo contratto di {company} è pronto per la firma.</p>'
+                . '<p><a href="{link}">Apri la mia area e firma</a></p>'
+                . '<p>Oppure incolla questo link nel browser:<br>{link}</p>',
         ],
         'sign_due' => [
             'subject' => 'Firma il tuo preventivo di {company}',

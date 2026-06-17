@@ -271,6 +271,7 @@ return [
     'msg_title'      => 'Message outbox',
     'th_time'        => 'Time',
     'th_subject'     => 'Subject',
+    'th_message'     => 'Message',
 
     // outbound (outgoing email / WhatsApp)
     'ob_title'        => 'Outgoing email & WhatsApp',
@@ -305,6 +306,7 @@ return [
     'rk_offer_read'     => 'Offer waiting to be read',
     'rk_offer_accepted' => 'Offer accepted (to agent)',
     'rk_agent_new_assignment' => 'New customer assigned (to agent)',
+    'rk_sign_request'   => 'Please sign your contract',
 
     // campaigns
     'camp_title'     => 'Campaigns',

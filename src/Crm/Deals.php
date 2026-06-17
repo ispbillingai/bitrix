@@ -6,6 +6,7 @@ namespace Glue\Crm;
 use Glue\Config;
 use Glue\Db;
 use Glue\Event\Log;
+use Glue\Portal\Account;
 use Glue\Reminder\Scheduler;
 use Glue\Reminder\Templates;
 use Glue\Sync\BitrixSync;
@@ -123,6 +124,14 @@ final class Deals
                 $sched->cancelForEntity('deal', $dealId, ['sign_due', 'sign_overdue']);
             }
             Automation::signCadence($dealId, $quoteStage, $dueDate);
+        }
+        // Entering the signature stage -> ask the customer to sign now (instant,
+        // WhatsApp + email, with their portal link).
+        $signStage = (string)Config::get('crm.deal_signature_stage', 'SIGNATURE');
+        if ($stageChanged && $stageCode === $signStage && $oldStage !== $signStage) {
+            $contactId = (int)($deal['contact_id'] ?? 0);
+            $link = $contactId > 0 ? Account::magicLink(Account::invite($contactId)) : '';
+            Automation::signRequest($dealId, $link, $deal['lang'] ?? null);
         }
         // #7 Won -> thank-you + logistics, stop chasing the signature.
         if ($isWon) {

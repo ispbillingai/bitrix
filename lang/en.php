@@ -38,6 +38,10 @@ return [
         'appointment_agent' =>
             "⏰ Appointment reminder: {customer_name} on {when} (#{id}).",
 
+        'sign_request' => // sent when the deal enters the signature stage
+            "Hi {name}, your contract from {company} is ready to sign. "
+            . "Open your customer area to review and sign it: {link}",
+
         'sign_due' =>
             "Hi {name}, your quote from {company} is ready. "
             . "Please review and sign it before {deadline}. "
@@ -124,6 +128,12 @@ return [
         'appointment_agent' => [
             'subject' => 'Appointment reminder: {customer_name}',
             'html'    => '<p>Appointment with {customer_name} on <strong>{when}</strong> (#{id}).</p>',
+        ],
+        'sign_request' => [
+            'subject' => 'Please sign your contract — {company}',
+            'html'    => '<p>Hi {name},</p><p>Your contract from {company} is ready to sign.</p>'
+                . '<p><a href="{link}">Open my area &amp; sign</a></p>'
+                . '<p>Or paste this link into your browser:<br>{link}</p>',
         ],
         'sign_due' => [
             'subject' => 'Please sign your quote from {company}',
