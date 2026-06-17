@@ -109,12 +109,18 @@ $pipelines = \Glue\Crm\Pipelines::all();
   <h3><?= $h($t('sec_pipelines')) ?></h3>
   <p class="muted small"><?= $h($t('sec_pipelines_h')) ?></p>
   <?php foreach ($pipelines as $p): $stages = \Glue\Crm\Pipelines::stages((int)$p['id']); ?>
+    <?php
+      // Translate the pipeline name by its entity type (lead/deal); custom
+      // pipelines fall back to their stored name.
+      $pipeName = $p['entity_type'] === 'lead' ? $t('nav_leads')
+                : ($p['entity_type'] === 'deal' ? $t('nav_deals') : $p['name']);
+    ?>
     <div style="margin-bottom:18px">
-      <h3 style="margin-bottom:8px"><?= $h($p['name']) ?> <span class="muted small">(<?= $h($p['entity_type']) ?>)</span></h3>
+      <h3 style="margin-bottom:8px"><?= $h($pipeName) ?> <span class="muted small">(<?= $h($p['entity_type']) ?>)</span></h3>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
         <?php foreach ($stages as $s): $locked = $s['is_first'] || $s['is_won'] || $s['is_lost']; ?>
           <span class="pill" style="display:inline-flex;align-items:center;gap:7px">
-            <span class="dotc" style="background:<?= $h($s['color'] ?: '#5b6cff') ?>"></span><?= $h($s['name']) ?>
+            <span class="dotc" style="background:<?= $h($s['color'] ?: '#5b6cff') ?>"></span><?= $h(stage_label($t, $s['code'], $s['name'])) ?>
             <span class="muted">(<?= $h($s['code']) ?>)</span>
             <?php if (!$locked): ?>
               <form method="post" style="display:inline" onsubmit="return confirm('?')">
