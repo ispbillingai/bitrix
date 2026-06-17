@@ -489,6 +489,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $flashType = $res['ok'] ? 'ok' : 'err';
                 $tab = 'settings';
                 break;
+            case 'test_yousign':
+                $res = (new \Glue\Sign\Yousign())->test();
+                $flash = $res['ok']
+                    ? $t('test_ok') . ' (' . ($res['env'] ?? '') . ')'
+                    : $t('test_fail') . ': ' . ($res['error'] ?? 'unknown');
+                $flashType = $res['ok'] ? 'ok' : 'err';
+                $tab = 'settings';
+                break;
 
             // ---------- users / agents ----------
             case 'create_user':

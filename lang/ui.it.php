@@ -438,6 +438,7 @@ return [
     'test_wa'        => 'Invia WhatsApp di prova',
     'test_email'     => 'Invia email di prova',
     'test_bitrix'    => 'Prova Bitrix24',
+    'test_yousign'   => 'Prova Yousign',
     'test_phone_ph'  => '+39...',
     'test_email_ph'  => 'nome@esempio.com',
     'test_ok'        => 'Successo',

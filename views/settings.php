@@ -175,4 +175,8 @@ $pipelines = \Glue\Crm\Pipelines::all();
   <form method="post" class="inline"><input type="hidden" name="do" value="test_bitrix">
     <button class="btn ghost"><?= $h($t('test_bitrix')) ?></button></form>
   <?php endif; ?>
+  <?php if ($cfg('yousign.api_key')): ?>
+  <form method="post" class="inline"><input type="hidden" name="do" value="test_yousign">
+    <button class="btn ghost"><?= $h($t('test_yousign')) ?></button></form>
+  <?php endif; ?>
 </div>
