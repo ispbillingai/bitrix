@@ -168,7 +168,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'reminders.appointment_offsets_min', 'reminders.sign_before_due_days', 'reminders.offer_read_days',
                     'textmebot.api_key', 'mail.from_name', 'mail.from_email',
                     'mail.smtp.host', 'mail.smtp.port', 'mail.smtp.user', 'mail.smtp.pass', 'mail.smtp.secure',
-                    'yousign.api_key', 'yousign.environment',
                     'logistics.email', 'logistics.phone',
                     'bitrix.sync_enabled', 'bitrix.base_url', 'bitrix.outbound_secret',
                 ];
@@ -486,14 +485,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'test_email':
                 $res = (new Notifier())->emailResult((string)$_POST['to'], 'CRM test', '<p>CRM — test ✅</p>');
                 $flash = $res['ok'] ? $t('test_ok') : $t('test_fail') . ': ' . test_reason($res);
-                $flashType = $res['ok'] ? 'ok' : 'err';
-                $tab = 'settings';
-                break;
-            case 'test_yousign':
-                $res = (new \Glue\Sign\Yousign())->test();
-                $flash = $res['ok']
-                    ? $t('test_ok') . ' (' . ($res['env'] ?? '') . ')'
-                    : $t('test_fail') . ': ' . ($res['error'] ?? 'unknown');
                 $flashType = $res['ok'] ? 'ok' : 'err';
                 $tab = 'settings';
                 break;

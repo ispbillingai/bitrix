@@ -69,19 +69,6 @@ $pipelines = \Glue\Crm\Pipelines::all();
     ?>
   </div>
 
-  <h3><?= $h($t('sec_yousign')) ?> <span class="pill"><?= $h($t('optional')) ?></span></h3>
-  <p class="muted small"><?= $h($t('sec_yousign_h')) ?></p>
-  <div class="row">
-    <?php fld($h, 'yousign.api_key', $t('f_ys_key'), $cfg('yousign.api_key'), $t('f_ys_key_h')); ?>
-    <label class="fld"><span><?= $h($t('f_ys_env')) ?></span>
-      <?php $ysEnv = (string)$cfg('yousign.environment', 'sandbox'); ?>
-      <select name="yousign.environment">
-        <option value="sandbox"<?= $ysEnv !== 'production' ? ' selected' : '' ?>><?= $h($t('f_ys_env_sandbox')) ?></option>
-        <option value="production"<?= $ysEnv === 'production' ? ' selected' : '' ?>><?= $h($t('f_ys_env_prod')) ?></option>
-      </select>
-    </label>
-  </div>
-
   <h3><?= $h($t('sec_cadences')) ?></h3>
   <?php
   // Number-list settings (minutes/days) are stored as arrays; show them as a
@@ -174,9 +161,5 @@ $pipelines = \Glue\Crm\Pipelines::all();
   <?php if ($syncOn): ?>
   <form method="post" class="inline"><input type="hidden" name="do" value="test_bitrix">
     <button class="btn ghost"><?= $h($t('test_bitrix')) ?></button></form>
-  <?php endif; ?>
-  <?php if ($cfg('yousign.api_key')): ?>
-  <form method="post" class="inline"><input type="hidden" name="do" value="test_yousign">
-    <button class="btn ghost"><?= $h($t('test_yousign')) ?></button></form>
   <?php endif; ?>
 </div>

@@ -394,14 +394,6 @@ return [
     'f_smtp_pass'    => 'Password SMTP',
     'f_smtp_secure'  => 'Sicurezza (tls/ssl)',
 
-    'sec_yousign'      => 'Firma elettronica (Yousign)',
-    'sec_yousign_h'    => 'Collega il tuo account Yousign per firmare i contratti con firma elettronica a valore legale. Crea una chiave API in Yousign in Sviluppatori → Chiavi API.',
-    'f_ys_key'         => 'Chiave API Yousign',
-    'f_ys_key_h'       => 'Incolla la chiave API da Yousign → Sviluppatori → Chiavi API. Inizia con una chiave Sandbox per fare le prove.',
-    'f_ys_env'         => 'Ambiente',
-    'f_ys_env_sandbox' => 'Sandbox (prova)',
-    'f_ys_env_prod'    => 'Produzione (reale)',
-
     'sec_cadences'   => 'Tempistiche promemoria',
     'f_lead_inact'   => 'Inattività lead (ore)',
     'f_deal_inact'   => 'Inattività trattativa (ore)',
@@ -440,7 +432,6 @@ return [
     'test_wa'        => 'Invia WhatsApp di prova',
     'test_email'     => 'Invia email di prova',
     'test_bitrix'    => 'Prova Bitrix24',
-    'test_yousign'   => 'Prova Yousign',
     'test_phone_ph'  => '+39...',
     'test_email_ph'  => 'nome@esempio.com',
     'test_ok'        => 'Successo',
