@@ -21,7 +21,7 @@ return [
     // nav
     'nav_overview'     => 'Overview',
     'nav_leads'        => 'Leads',
-    'nav_deals'        => 'Pipeline',
+    'nav_deals'        => 'Deals',
     'nav_contacts'     => 'Contacts',
     'nav_appointments' => 'Appointments',
     'nav_tasks'        => 'Tasks',

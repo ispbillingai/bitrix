@@ -21,7 +21,7 @@ return [
     // nav
     'nav_overview'     => 'Panoramica',
     'nav_leads'        => 'Lead',
-    'nav_deals'        => 'Pipeline',
+    'nav_deals'        => 'Trattative',
     'nav_contacts'     => 'Contatti',
     'nav_appointments' => 'Appuntamenti',
     'nav_tasks'        => 'Attività',
