@@ -69,6 +69,12 @@ $rows = \Glue\Crm\Leads::all(300, $scopeId ?? null);
       <span class="muted small"><?= $ag ? $h($ag) : $h($t('unassigned')) ?></span>
     </summary>
     <div style="padding:4px 18px 18px;border-top:1px solid var(--line)">
+      <?php $msg = trim((string)($r['comments'] ?? '')); if ($msg !== ''): ?>
+        <div style="background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:8px 0 4px">
+          <div class="muted small" style="margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em;font-weight:600"><?= $h($t('f_message')) ?></div>
+          <div style="white-space:pre-wrap;line-height:1.55"><?= nl2br($h($msg)) ?></div>
+        </div>
+      <?php endif; ?>
       <div class="cols c-1-1" style="margin-bottom:0">
         <div>
           <h3><?= $h($t('actions')) ?></h3>
