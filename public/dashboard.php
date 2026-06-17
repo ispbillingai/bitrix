@@ -469,11 +469,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $tab = 'agents';
                 break;
             case 'delete_user':
-                if ((int)$_POST['id'] !== (int)($_SESSION['glue_user']['id'] ?? 0)) {
+                $tab = 'agents';
+                if ((int)$_POST['id'] === (int)($_SESSION['glue_user']['id'] ?? 0)) {
+                    $flash = $t('u_delete_self');
+                    $flashType = 'err';
+                    break;
+                }
+                try {
                     Auth::delete((int)$_POST['id']);
                     $flash = $t('u_deleted');
+                } catch (Throwable $e) {
+                    $flash = $t('u_delete_last_admin');
+                    $flashType = 'err';
                 }
-                $tab = 'agents';
                 break;
             case 'change_my_password':
                 if ($uid) {
@@ -830,6 +838,8 @@ input[readonly]{color:var(--muted);cursor:pointer;}
 .btn svg{width:15px;height:15px;}
 .btn.ghost{background:var(--surface2);border:1px solid var(--line);color:var(--txt);}
 .btn.ghost:hover{border-color:var(--line2);filter:none;background:var(--surface);}
+.btn.danger{background:var(--red-bg);border:1px solid var(--red);color:var(--red);}
+.btn.danger:hover{background:var(--red);color:#fff;filter:none;}
 .btn.tiny{padding:6px 12px;font-size:12.5px;}
 .inline{display:inline-flex;gap:8px;align-items:center;margin:0 10px 8px 0;}
 .inline input,.inline select{width:auto;}

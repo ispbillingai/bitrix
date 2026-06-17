@@ -58,9 +58,13 @@ $meId = (int)($_SESSION['glue_user']['id'] ?? 0);
         <form method="post" class="inline"><input type="hidden" name="do" value="toggle_user"><input type="hidden" name="id" value="<?= $id ?>">
           <input type="hidden" name="active" value="<?= $u['active'] ? '0' : '1' ?>">
           <button class="btn tiny ghost"><?= $u['active'] ? $h($t('u_disable')) : $h($t('u_enable')) ?></button></form>
-        <?php if ($id !== $meId): ?>
-        <form method="post" class="inline" onsubmit="return confirm('?')"><input type="hidden" name="do" value="delete_user"><input type="hidden" name="id" value="<?= $id ?>">
-          <button class="btn tiny ghost"><?= $h($t('u_delete')) ?></button></form>
+        <?php if ($id !== $meId):
+          // Escape for JS single-quote string first (handles apostrophes in the
+          // name and in the IT copy), then for the HTML attribute.
+          $confirmMsg = $h(addslashes(str_replace('{name}', $nm, $t('u_delete_confirm')))); ?>
+        <form method="post" class="inline" onsubmit="return confirm('<?= $confirmMsg ?>')">
+          <input type="hidden" name="do" value="delete_user"><input type="hidden" name="id" value="<?= $id ?>">
+          <button class="btn tiny danger"><?= $h($t('u_delete')) ?></button></form>
         <?php endif; ?>
       </div>
     </div>

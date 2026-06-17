@@ -113,8 +113,54 @@ final class Auth
         Db::pdo()->prepare('UPDATE users SET active = ? WHERE id = ?')->execute([$active ? 1 : 0, $id]);
     }
 
+    /** How many active admins exist — used to avoid deleting/disabling the last one. */
+    public static function activeAdminCount(): int
+    {
+        return (int)Db::pdo()->query(
+            "SELECT COUNT(*) FROM users WHERE role = 'admin' AND active = 1"
+        )->fetchColumn();
+    }
+
+    /**
+     * Delete a user. Their assigned records are unassigned first (set to NULL) so
+     * leads/deals/appointments/tasks/tickets/contacts aren't left pointing at a
+     * dead id — they fall back to "unassigned" and can be reassigned. Refuses to
+     * delete the last active admin so the team can't be locked out.
+     *
+     * @throws \RuntimeException if $id is the last active admin
+     */
     public static function delete(int $id): void
     {
-        Db::pdo()->prepare('DELETE FROM users WHERE id = ?')->execute([$id]);
+        $pdo = Db::pdo();
+        $row = $pdo->prepare('SELECT role, active FROM users WHERE id = ?');
+        $row->execute([$id]);
+        $u = $row->fetch();
+        if (!$u) {
+            return; // already gone
+        }
+        if ($u['role'] === 'admin' && (int)$u['active'] === 1 && self::activeAdminCount() <= 1) {
+            throw new \RuntimeException('cannot delete the last active admin');
+        }
+
+        // Unassign everything that points at this user (no FK cascade in the schema).
+        $unassign = [
+            'UPDATE leads        SET assigned_to = NULL       WHERE assigned_to = ?',
+            'UPDATE deals        SET assigned_to = NULL       WHERE assigned_to = ?',
+            'UPDATE appointments SET agent_id = NULL          WHERE agent_id = ?',
+            'UPDATE tasks        SET assigned_to = NULL       WHERE assigned_to = ?',
+            'UPDATE tickets      SET assigned_agent_id = NULL WHERE assigned_agent_id = ?',
+            'UPDATE contacts     SET assigned_to = NULL       WHERE assigned_to = ?',
+        ];
+        $pdo->beginTransaction();
+        try {
+            foreach ($unassign as $sql) {
+                $pdo->prepare($sql)->execute([$id]);
+            }
+            $pdo->prepare('DELETE FROM users WHERE id = ?')->execute([$id]);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
     }
 }
