@@ -664,17 +664,26 @@ input[type=file]{padding:9px;background:#fbfcfe}
 .accepted{margin-top:7px;color:#188a4c;font-weight:700;font-size:13px}
 
 @media (max-width:860px){
+  /* The sidebar becomes a stacked top header: row 1 = brand + lang/logout,
+     row 2 = the nav as horizontal-scrolling pill tabs (no more cramming
+     everything into one squeezed, truncated line). */
   .app{flex-direction:column}
-  .side{width:100%;height:auto;position:static;flex-direction:row;align-items:center;border-right:none;border-bottom:1px solid var(--line);padding:0 8px}
-  .side-brand{border-bottom:none;padding:12px 10px}
-  .side-brand b{display:none}
-  .side nav{flex-direction:row;overflow-x:auto;padding:8px 4px;gap:4px}
-  .side nav a{white-space:nowrap;padding:8px 12px}
-  .nav-ic{display:none}
-  .side-foot{border-top:none;padding:8px;display:flex;align-items:center;gap:8px}
+  .side{width:100%;height:auto;position:sticky;top:0;z-index:20;
+    flex-direction:row;flex-wrap:wrap;align-items:center;gap:10px;
+    border-right:none;border-bottom:1px solid var(--line);padding:11px 16px}
+  .side-brand{order:1;flex:1;min-width:0;border-bottom:none;padding:0}
+  .side-brand b{display:inline;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .side-foot{order:2;border-top:none;padding:0;margin-left:auto}
   .side-user{display:none}
+  .side-actions{margin:0;gap:8px}
+  .side nav{order:3;flex:0 0 100%;width:100%;flex-direction:row;overflow-x:auto;
+    gap:7px;padding:2px 0 0;-webkit-overflow-scrolling:touch}
+  .side nav a{white-space:nowrap;padding:9px 15px;background:#f1f3fa;border-radius:10px}
+  .side nav a:hover{background:#e9ecf6}
+  .side nav a.active{background:var(--accent);color:#fff}
+  .nav-ic{display:none}
   .content{padding:18px 16px 50px}
-  .bar{padding:14px 16px}
+  .bar{padding:13px 16px;font-size:16px}
 }
 @media (max-width:560px){
   .top{padding:12px 16px}
@@ -683,6 +692,10 @@ input[type=file]{padding:9px;background:#fbfcfe}
   .order-b{gap:22px}
   .msg{max-width:90%}
   .trow-r .small{display:none}
+  .btn.ghost{margin-left:0}
+  /* let the chat reply + password fields stack instead of overflowing */
+  .reply{flex-wrap:wrap}
+  .pw label{min-width:0}
 }
 </style>
 <?php }
