@@ -352,7 +352,7 @@ return [
     'f_country_code' => 'Default country code',
     'f_country_code_h' => 'Digits only, no +. Added to local numbers (e.g. 39 = Italy). Numbers with + or 00 are kept as-is.',
     'f_base_url'     => 'Base URL',
-    'f_base_url_h'   => 'Public address of this app (used to build the URLs above).',
+    'f_base_url_h'   => 'Fallback public address, used only for links sent from the command line/cron. Links sent while using the app already use the current domain automatically.',
     'f_intake'       => 'Intake secret',
     'f_intake_h'     => 'Required on the website/appointment webhooks.',
 

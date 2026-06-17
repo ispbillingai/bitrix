@@ -4,7 +4,8 @@
  * stage editor, logistics, the public form/webhook URLs, and the OPTIONAL Bitrix24
  * sync (off by default). In scope: $t, $h, $cfg, $pdo.
  */
-$base = rtrim((string)$cfg('app.base_url', ''), '/');
+// Build the shown URLs from the live domain in use (falls back to app.base_url).
+$base = \Glue\Config::appBaseUrl() ?: rtrim((string)$cfg('app.base_url', ''), '/');
 $is = $h($cfg('app.intake_secret', ''));
 $os = $h($cfg('bitrix.outbound_secret', ''));
 $syncOn = (bool)$cfg('bitrix.sync_enabled', false);

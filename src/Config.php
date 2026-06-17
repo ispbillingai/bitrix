@@ -74,4 +74,25 @@ final class Config
         $v = self::get($key, []);
         return is_array($v) ? $v : [];
     }
+
+    /**
+     * Public base URL of THIS app for building customer-facing links (portal
+     * magic links, the form/webhook URLs). Prefers the live request host so a
+     * link always matches the domain the operator is actually on (e.g.
+     * crm.upgradesrls.com), instead of a stale stored app.base_url. Falls back
+     * to app.base_url only when there's no HTTP request (CLI/cron). No trailing
+     * slash. Honours a reverse proxy's X-Forwarded-Host / X-Forwarded-Proto.
+     */
+    public static function appBaseUrl(): string
+    {
+        $fwdHost = $_SERVER['HTTP_X_FORWARDED_HOST'] ?? '';
+        $host    = $fwdHost !== '' ? trim(explode(',', $fwdHost)[0]) : ($_SERVER['HTTP_HOST'] ?? '');
+        if ($host !== '') {
+            $https = (!empty($_SERVER['HTTPS']) && strtolower((string)$_SERVER['HTTPS']) !== 'off')
+                || (strtolower((string)($_SERVER['HTTP_X_FORWARDED_PROTO'] ?? '')) === 'https')
+                || ((int)($_SERVER['SERVER_PORT'] ?? 0) === 443);
+            return ($https ? 'https://' : 'http://') . $host;
+        }
+        return rtrim((string)self::get('app.base_url', ''), '/');
+    }
 }

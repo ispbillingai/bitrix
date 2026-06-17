@@ -35,7 +35,9 @@ final class Account
     /** Public URL the customer opens to enter the portal. */
     public static function magicLink(string $token): string
     {
-        $base = rtrim((string)Config::get('app.base_url', ''), '/');
+        // Use the live host (crm.upgradesrls.com, etc.) so the link matches the
+        // domain in use, not a stale stored base_url. Falls back to config on CLI.
+        $base = Config::appBaseUrl();
         return "$base/portal.php?token=" . urlencode($token);
     }
 
