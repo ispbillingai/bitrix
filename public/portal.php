@@ -236,7 +236,8 @@ if ($tkCur && $page === 'support') {
 </main>
 <?php else: ?>
 <div class="app">
-<aside class="side">
+<div class="side-backdrop" id="sideBackdrop" onclick="portalCloseNav()"></div>
+<aside class="side" id="side">
   <div class="side-brand"><span class="logo"><?= $h(strtoupper(substr($brand, 0, 1)) ?: 'C') ?></span><b><?= $h($brand) ?></b></div>
   <nav>
     <?php foreach ($pages as $p): ?>
@@ -261,7 +262,9 @@ if ($tkCur && $page === 'support') {
 </aside>
 
 <div class="main">
-<header class="bar"><b><?= $h($titles[$page]) ?></b></header>
+<header class="bar">
+  <button class="navtoggle" onclick="portalOpenNav()" aria-label="Menu"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg></button>
+  <b><?= $h($titles[$page]) ?></b></header>
 <div class="content">
 <?php if ($flash): ?><div class="flash <?= $flashType === 'err' ? 'err' : '' ?>"><?= $h($flash) ?></div><?php endif; ?>
 
@@ -413,6 +416,13 @@ if ($tkCur && $page === 'support') {
 </div><!-- /content -->
 </div><!-- /main -->
 </div><!-- /app -->
+<script>
+// Mobile drawer: ☰ opens the sidebar, backdrop/Escape close it. Picking a nav
+// item navigates (page reloads) so the drawer resets on its own.
+function portalOpenNav(){document.getElementById('side').classList.add('open');document.getElementById('sideBackdrop').classList.add('show');}
+function portalCloseNav(){document.getElementById('side').classList.remove('open');document.getElementById('sideBackdrop').classList.remove('show');}
+document.addEventListener('keydown',function(e){if(e.key==='Escape')portalCloseNav();});
+</script>
 <?php endif; ?>
 </body></html>
 <?php
@@ -582,7 +592,12 @@ body{font-family:'Inter',system-ui,Arial,sans-serif;background:var(--bg);color:v
 
 /* ---- main column ---- */
 .main{flex:1;min-width:0;display:flex;flex-direction:column}
-.bar{background:#fff;border-bottom:1px solid var(--line);padding:16px 28px;font-size:17px;position:sticky;top:0;z-index:5}
+.bar{background:#fff;border-bottom:1px solid var(--line);padding:16px 28px;font-size:17px;position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:12px}
+/* hamburger toggle + drawer backdrop (mobile only) */
+.navtoggle{display:none;background:#f1f3fa;border:1px solid var(--line);color:var(--ink);border-radius:9px;padding:7px;cursor:pointer;line-height:0;flex-shrink:0}
+.navtoggle:hover{background:#e9ecf6}
+.navtoggle svg{width:20px;height:20px;display:block}
+.side-backdrop{display:none;position:fixed;inset:0;background:rgba(20,26,38,.45);z-index:40}
 .content{flex:1;max-width:840px;width:100%;padding:24px 28px 60px}
 h1{font-size:24px;margin-bottom:4px;letter-spacing:-.3px}
 .muted{color:var(--muted)}.small{font-size:13px}
@@ -664,26 +679,19 @@ input[type=file]{padding:9px;background:#fbfcfe}
 .accepted{margin-top:7px;color:#188a4c;font-weight:700;font-size:13px}
 
 @media (max-width:860px){
-  /* The sidebar becomes a stacked top header: row 1 = brand + lang/logout,
-     row 2 = the nav as horizontal-scrolling pill tabs (no more cramming
-     everything into one squeezed, truncated line). */
-  .app{flex-direction:column}
-  .side{width:100%;height:auto;position:sticky;top:0;z-index:20;
-    flex-direction:row;flex-wrap:wrap;align-items:center;gap:10px;
-    border-right:none;border-bottom:1px solid var(--line);padding:11px 16px}
-  .side-brand{order:1;flex:1;min-width:0;border-bottom:none;padding:0}
-  .side-brand b{display:inline;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .side-foot{order:2;border-top:none;padding:0;margin-left:auto}
-  .side-user{display:none}
-  .side-actions{margin:0;gap:8px}
-  .side nav{order:3;flex:0 0 100%;width:100%;flex-direction:row;overflow-x:auto;
-    gap:7px;padding:2px 0 0;-webkit-overflow-scrolling:touch}
-  .side nav a{white-space:nowrap;padding:9px 15px;background:#f1f3fa;border-radius:10px}
-  .side nav a:hover{background:#e9ecf6}
-  .side nav a.active{background:var(--accent);color:#fff}
-  .nav-ic{display:none}
+  /* The full sidebar becomes a slide-in drawer opened by the ☰ button in the
+     bar — like a native app. It keeps its desktop layout (brand, icon nav,
+     user + logout), just off-screen until opened. */
+  .app{display:block}
+  .side{position:fixed;top:0;left:0;height:100dvh;width:268px;z-index:50;
+    transform:translateX(-100%);transition:transform .22s ease;
+    box-shadow:0 0 50px rgba(20,26,38,.35)}
+  .side.open{transform:translateX(0)}
+  .side-backdrop.show{display:block}
+  .navtoggle{display:inline-flex}
+  .main{min-height:100vh}
   .content{padding:18px 16px 50px}
-  .bar{padding:13px 16px;font-size:16px}
+  .bar{padding:12px 14px;font-size:16px}
 }
 @media (max-width:560px){
   .top{padding:12px 16px}
