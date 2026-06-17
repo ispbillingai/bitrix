@@ -19,6 +19,10 @@ return [
             . "You can reach {agent_name} directly on {agent_phone} or {agent_email}. "
             . "They'll be in touch soon!",
 
+        'agent_new_assignment' => // to the AGENT: a new customer was assigned to them
+            "🔔 Hi {agent_name}, a new customer has been assigned to you: "
+            . "*{customer_name}* ({customer_phone}). Open the CRM to follow up.",
+
         'lead_inactivity' => // to the SELLER
             "⏰ Reminder: lead *{name}* (#{id}) has been waiting and hasn't "
             . "been worked yet. Please review it in the CRM.",
@@ -96,6 +100,12 @@ return [
             'html'    => '<p>Hi {name},</p><p>Your dedicated consultant is <strong>{agent_name}</strong>.</p>'
                 . '<p>Phone: {agent_phone}<br>Email: {agent_email}</p>'
                 . '<p>They will be in touch soon.</p>',
+        ],
+        'agent_new_assignment' => [
+            'subject' => 'New customer assigned to you: {customer_name}',
+            'html'    => '<p>Hi {agent_name},</p><p>A new customer has been assigned to you:</p>'
+                . '<p><strong>{customer_name}</strong><br>Phone: {customer_phone}<br>Email: {customer_email}</p>'
+                . '<p>Open the CRM to follow up.</p>',
         ],
         'lead_inactivity' => [
             'subject' => 'Action needed: lead {name} not processed',

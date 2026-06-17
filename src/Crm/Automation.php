@@ -58,10 +58,20 @@ final class Automation
         ]);
     }
 
-    /** #3 Agent assignment — send the agent's profile to the customer. */
+    /**
+     * #3 Agent assignment. Two instant messages (both channels):
+     *   - to the CUSTOMER: who their consultant is + how to reach them;
+     *   - to the AGENT: a "new customer assigned to you" heads-up.
+     * Both go out immediately (due now → enqueue sends inline).
+     */
     public static function agentAssigned(string $entityType, int $id, array $agent): void
     {
-        $agentName = trim((string)($agent['full_name'] ?? $agent['username'] ?? '')) ?: 'your agent';
+        $agentName  = trim((string)($agent['full_name'] ?? $agent['username'] ?? '')) ?: 'your agent';
+        $agentPhone = (string)($agent['phone'] ?? '');
+        $agentEmail = (string)($agent['email'] ?? '');
+        $agentId    = (int)($agent['id'] ?? 0);
+
+        // Customer: meet your consultant.
         self::sched()->enqueue([
             'entity_type'    => $entityType,
             'entity_id'      => $id,
@@ -71,11 +81,27 @@ final class Automation
             'due_at'         => date('Y-m-d H:i:s'),
             'payload'        => [
                 'agent_name'  => $agentName,
-                'agent_phone' => (string)($agent['phone'] ?? ''),
-                'agent_email' => (string)($agent['email'] ?? ''),
+                'agent_phone' => $agentPhone,
+                'agent_email' => $agentEmail,
             ],
             // re-fires if a different agent is later assigned
-            'dedupe_key'     => "agent:$entityType:$id:" . (int)($agent['id'] ?? 0),
+            'dedupe_key'     => "agent:$entityType:$id:$agentId",
+        ]);
+
+        // Agent: you've been assigned a new customer.
+        self::sched()->enqueue([
+            'entity_type'    => $entityType,
+            'entity_id'      => $id,
+            'rule_key'       => 'agent_new_assignment',
+            'recipient_type' => 'agent',
+            'channel'        => 'both',
+            'due_at'         => date('Y-m-d H:i:s'),
+            'payload'        => [
+                'agent_name'  => $agentName,
+                'agent_phone' => $agentPhone,
+                'agent_email' => $agentEmail,
+            ],
+            'dedupe_key'     => "agentnotify:$entityType:$id:$agentId",
         ]);
     }
 

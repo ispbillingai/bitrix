@@ -304,6 +304,7 @@ return [
     'rk_ticket_reply'   => 'Reply to customer',
     'rk_offer_read'     => 'Offer waiting to be read',
     'rk_offer_accepted' => 'Offer accepted (to agent)',
+    'rk_agent_new_assignment' => 'New customer assigned (to agent)',
 
     // campaigns
     'camp_title'     => 'Campaigns',

@@ -304,6 +304,7 @@ return [
     'rk_ticket_reply'   => 'Risposta al cliente',
     'rk_offer_read'     => 'Offerta da leggere',
     'rk_offer_accepted' => 'Offerta accettata (all\'agente)',
+    'rk_agent_new_assignment' => 'Nuovo cliente assegnato (all\'agente)',
 
     // campaigns
     'camp_title'     => 'Campagne',
