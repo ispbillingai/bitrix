@@ -37,9 +37,13 @@ final class EntityResolver
             return $base;
         }
 
-        $base['customer_name']  = $row['customer_name'] ?? null;
-        $base['customer_phone'] = $row['customer_phone'] ?? null;
-        $base['customer_email'] = $row['customer_email'] ?? null;
+        // leads/deals/appointments store the customer as customer_*; the contacts
+        // table uses plain name/phone/email. Fall back so a 'contact' entity (portal
+        // invite, ticket reply, OTP, offer reminders) still resolves a recipient —
+        // otherwise the dispatcher finds no phone/email and silently sends nothing.
+        $base['customer_name']  = $row['customer_name']  ?? $row['name']  ?? null;
+        $base['customer_phone'] = $row['customer_phone'] ?? $row['phone'] ?? null;
+        $base['customer_email'] = $row['customer_email'] ?? $row['email'] ?? null;
         $base['lang']           = $row['lang'] ?? null;
         $base['stage_code']     = $row['stage_code'] ?? null;
 
