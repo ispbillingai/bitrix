@@ -392,6 +392,14 @@ return [
     'f_smtp_pass'    => 'SMTP password',
     'f_smtp_secure'  => 'Security (tls/ssl)',
 
+    'sec_yousign'      => 'Electronic signature (Yousign)',
+    'sec_yousign_h'    => 'Connect your Yousign account to sign contracts with a legally-binding e-signature. Create an API key in Yousign under Developers → API keys.',
+    'f_ys_key'         => 'Yousign API key',
+    'f_ys_key_h'       => 'Paste the API key from Yousign → Developers → API keys. Start with a Sandbox key to test.',
+    'f_ys_env'         => 'Environment',
+    'f_ys_env_sandbox' => 'Sandbox (testing)',
+    'f_ys_env_prod'    => 'Production (live)',
+
     'sec_cadences'   => 'Reminder timing',
     'f_lead_inact'   => 'Lead inactivity (hours)',
     'f_deal_inact'   => 'Deal inactivity (hours)',

@@ -69,6 +69,19 @@ $pipelines = \Glue\Crm\Pipelines::all();
     ?>
   </div>
 
+  <h3><?= $h($t('sec_yousign')) ?> <span class="pill"><?= $h($t('optional')) ?></span></h3>
+  <p class="muted small"><?= $h($t('sec_yousign_h')) ?></p>
+  <div class="row">
+    <?php fld($h, 'yousign.api_key', $t('f_ys_key'), $cfg('yousign.api_key'), $t('f_ys_key_h')); ?>
+    <label class="fld"><span><?= $h($t('f_ys_env')) ?></span>
+      <?php $ysEnv = (string)$cfg('yousign.environment', 'sandbox'); ?>
+      <select name="yousign.environment">
+        <option value="sandbox"<?= $ysEnv !== 'production' ? ' selected' : '' ?>><?= $h($t('f_ys_env_sandbox')) ?></option>
+        <option value="production"<?= $ysEnv === 'production' ? ' selected' : '' ?>><?= $h($t('f_ys_env_prod')) ?></option>
+      </select>
+    </label>
+  </div>
+
   <h3><?= $h($t('sec_cadences')) ?></h3>
   <?php
   // Number-list settings (minutes/days) are stored as arrays; show them as a
