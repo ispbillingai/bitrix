@@ -76,6 +76,13 @@ return [
         'offer_accepted' => // to the assigned agent: send the contract!
             "✅ {customer_name} ACCEPTED the offer \"{subject}\" (conversation #{id}). "
             . "Please send them the contract for signature now.",
+
+        'agent_welcome' => // to a newly created staff user: their login details
+            "Hi {name}! 👋 Your {company} account is ready.\n"
+            . "Sign in: {link}\n"
+            . "Username: {username}\n"
+            . "Password: {password}\n"
+            . "Please change your password after the first login.",
     ],
 
     'email' => [
@@ -162,6 +169,13 @@ return [
             'subject' => 'Offer accepted by {customer_name} — send the contract',
             'html'    => '<p><strong>{customer_name}</strong> accepted the offer "{subject}" '
                 . '(conversation #{id}).</p><p>Please send them the contract for signature now.</p>',
+        ],
+        'agent_welcome' => [
+            'subject' => 'Your {company} account',
+            'html'    => '<p>Hi {name},</p><p>Your {company} account has been created.</p>'
+                . '<p><a href="{link}">Sign in to the dashboard</a></p>'
+                . '<p>Username: <strong>{username}</strong><br>Password: <strong>{password}</strong></p>'
+                . '<p>Please change your password after the first login.</p>',
         ],
     ],
 ];

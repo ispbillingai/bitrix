@@ -483,7 +483,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'full_name' => $_POST['full_name'] ?? '', 'email' => $_POST['email'] ?? '',
                     'phone' => $_POST['phone'] ?? '', 'title' => $_POST['title'] ?? '',
                 ]);
-                $flash = $t('u_added');
+                // Send the new user their login details by email + WhatsApp, so the
+                // admin doesn't have to relay the username/password by hand.
+                $creds = send_user_credentials(
+                    (string)($_POST['email'] ?? ''), (string)($_POST['phone'] ?? ''),
+                    trim((string)($_POST['full_name'] ?? '')) ?: (string)$_POST['username'],
+                    (string)$_POST['username'], (string)$_POST['password']
+                );
+                $flash = $t('u_added') . ' · ' . ($creds ? $t('u_creds_sent') : $t('u_creds_none'));
                 $tab = 'agents';
                 break;
             case 'update_profile':
@@ -646,6 +653,38 @@ document.querySelectorAll('main table').forEach(function(tb){
 </script>
 </body></html>
 <?php }
+
+/**
+ * Send a newly created user their login details (email + WhatsApp) using the
+ * editable 'agent_welcome' template. Best-effort and recorded in the Outbound
+ * tab. Returns true if at least one channel was sent. Staff get the office
+ * default language.
+ */
+function send_user_credentials(string $email, string $phone, string $name, string $username, string $password): bool {
+    $email = trim($email);
+    $phone = trim($phone);
+    if ($email === '' && $phone === '') {
+        return false;
+    }
+    $lang = \Glue\Reminder\Templates::lang((string)\Glue\Config::get('app.default_lang', 'it'));
+    $vars = [
+        'name'     => $name,
+        'username' => $username,
+        'password' => $password,
+        'company'  => (string)(\Glue\Config::get('mail.from_name', '') ?: \Glue\Config::get('app.company_name', 'CRM')),
+        'link'     => \Glue\Config::appBaseUrl() . '/dashboard.php',
+    ];
+    $notifier = new Notifier();
+    $ok = false;
+    if ($phone !== '') {
+        $ok = $notifier->whatsapp($phone, \Glue\Reminder\Templates::whatsapp('agent_welcome', $vars, $lang)) || $ok;
+    }
+    if ($email !== '') {
+        $mail = \Glue\Reminder\Templates::email('agent_welcome', $vars, $lang);
+        $ok = $notifier->email($email, $mail['subject'], $mail['html']) || $ok;
+    }
+    return $ok;
+}
 
 /**
  * Turn a Notifier provider response into a short human-readable failure reason

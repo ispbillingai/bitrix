@@ -12,7 +12,7 @@ $rules = Templates::ruleKeys();
 // Placeholders the engine fills in at send time. Shown as a quick legend.
 $placeholders = ['{name}', '{company}', '{agent_name}', '{agent_phone}', '{agent_email}',
     '{when}', '{deadline}', '{link}', '{code}', '{minutes}', '{id}', '{subject}',
-    '{customer_name}', '{customer_phone}', '{customer_email}'];
+    '{customer_name}', '{customer_phone}', '{customer_email}', '{username}', '{password}'];
 ?>
 <h2><?= $h($t('tpl_title')) ?></h2>
 <p class="muted small" style="max-width:760px"><?= $h($t('tpl_intro')) ?></p>
