@@ -47,6 +47,9 @@ $rows = \Glue\Crm\Leads::all(300, $scopeId ?? null);
               <span><?= $h($c['source']) ?></span>
               <?php if ($ag): ?><span><?= avatar($h, $ag) ?> <?= $h($ag) ?></span><?php endif; ?>
             </div>
+            <?php $cmsg = trim((string)($c['comments'] ?? '')); if ($cmsg !== ''): ?>
+              <div class="muted small" style="margin-top:7px;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">“<?= $h($cmsg) ?>”</div>
+            <?php endif; ?>
           </div>
         <?php endforeach; ?>
       </div>
@@ -58,18 +61,20 @@ $rows = \Glue\Crm\Leads::all(300, $scopeId ?? null);
 <?php if (!$rows): ?><div class="empty"><?= $h($t('none_yet')) ?></div><?php endif; ?>
 <?php foreach ($rows as $r):
     $ag = $r['agent_name'] ?: $r['agent_username'];
+    $msg = trim((string)($r['comments'] ?? ''));
     $timeline = \Glue\Crm\Activities::forEntity('lead', (int)$r['id'], 20); ?>
   <details class="drawer card" style="padding:0;margin-bottom:8px">
     <summary style="display:flex;align-items:center;gap:12px;padding:13px 18px;cursor:pointer">
       <?= avatar($h, $r['customer_name']) ?>
-      <span style="flex:1"><b><?= $h($r['customer_name'] ?: ('#' . $r['id'])) ?></b>
-        <span class="muted small"> · <?= $h($r['customer_phone']) ?> <?= $h($r['customer_email']) ?></span></span>
+      <span style="flex:1;min-width:0"><b><?= $h($r['customer_name'] ?: ('#' . $r['id'])) ?></b>
+        <span class="muted small"> · <?= $h($r['customer_phone']) ?> <?= $h($r['customer_email']) ?></span>
+        <?php if ($msg !== ''): ?><span class="muted small" style="display:block;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">“<?= $h($msg) ?>”</span><?php endif; ?></span>
       <span class="pill"><?= $h(stage_label($t, $r['stage_code'], \Glue\Crm\Pipelines::label('lead', $r['stage_code']))) ?></span>
       <?= pill($h, $r['status'], $t) ?>
       <span class="muted small"><?= $ag ? $h($ag) : $h($t('unassigned')) ?></span>
     </summary>
     <div style="padding:4px 18px 18px;border-top:1px solid var(--line)">
-      <?php $msg = trim((string)($r['comments'] ?? '')); if ($msg !== ''): ?>
+      <?php if ($msg !== ''): ?>
         <div style="background:var(--surface2);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:8px 0 4px">
           <div class="muted small" style="margin-bottom:5px;text-transform:uppercase;letter-spacing:.05em;font-weight:600"><?= $h($t('f_message')) ?></div>
           <div style="white-space:pre-wrap;line-height:1.55"><?= nl2br($h($msg)) ?></div>
