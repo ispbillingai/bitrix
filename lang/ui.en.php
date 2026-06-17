@@ -30,6 +30,7 @@ return [
     'nav_messages'     => 'Messages',
     'nav_outbound'     => 'Outbound',
     'nav_reminders'    => 'Reminders',
+    'nav_templates'    => 'Message templates',
     'nav_events'       => 'Activity log',
     'nav_agents'       => 'Agents',
     'nav_instr'        => 'Instructions',
@@ -285,6 +286,24 @@ return [
     'th_reason'      => 'Result / reason',
     'ob_queued_note' => 'queued — will send on the next dispatch',
     'ob_when_due'    => 'due',
+
+    // message templates
+    'tpl_title'         => 'Message templates',
+    'tpl_intro'         => 'Write exactly what each automatic message says. Edit the WhatsApp text and the email (subject + body) for every reminder and notification. Leave a field blank to use the built-in default.',
+    'tpl_ph_title'      => 'Placeholders you can use (filled in automatically):',
+    'tpl_lang_note'     => 'You are editing the templates for the language:',
+    'tpl_wa'            => 'WhatsApp message',
+    'tpl_email_subject' => 'Email subject',
+    'tpl_email_html'    => 'Email body (HTML allowed)',
+    'tpl_customized'    => 'Customized',
+    'tpl_reset_note'    => 'To restore a default, clear the field (or set it back to the original text) and save.',
+    'tpl_saved_n'       => 'custom message(s) saved.',
+    'rk_portal_invite'  => 'Customer portal invite',
+    'rk_sign_otp'       => 'Signing code (OTP)',
+    'rk_ticket_staff'   => 'New customer message (to agent)',
+    'rk_ticket_reply'   => 'Reply to customer',
+    'rk_offer_read'     => 'Offer waiting to be read',
+    'rk_offer_accepted' => 'Offer accepted (to agent)',
 
     // campaigns
     'camp_title'     => 'Campaigns',

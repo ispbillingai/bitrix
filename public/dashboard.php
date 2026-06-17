@@ -195,6 +195,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $tab = 'settings';
                 break;
 
+            case 'save_templates':
+                // Save the custom reminder/notification copy for one language. A
+                // blank field, or one left equal to the shipped default, clears the
+                // override so the default is used again.
+                $tlang = in_array($_POST['tpl_lang'] ?? '', ['en', 'it'], true) ? (string)$_POST['tpl_lang'] : $lang;
+                $saved = 0;
+                foreach (\Glue\Reminder\Templates::ruleKeys() as $rk) {
+                    foreach (['wa' => "tpl_wa_$rk", 'es' => "tpl_es_$rk", 'eh' => "tpl_eh_$rk"] as $kind => $field) {
+                        if (!array_key_exists($field, $_POST)) { continue; }
+                        $val = trim((string)$_POST[$field]);
+                        $key = \Glue\Reminder\Templates::key($kind, $rk, $tlang);
+                        if ($val === '' || $val === trim(\Glue\Reminder\Templates::defaultText($kind, $rk, $tlang))) {
+                            Settings::set($key, null); // revert to default
+                        } else {
+                            Settings::set($key, $val);
+                            $saved++;
+                        }
+                    }
+                }
+                $flash = $t('saved') . ' · ' . $saved . ' ' . $t('tpl_saved_n');
+                $tab = 'templates';
+                break;
+
             case 'stage_add':
                 $pid = (int)$_POST['pipeline_id'];
                 $code = strtoupper(preg_replace('/[^A-Za-z0-9_]/', '', (string)$_POST['code']));
@@ -520,7 +543,7 @@ $agents = Auth::agents();
 $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_format((float)$n, 0);
 
 $views = ['overview', 'leads', 'deals', 'contacts', 'appointments', 'tasks', 'tickets',
-          'campaigns', 'messages', 'outbound', 'reminders', 'events', 'agents', 'settings', 'instructions'];
+          'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents', 'settings', 'instructions'];
 $view = in_array($tab, $views, true) ? $tab : 'overview';
 // Agents can't reach admin views, even by typing the URL.
 if ($isAgent && !in_array($view, $agentViews, true)) {
@@ -561,7 +584,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
         'contacts' => 'nav_contacts', 'appointments' => 'nav_appointments', 'tasks' => 'nav_tasks',
         'tickets' => 'nav_tickets',
         'campaigns' => 'nav_campaigns', 'messages' => 'nav_messages', 'outbound' => 'nav_outbound',
-        'reminders' => 'nav_reminders',
+        'reminders' => 'nav_reminders', 'templates' => 'nav_templates',
         'events' => 'nav_events', 'agents' => 'nav_agents', 'instructions' => 'nav_instr', 'settings' => 'nav_settings',
     ];
     if ($isAgent) { // agents only see their own work
@@ -764,6 +787,7 @@ function svg(string $name): string {
         'mail'        => '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/>',
         'send'        => '<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
         'outbound'    => '<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
+        'templates'   => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/><line x1="9" y1="17" x2="13" y2="17"/>',
         'money'       => '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
         'alert'       => '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
         'check'       => '<path d="M20 6 9 17l-5-5"/>',

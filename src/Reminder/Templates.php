@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Glue\Reminder;
 
 use Glue\Config;
+use Glue\Settings;
 
 /**
  * Renders the per-rule message copy in the recipient's language. Copy lives in
@@ -42,27 +43,73 @@ final class Templates
         }, $tpl) ?? $tpl;
     }
 
-    /** WhatsApp text for a rule_key in $lang. */
+    /** WhatsApp text for a rule_key in $lang. Dashboard override wins over the file default. */
     public static function whatsapp(string $ruleKey, array $vars, ?string $lang = null): string
     {
-        $strings = self::load(self::lang($lang));
-        $tpl = $strings['wa'][$ruleKey]
+        $lang = self::lang($lang);
+        $tpl = self::override('wa', $ruleKey, $lang)
+            ?? self::load($lang)['wa'][$ruleKey]
             ?? self::load('en')['wa'][$ruleKey]
             ?? '{name}, we have an update for you.';
         return self::render($tpl, $vars);
     }
 
-    /** ['subject'=>..., 'html'=>...] for a rule_key in $lang. */
+    /** ['subject'=>..., 'html'=>...] for a rule_key in $lang. Dashboard overrides win. */
     public static function email(string $ruleKey, array $vars, ?string $lang = null): array
     {
-        $strings = self::load(self::lang($lang));
-        $e = $strings['email'][$ruleKey]
+        $lang = self::lang($lang);
+        $e = self::load($lang)['email'][$ruleKey]
             ?? self::load('en')['email'][$ruleKey]
             ?? ['subject' => 'Update', 'html' => '<p>Hello {name}.</p>'];
+        $subject = self::override('es', $ruleKey, $lang) ?? (string)($e['subject'] ?? '');
+        $html    = self::override('eh', $ruleKey, $lang) ?? (string)($e['html'] ?? '');
         return [
-            'subject' => self::render($e['subject'], $vars),
-            'html'    => self::render($e['html'], $vars),
+            'subject' => self::render($subject, $vars),
+            'html'    => self::render($html, $vars),
         ];
+    }
+
+    // ---- editable templates (dashboard) --------------------------------------
+
+    /** Rule keys that have editable copy, in display order. */
+    public static function ruleKeys(): array
+    {
+        return array_keys(self::load('en')['wa'] ?? []);
+    }
+
+    /**
+     * The dashboard override for a template, or null if none set. $kind is
+     * 'wa' (WhatsApp), 'es' (email subject) or 'eh' (email HTML). Stored in the
+     * settings table under colon-keys so it never collides with dot-path config.
+     */
+    private static function override(string $kind, string $ruleKey, string $lang): ?string
+    {
+        $v = Settings::get("tpl:$kind:$ruleKey:$lang");
+        $v = is_string($v) ? trim($v) : '';
+        return $v !== '' ? $v : null;
+    }
+
+    /** The shipped (file) default for a template — what's used when no override is set. */
+    public static function defaultText(string $kind, string $ruleKey, string $lang): string
+    {
+        $s = self::load(self::lang($lang));
+        if ($kind === 'wa') {
+            return (string)($s['wa'][$ruleKey] ?? '');
+        }
+        $e = $s['email'][$ruleKey] ?? [];
+        return (string)($kind === 'es' ? ($e['subject'] ?? '') : ($e['html'] ?? ''));
+    }
+
+    /** The current custom override text for the editor, or '' if using the default. */
+    public static function overrideText(string $kind, string $ruleKey, string $lang): string
+    {
+        return (string)(self::override($kind, $ruleKey, self::lang($lang)) ?? '');
+    }
+
+    /** Settings key for a template override (used by the save handler). */
+    public static function key(string $kind, string $ruleKey, string $lang): string
+    {
+        return "tpl:$kind:$ruleKey:" . self::lang($lang);
     }
 
     private static function load(string $lang): array

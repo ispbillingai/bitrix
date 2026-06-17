@@ -30,6 +30,7 @@ return [
     'nav_messages'     => 'Messaggi',
     'nav_outbound'     => 'In uscita',
     'nav_reminders'    => 'Promemoria',
+    'nav_templates'    => 'Modelli messaggi',
     'nav_events'       => 'Registro attività',
     'nav_agents'       => 'Agenti',
     'nav_instr'        => 'Istruzioni',
@@ -285,6 +286,24 @@ return [
     'th_reason'      => 'Esito / motivo',
     'ob_queued_note' => 'in coda — verrà inviato al prossimo invio',
     'ob_when_due'    => 'previsto',
+
+    // modelli messaggi
+    'tpl_title'         => 'Modelli dei messaggi',
+    'tpl_intro'         => 'Scrivi esattamente cosa dice ogni messaggio automatico. Modifica il testo WhatsApp e l\'email (oggetto + corpo) per ogni promemoria e notifica. Lascia vuoto un campo per usare il testo predefinito.',
+    'tpl_ph_title'      => 'Segnaposto utilizzabili (compilati automaticamente):',
+    'tpl_lang_note'     => 'Stai modificando i modelli per la lingua:',
+    'tpl_wa'            => 'Messaggio WhatsApp',
+    'tpl_email_subject' => 'Oggetto email',
+    'tpl_email_html'    => 'Corpo email (HTML consentito)',
+    'tpl_customized'    => 'Personalizzato',
+    'tpl_reset_note'    => 'Per ripristinare un testo predefinito, svuota il campo (o riportalo al testo originale) e salva.',
+    'tpl_saved_n'       => 'messaggio/i personalizzato/i salvato/i.',
+    'rk_portal_invite'  => 'Invito area clienti',
+    'rk_sign_otp'       => 'Codice di firma (OTP)',
+    'rk_ticket_staff'   => 'Nuovo messaggio cliente (all\'agente)',
+    'rk_ticket_reply'   => 'Risposta al cliente',
+    'rk_offer_read'     => 'Offerta da leggere',
+    'rk_offer_accepted' => 'Offerta accettata (all\'agente)',
 
     // campaigns
     'camp_title'     => 'Campagne',
