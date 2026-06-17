@@ -70,6 +70,11 @@ $pipelines = \Glue\Crm\Pipelines::all();
   </div>
 
   <h3><?= $h($t('sec_cadences')) ?></h3>
+  <?php
+  // Number-list settings (minutes/days) are stored as arrays; show them as a
+  // comma-separated list for editing.
+  $list = fn(string $k, array $def): string => implode(', ', array_map('strval', (array)$cfg($k, $def)));
+  ?>
   <div class="row">
     <?php
     fld($h, 'reminders.lead_inactivity_hours', $t('f_lead_inact'), $cfg('reminders.lead_inactivity_hours', 3));
@@ -78,6 +83,14 @@ $pipelines = \Glue\Crm\Pipelines::all();
     fld($h, 'reminders.sign_overdue_every_days', $t('f_sign_every'), $cfg('reminders.sign_overdue_every_days', 3));
     fld($h, 'reminders.sign_overdue_max_days', $t('f_sign_max'), $cfg('reminders.sign_overdue_max_days', 15));
     fld($h, 'crm.deal_quote_stage', $t('f_quote_stage'), $cfg('crm.deal_quote_stage', 'QUOTE'));
+    ?>
+  </div>
+  <div class="row">
+    <?php
+    fld($h, 'reminders.appointment_offsets_min', $t('f_appt_offsets'), $list('reminders.appointment_offsets_min', [1440, 120]), $t('f_appt_offsets_h'));
+    fld($h, 'reminders.sign_before_due_days', $t('f_sign_before'), $list('reminders.sign_before_due_days', [10, 5]), $t('f_sign_before_h'));
+    fld($h, 'reminders.offer_read_days', $t('f_offer_read'), $list('reminders.offer_read_days', [2, 5]), $t('f_offer_read_h'));
+    fld($h, 'reminders.sign_due_default_days', $t('f_sign_due_default'), $cfg('reminders.sign_due_default_days', 30), $t('f_sign_due_default_h'));
     ?>
   </div>
 

@@ -164,6 +164,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'reminders.lead_inactivity_hours', 'reminders.deal_inactivity_hours',
                     'reminders.sign_after_sent_days',
                     'reminders.sign_overdue_every_days', 'reminders.sign_overdue_max_days',
+                    'reminders.sign_due_default_days',
+                    'reminders.appointment_offsets_min', 'reminders.sign_before_due_days', 'reminders.offer_read_days',
                     'textmebot.api_key', 'mail.from_name', 'mail.from_email',
                     'mail.smtp.host', 'mail.smtp.port', 'mail.smtp.user', 'mail.smtp.pass', 'mail.smtp.secure',
                     'logistics.email', 'logistics.phone',
@@ -187,6 +189,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 // checkbox: present only when ticked
                 $pairs['bitrix.sync_enabled'] = $post('bitrix.sync_enabled') !== null ? 'true' : 'false';
+                // Comma/space-separated number lists -> JSON arrays (so Config::get
+                // returns an array the cadence code can loop over). Clearing a field
+                // stores '' so it falls back to the built-in default.
+                foreach (['reminders.appointment_offsets_min', 'reminders.sign_before_due_days', 'reminders.offer_read_days'] as $lk) {
+                    if (array_key_exists($lk, $pairs)) {
+                        $nums = array_values(array_filter(array_map(
+                            'intval', preg_split('/[\s,]+/', (string)$pairs[$lk], -1, PREG_SPLIT_NO_EMPTY) ?: []
+                        ), static fn($n) => $n > 0));
+                        $pairs[$lk] = $nums ? json_encode($nums) : '';
+                    }
+                }
                 Settings::setMany($pairs);
                 // Config was overlaid once at boot; re-apply so the form below this
                 // request reflects the values we just saved (not the pre-save snapshot).
