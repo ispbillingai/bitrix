@@ -365,6 +365,15 @@ return [
     'dev_filter_customer' => 'Customer',
     'dev_filter_all'   => 'All customers',
     'dev_filter_none'  => 'No devices for this customer.',
+    'dev_add'          => 'Add device',
+    'dev_edit'         => 'Edit',
+    'dev_delete'       => 'Delete',
+    'dev_edit_title'   => 'Edit device',
+    'dev_name_ph'      => 'e.g. Cashier PC',
+    'dev_req_err'      => 'Name and IP are required.',
+    'dev_dup_err'      => 'A device with that IP already exists.',
+    'dev_bad_ip'       => 'That IP address is not valid.',
+    'dev_delete_confirm' => 'Delete this device and its history?',
 
     // ---- Network areas (routers) ----
     'na_title'         => 'Network areas',

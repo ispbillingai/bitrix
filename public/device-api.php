@@ -149,4 +149,50 @@ if ($action === 'delete_area') {
     exit;
 }
 
+if ($action === 'save_device') {
+    $id     = (int)($input['id'] ?? 0);
+    $name   = trim((string)($input['name'] ?? ''));
+    $ip     = trim((string)($input['ip'] ?? ''));
+    $areaId = (int)($input['area_id'] ?? 0) ?: null;
+    $sort   = (int)($input['sort_order'] ?? 0);
+    $active = !empty($input['active']) ? 1 : 0;
+
+    if ($name === '' || $ip === '') {
+        echo json_encode(['ok' => false, 'error' => 'required']);
+        exit;
+    }
+    // Basic IPv4 / hostname sanity — reject spaces and obviously bad input.
+    if (!filter_var($ip, FILTER_VALIDATE_IP) && !preg_match('/^[a-zA-Z0-9.\-]+$/', $ip)) {
+        echo json_encode(['ok' => false, 'error' => 'bad_ip']);
+        exit;
+    }
+
+    try {
+        if ($id > 0) {
+            $pdo->prepare("UPDATE devices SET name=?, ip=?, area_id=?, sort_order=?, active=? WHERE id=?")
+                ->execute([$name, $ip, $areaId, $sort, $active, $id]);
+        } else {
+            $pdo->prepare("INSERT INTO devices (name, ip, area_id, sort_order, active) VALUES (?,?,?,?,?)")
+                ->execute([$name, $ip, $areaId, $sort, $active]);
+            $id = (int)$pdo->lastInsertId();
+        }
+    } catch (Throwable $e) {
+        // Most likely the UNIQUE(ip) constraint — surface a clear message.
+        $dup = stripos($e->getMessage(), 'Duplicate') !== false || stripos($e->getMessage(), '1062') !== false;
+        echo json_encode(['ok' => false, 'error' => $dup ? 'duplicate_ip' : $e->getMessage()]);
+        exit;
+    }
+    echo json_encode(['ok' => true, 'id' => $id]);
+    exit;
+}
+
+if ($action === 'delete_device') {
+    $id = (int)($input['id'] ?? 0);
+    // Remove its disconnection-log history too so no orphan rows are left.
+    $pdo->prepare("DELETE FROM device_events WHERE device_id = ?")->execute([$id]);
+    $pdo->prepare("DELETE FROM devices WHERE id = ?")->execute([$id]);
+    echo json_encode(['ok' => true]);
+    exit;
+}
+
 echo json_encode(['ok' => false, 'error' => 'unknown_action']);
