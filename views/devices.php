@@ -164,18 +164,21 @@ $ago = function (?string $ts) use ($t): string {
   var L = { up:<?= json_encode($t('dev_up')) ?>, down:<?= json_encode($t('dev_down')) ?>,
             unknown:<?= json_encode($t('dev_unknown')) ?>, never:<?= json_encode($t('dev_never')) ?>,
             checking:<?= json_encode($t('dev_checking')) ?> };
-  function ago(ts){ if(!ts){return L.never;} var s=Math.floor((Date.now()-new Date(ts.replace(' ','T')).getTime())/1000);
+  // Format a server-provided age (seconds). Timezone-independent — no Date parsing.
+  function agoSec(s){ if(s===null||s===undefined){return L.never;} s=parseInt(s,10); if(isNaN(s)){return L.never;}
     if(s<0){s=0;} if(s<60){return s+'s';} if(s<3600){return Math.floor(s/60)+'m';} if(s<86400){return Math.floor(s/3600)+'h';} return Math.floor(s/86400)+'d'; }
   function paint(d){
     var row=document.querySelector('#devTable tr[data-ip="'+d.ip+'"]'); if(!row){return;}
-    var stale=!d.last_checked_at||(Date.now()-new Date(d.last_checked_at.replace(' ','T')).getTime()>STALE*1000);
+    // Staleness uses the SERVER-computed age, so the viewer's timezone can't skew it.
+    var age=(d.checked_age_sec===null||d.checked_age_sec===undefined)?null:parseInt(d.checked_age_sec,10);
+    var stale=(age===null)||(age>STALE);
     var st=stale?'unknown':d.status;
     var map={up:['ok',L.up],down:['down',L.down],unknown:['unk',L.unknown]};
     var m=map[st]||map.unknown;
     row.querySelector('.cell-status').innerHTML='<span class="dev-pill dev-'+m[0]+'">'+m[1]+'</span>';
     row.querySelector('.cell-latency').innerHTML=(st==='up'&&d.latency_ms!==null)?(parseFloat(d.latency_ms).toFixed(1)+' ms'):'<span class="muted">—</span>';
-    row.querySelector('.cell-seen').textContent=ago(d.last_seen_at);
-    row.querySelector('.cell-checked').textContent=ago(d.last_checked_at);
+    row.querySelector('.cell-seen').textContent=agoSec(d.seen_age_sec);
+    row.querySelector('.cell-checked').textContent=agoSec(d.checked_age_sec);
   }
   function refresh(){ fetch('device-api.php?what=status',{headers:{'Accept':'application/json'}})
     .then(function(r){return r.ok?r.json():null;})

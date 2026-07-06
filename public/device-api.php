@@ -37,10 +37,16 @@ if (!$isAuthed) {
 $isAdmin = $role === 'admin';
 $pdo = Db::pdo();
 
-/** Current device status rows. */
+/**
+ * Current device status rows. Ages (seconds since last check / last seen) are
+ * computed IN SQL with TIMESTAMPDIFF so the client never does timezone math —
+ * the age is correct regardless of the viewer's timezone. NULL age = never.
+ */
 $statusRows = static function () use ($pdo): array {
     return $pdo->query(
-        "SELECT d.name, d.ip, d.status, d.latency_ms, d.last_seen_at, d.last_checked_at, a.name AS area_name
+        "SELECT d.name, d.ip, d.status, d.latency_ms, d.last_seen_at, d.last_checked_at, a.name AS area_name,
+                TIMESTAMPDIFF(SECOND, d.last_checked_at, NOW()) AS checked_age_sec,
+                TIMESTAMPDIFF(SECOND, d.last_seen_at,    NOW()) AS seen_age_sec
            FROM devices d LEFT JOIN network_areas a ON a.id = d.area_id
           ORDER BY d.sort_order, d.id"
     )->fetchAll();
