@@ -72,6 +72,10 @@ $rows = \Glue\Crm\Leads::all(300, $scopeId ?? null);
       <span class="pill"><?= $h(stage_label($t, $r['stage_code'], \Glue\Crm\Pipelines::label('lead', $r['stage_code']))) ?></span>
       <?= pill($h, $r['status'], $t) ?>
       <span class="muted small"><?= $ag ? $h($ag) : $h($t('unassigned')) ?></span>
+      <?php $acc = \Glue\Portal\Account::accessStats((int)$r['contact_id']); if ($acc['count'] > 0): ?>
+        <span class="pill" title="<?= $h($t('portal_access_title')) ?>" style="background:var(--accent-soft,rgba(91,108,255,.14));color:var(--accent,#5b6cff)">
+          <?= svg('users') ?> <?= (int)$acc['count'] ?></span>
+      <?php endif; ?>
     </summary>
     <div style="padding:4px 18px 18px;border-top:1px solid var(--line)">
       <?php if ($msg !== ''): ?>
@@ -109,6 +113,16 @@ $rows = \Glue\Crm\Leads::all(300, $scopeId ?? null);
             <button class="btn tiny ghost"><?= $h($t('save')) ?></button></form>
         </div>
         <div>
+          <?php $acc = \Glue\Portal\Account::accessStats((int)$r['contact_id']); ?>
+          <h3><?= $h($t('portal_access_h')) ?></h3>
+          <div class="muted small" style="margin:-4px 0 14px">
+            <?php if ($acc['count'] > 0): ?>
+              <?= $h($t('portal_access_count')) ?>: <strong><?= (int)$acc['count'] ?></strong>
+              · <?= $h($t('portal_access_last')) ?>: <?= $h(short_time($acc['last'])) ?>
+            <?php else: ?>
+              <?= $h($t('portal_access_never')) ?>
+            <?php endif; ?>
+          </div>
           <h3><?= $h($t('timeline')) ?></h3>
           <div class="tl">
             <?php if (!$timeline): ?><div class="empty"><?= $h($t('none_yet')) ?></div><?php endif; ?>

@@ -38,6 +38,36 @@ $meId = (int)($_SESSION['glue_user']['id'] ?? 0);
       <span class="badge <?= $u['active'] ? 'ok' : 'no' ?>"><span class="dot"></span><?= $u['active'] ? $h($t('u_active')) : $h($t('u_disabled')) ?></span>
     </summary>
     <div style="padding:6px 18px 18px;border-top:1px solid var(--line)">
+      <?php
+      // #6 — this agent's assigned leads with current stage/status, so an admin can
+      // click an agent and see all their leads at a glance.
+      $agLeads = \Glue\Crm\Leads::all(500, $id);
+      $agOpen = 0; $agConv = 0;
+      foreach ($agLeads as $al) { if ($al['status'] === 'converted') { $agConv++; } elseif ($al['status'] === 'open') { $agOpen++; } }
+      ?>
+      <details class="drawer" style="margin-bottom:14px">
+        <summary class="btn ghost tiny">
+          <?= svg('leads') ?> <?= $h($t('agent_leads_h')) ?> ·
+          <?= count($agLeads) ?> <span class="muted">(<?= $agOpen ?> <?= $h($t('agent_leads_open')) ?>, <?= $agConv ?> <?= $h($t('agent_leads_conv')) ?>)</span>
+        </summary>
+        <?php if (!$agLeads): ?>
+          <div class="empty" style="margin-top:10px"><?= $h($t('agent_leads_none')) ?></div>
+        <?php else: ?>
+        <table style="margin-top:10px"><thead><tr>
+          <th><?= $h($t('f_name')) ?></th><th><?= $h($t('f_phone')) ?></th>
+          <th><?= $h($t('nav_leads')) ?></th><th><?= $h($t('th_status')) ?></th>
+        </tr></thead><tbody>
+          <?php foreach ($agLeads as $al): ?>
+          <tr>
+            <td><?= $h($al['customer_name'] ?: ('#' . $al['id'])) ?></td>
+            <td class="small muted"><?= $h($al['customer_phone'] ?? '') ?></td>
+            <td><span class="pill"><?= $h(stage_label($t, $al['stage_code'], \Glue\Crm\Pipelines::label('lead', $al['stage_code']))) ?></span></td>
+            <td><?= pill($h, $al['status'], $t) ?></td>
+          </tr>
+          <?php endforeach; ?>
+        </tbody></table>
+        <?php endif; ?>
+      </details>
       <form method="post"><input type="hidden" name="do" value="update_profile"><input type="hidden" name="id" value="<?= $id ?>">
         <div class="row">
           <label class="fld"><span><?= $h($t('u_fullname')) ?></span><input name="full_name" value="<?= $h($u['full_name'] ?? '') ?>"></label>

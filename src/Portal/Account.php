@@ -104,6 +104,48 @@ final class Account
         return null;
     }
 
+    /**
+     * Record a private-area access for a contact (#4). Bumps the counter + last
+     * access time and appends a log row. $method is 'link' or 'password'. Never
+     * throws — access tracking must not block a login. Tolerates the pre-018
+     * schema (no columns) by ignoring failures.
+     */
+    public static function recordAccess(int $contactId, string $method = 'link'): void
+    {
+        if ($contactId <= 0) {
+            return;
+        }
+        try {
+            Db::pdo()->prepare(
+                'UPDATE contacts
+                    SET portal_access_count = portal_access_count + 1,
+                        portal_last_access_at = NOW()
+                  WHERE id = ?'
+            )->execute([$contactId]);
+            $ip = substr((string)($_SERVER['REMOTE_ADDR'] ?? ''), 0, 45) ?: null;
+            Db::pdo()->prepare(
+                'INSERT INTO portal_access_log (contact_id, method, ip) VALUES (?, ?, ?)'
+            )->execute([$contactId, $method === 'password' ? 'password' : 'link', $ip]);
+        } catch (\Throwable $e) {
+            // columns/table not migrated yet, or transient DB issue — ignore.
+        }
+    }
+
+    /** Access stats for a contact: ['count'=>int, 'last'=>?string]. */
+    public static function accessStats(int $contactId): array
+    {
+        try {
+            $stmt = Db::pdo()->prepare(
+                'SELECT portal_access_count AS count, portal_last_access_at AS last FROM contacts WHERE id = ?'
+            );
+            $stmt->execute([$contactId]);
+            $row = $stmt->fetch();
+            return ['count' => (int)($row['count'] ?? 0), 'last' => $row['last'] ?? null];
+        } catch (\Throwable $e) {
+            return ['count' => 0, 'last' => null];
+        }
+    }
+
     public static function setPassword(int $contactId, string $password): bool
     {
         if (strlen($password) < 6) {

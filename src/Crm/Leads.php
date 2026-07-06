@@ -162,10 +162,16 @@ final class Leads
         )->fetchAll();
     }
 
-    /** Open leads grouped by stage_code (for the kanban board). $assignedTo scopes to one seller. */
+    /**
+     * Leads grouped by stage_code for the kanban board. $assignedTo scopes to one
+     * seller. Shows OPEN leads plus leads that were DISCARDED (status 'junk') so
+     * the Discarded/lost column actually populates — moving a lead to the lost
+     * stage sets status='junk', and previously those vanished from the board.
+     * Converted leads leave the board (they live on as deals).
+     */
     public static function byStage(?int $assignedTo = null): array
     {
-        $where = "WHERE l.status = 'open'" . ($assignedTo ? ' AND l.assigned_to = ' . (int)$assignedTo : '');
+        $where = "WHERE l.status IN ('open', 'junk')" . ($assignedTo ? ' AND l.assigned_to = ' . (int)$assignedTo : '');
         $rows = Db::pdo()->query(
             "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name
              FROM leads l LEFT JOIN users u ON u.id = l.assigned_to

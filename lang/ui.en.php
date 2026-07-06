@@ -59,6 +59,15 @@ return [
     'timeline'       => 'Timeline',
     'system'         => 'System',
     'unassigned'     => 'Unassigned',
+    'portal_access_h'     => 'Private area access',
+    'portal_access_title' => 'Private-area accesses',
+    'portal_access_count' => 'Accesses',
+    'portal_access_last'  => 'last',
+    'portal_access_never' => 'Has not accessed the private area yet.',
+    'agent_leads_h'    => 'Assigned leads',
+    'agent_leads_open' => 'open',
+    'agent_leads_conv' => 'converted',
+    'agent_leads_none' => 'No leads assigned to this agent.',
     'optional'       => 'optional',
 
     // fields
@@ -84,7 +93,7 @@ return [
 
     // default pipeline stage names (seeded in English; translated for display)
     'stg_NEW'         => 'New',
-    'stg_CONTACTED'   => 'Contacted',
+    'stg_CONTACTED'   => 'In Contact',
     'stg_QUALIFIED'   => 'Qualified',
     'stg_CONVERTED'   => 'Converted',
     'stg_JUNK'        => 'Junk',

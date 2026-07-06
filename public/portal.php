@@ -48,6 +48,7 @@ if (isset($_GET['token'])) {
     if ($c) {
         $_SESSION['portal_cid'] = (int)$c['id'];
         Account::touchLogin((int)$c['id']);
+        Account::recordAccess((int)$c['id'], 'link'); // #4 private-area access count
     }
     header('Location: portal.php');
     exit;
@@ -100,6 +101,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($c) {
             $_SESSION['portal_cid'] = (int)$c['id'];
             Account::touchLogin((int)$c['id']);
+            Account::recordAccess((int)$c['id'], 'password'); // #4 private-area access count
             header('Location: portal.php');
             exit;
         }

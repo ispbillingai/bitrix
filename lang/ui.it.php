@@ -59,6 +59,15 @@ return [
     'timeline'       => 'Cronologia',
     'system'         => 'Sistema',
     'unassigned'     => 'Non assegnato',
+    'portal_access_h'     => 'Accessi area privata',
+    'portal_access_title' => 'Accessi area privata',
+    'portal_access_count' => 'Accessi',
+    'portal_access_last'  => 'ultimo',
+    'portal_access_never' => 'Non ha ancora effettuato accessi all\'area privata.',
+    'agent_leads_h'    => 'Lead assegnati',
+    'agent_leads_open' => 'aperti',
+    'agent_leads_conv' => 'convertiti',
+    'agent_leads_none' => 'Nessun lead assegnato a questo agente.',
     'optional'       => 'facoltativo',
 
     // fields
@@ -84,7 +93,7 @@ return [
 
     // nomi fase predefiniti (seed in inglese; tradotti per la visualizzazione)
     'stg_NEW'         => 'Nuovo',
-    'stg_CONTACTED'   => 'Contattato',
+    'stg_CONTACTED'   => 'In contatto',
     'stg_QUALIFIED'   => 'Qualificato',
     'stg_CONVERTED'   => 'Convertito',
     'stg_JUNK'        => 'Scartato',

@@ -805,7 +805,7 @@ function pill(callable $h, string $status, ?callable $t = null): string {
  */
 function stage_label(callable $t, string $code, ?string $name = null): string {
     static $seed = [
-        'NEW' => 'New', 'CONTACTED' => 'Contacted', 'QUALIFIED' => 'Qualified',
+        'NEW' => 'New', 'CONTACTED' => 'In Contact', 'QUALIFIED' => 'Qualified',
         'CONVERTED' => 'Converted', 'JUNK' => 'Junk', 'QUOTE' => 'Quote sent',
         'NEGOTIATION' => 'Negotiation', 'SIGNATURE' => 'Signature', 'WON' => 'Won', 'LOST' => 'Lost',
     ];
