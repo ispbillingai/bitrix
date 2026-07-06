@@ -569,10 +569,6 @@ $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_forma
 $views = ['overview', 'leads', 'deals', 'contacts', 'appointments', 'tasks', 'tickets',
           'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents',
           'devices', 'network_areas', 'settings', 'instructions'];
-// network_areas is admin-only (it manages router credentials); techs get devices.
-if ($view === 'network_areas' && !($role === 'admin')) {
-    // handled below via the role whitelists
-}
 $view = in_array($tab, $views, true) ? $tab : 'overview';
 // Agents can't reach admin views, even by typing the URL.
 if ($isAgent && !in_array($view, $agentViews, true)) {
