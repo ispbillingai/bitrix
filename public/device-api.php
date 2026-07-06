@@ -115,6 +115,7 @@ if ($action === 'save_area') {
     $count = max(1, (int)($input['ping_count'] ?? 2));
     $sort  = (int)($input['sort_order'] ?? 0);
     $active = !empty($input['active']) ? 1 : 0;
+    $alertPhone = trim((string)($input['alert_phone'] ?? ''));
 
     if ($name === '' || $host === '') {
         echo json_encode(['ok' => false, 'error' => 'required']);
@@ -123,18 +124,23 @@ if ($action === 'save_area') {
     if ($port < 1 || $port > 65535) {
         $port = 8728;
     }
+    // Light E.164 sanity: optional '+' then 6-15 digits. Blank = no alerts.
+    if ($alertPhone !== '' && !preg_match('/^\+?[0-9]{6,15}$/', $alertPhone)) {
+        echo json_encode(['ok' => false, 'error' => 'bad_phone']);
+        exit;
+    }
 
     if ($id > 0) {
         if ($pass === '') { // keep stored password when left blank
-            $pdo->prepare("UPDATE network_areas SET name=?, host=?, api_port=?, api_user=?, ping_count=?, active=?, sort_order=? WHERE id=?")
-                ->execute([$name, $host, $port, $userN, $count, $active, $sort, $id]);
+            $pdo->prepare("UPDATE network_areas SET name=?, host=?, api_port=?, api_user=?, ping_count=?, active=?, sort_order=?, alert_phone=? WHERE id=?")
+                ->execute([$name, $host, $port, $userN, $count, $active, $sort, $alertPhone, $id]);
         } else {
-            $pdo->prepare("UPDATE network_areas SET name=?, host=?, api_port=?, api_user=?, api_pass=?, ping_count=?, active=?, sort_order=? WHERE id=?")
-                ->execute([$name, $host, $port, $userN, $pass, $count, $active, $sort, $id]);
+            $pdo->prepare("UPDATE network_areas SET name=?, host=?, api_port=?, api_user=?, api_pass=?, ping_count=?, active=?, sort_order=?, alert_phone=? WHERE id=?")
+                ->execute([$name, $host, $port, $userN, $pass, $count, $active, $sort, $alertPhone, $id]);
         }
     } else {
-        $pdo->prepare("INSERT INTO network_areas (name, host, api_port, api_user, api_pass, ping_count, active, sort_order) VALUES (?,?,?,?,?,?,?,?)")
-            ->execute([$name, $host, $port, $userN, $pass, $count, $active, $sort]);
+        $pdo->prepare("INSERT INTO network_areas (name, host, api_port, api_user, api_pass, ping_count, active, sort_order, alert_phone) VALUES (?,?,?,?,?,?,?,?,?)")
+            ->execute([$name, $host, $port, $userN, $pass, $count, $active, $sort, $alertPhone]);
         $id = (int)$pdo->lastInsertId();
     }
     echo json_encode(['ok' => true, 'id' => $id]);
