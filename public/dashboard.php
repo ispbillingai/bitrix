@@ -552,6 +552,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $tab = 'agents';
                 break;
+
+            // ---------- partners (referrers) ----------
+            case 'partner_save':
+                $pdata = [
+                    'name' => $_POST['name'] ?? '', 'email' => $_POST['email'] ?? '',
+                    'phone' => $_POST['phone'] ?? '', 'ref_code' => $_POST['ref_code'] ?? '',
+                    'commission_pct' => $_POST['commission_pct'] ?? 10,
+                    'active' => isset($_POST['active']) ? 1 : 0,
+                    'password' => $_POST['password'] ?? '',
+                ];
+                if ((int)($_POST['id'] ?? 0) > 0) {
+                    \Glue\Partner\Partners::update((int)$_POST['id'], $pdata);
+                    $flash = $t('saved');
+                } else {
+                    \Glue\Partner\Partners::create($pdata);
+                    $flash = $t('pt_added');
+                }
+                $tab = 'partners';
+                break;
+            case 'accrual_status':
+                \Glue\Partner\Partners::setAccrualStatus((int)($_POST['id'] ?? 0), (string)($_POST['status'] ?? ''));
+                $flash = $t('saved');
+                $tab = 'partners';
+                break;
         }
     } catch (Throwable $e) {
         if ($ajax) { http_response_code(500); echo json_encode(['ok' => false, 'error' => $e->getMessage()]); exit; }
@@ -567,7 +591,7 @@ $agents = Auth::agents();
 $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_format((float)$n, 0);
 
 $views = ['overview', 'leads', 'deals', 'contacts', 'appointments', 'tasks', 'tickets',
-          'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents',
+          'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents', 'partners',
           'devices', 'network_areas', 'settings', 'instructions'];
 $view = in_array($tab, $views, true) ? $tab : 'overview';
 // Agents can't reach admin views, even by typing the URL.
@@ -623,7 +647,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
         'campaigns' => 'nav_campaigns', 'messages' => 'nav_messages', 'outbound' => 'nav_outbound',
         'reminders' => 'nav_reminders', 'templates' => 'nav_templates',
         'devices' => 'nav_devices', 'network_areas' => 'nav_network_areas',
-        'events' => 'nav_events', 'agents' => 'nav_agents', 'instructions' => 'nav_instr', 'settings' => 'nav_settings',
+        'events' => 'nav_events', 'agents' => 'nav_agents', 'partners' => 'nav_partners', 'instructions' => 'nav_instr', 'settings' => 'nav_settings',
     ];
     if ($isAgent) { // agents only see their own work
         $nav = array_intersect_key($nav, array_flip(['overview', 'leads', 'deals', 'appointments', 'tasks', 'messages', 'instructions']));
@@ -856,6 +880,7 @@ function svg(string $name): string {
         'settings'    => '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
         'database'    => '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>',
         'devices'     => '<rect x="4" y="3" width="16" height="12" rx="1"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="15" x2="12" y2="21"/>',
+        'partners'    => '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M12 12l2 2 4-4"/>',
         'network_areas' => '<rect x="9" y="2" width="6" height="6" rx="1"/><rect x="3" y="16" width="6" height="6" rx="1"/><rect x="15" y="16" width="6" height="6" rx="1"/><path d="M12 8v4M12 12H6v4M12 12h6v4"/>',
         'link'        => '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
         'mail'        => '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/>',

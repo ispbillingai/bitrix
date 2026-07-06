@@ -37,6 +37,7 @@ return [
     'nav_settings'     => 'Settings',
     'nav_devices'       => 'Devices',
     'nav_network_areas' => 'Network areas',
+    'nav_partners'      => 'Partners',
 
     // common
     'save'           => 'Save',
@@ -68,6 +69,18 @@ return [
     'agent_leads_open' => 'open',
     'agent_leads_conv' => 'converted',
     'agent_leads_none' => 'No leads assigned to this agent.',
+    // partners (referrers)
+    'pt_sub'        => 'Referrers who send you customers. Each has a referral link; a won referral earns them a commission.',
+    'pt_add'        => 'Add partner', 'pt_none' => 'No partners yet.',
+    'pt_name'       => 'Partner name', 'pt_ref' => 'Referral code', 'pt_ref_ph' => 'auto if blank',
+    'pt_pct'        => 'Commission %', 'pt_pw' => 'Portal password', 'pt_pw_ph' => 'set to allow login',
+    'pt_pw_keep'    => 'leave blank to keep', 'pt_added' => 'Partner added.',
+    'pt_refs'       => 'referrals', 'pt_referrals' => 'Referrals', 'pt_no_refs' => 'No referrals yet.',
+    'pt_accruals'   => 'Commissions', 'pt_no_accruals' => 'No commissions yet.',
+    'pt_pending'    => 'Pending', 'pt_approved' => 'Approved', 'pt_paid' => 'Paid',
+    'pt_approve'    => 'Approve', 'pt_mark_paid' => 'Mark paid', 'pt_stage' => 'Stage',
+    'acc_pending'   => 'Pending', 'acc_approved' => 'Approved', 'acc_paid' => 'Paid', 'acc_cancelled' => 'Cancelled',
+    'customer'      => 'Customer', 'amount' => 'Commission',
     'optional'       => 'optional',
 
     // fields

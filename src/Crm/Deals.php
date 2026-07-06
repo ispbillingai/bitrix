@@ -137,6 +137,9 @@ final class Deals
         if ($isWon) {
             $sched->cancelForEntity('deal', $dealId, ['sign_due', 'sign_overdue']);
             Automation::closing($dealId);
+            // Partner referral commission: if this deal came from a partner-referred
+            // lead, create a pending accrual (idempotent). Never fatal.
+            \Glue\Partner\Partners::accrueForWonDeal($dealId);
         }
         // Lost -> just stop chasing.
         if ($isLost) {

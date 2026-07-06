@@ -78,15 +78,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $error = $T['err_consent'];
         } else {
             try {
+                // Partner referral: ?ref=CODE (carried as a hidden field). If it
+                // matches an active partner, tag the lead + mark the source.
+                $refCode = trim((string)($_POST['ref'] ?? ($_GET['ref'] ?? '')));
+                $partner = $refCode !== '' ? \Glue\Partner\Partners::byRefCode($refCode) : null;
+
                 $leadId = Leads::create([
                     'name'     => $name,
                     'email'    => $email,
                     'phone'    => $phone,
                     'company'  => trim((string)($_POST['company'] ?? '')),
                     'comments' => trim((string)($_POST['message'] ?? '')),
-                    'source'   => 'website',
+                    'source'   => $partner ? 'partner' : 'website',
                     'lang'     => $lang,
                 ]);
+
+                if ($partner) {
+                    \Glue\Partner\Partners::attributeLead($leadId, (int)$partner['id']);
+                }
 
                 $preferred = trim((string)($_POST['preferred_at'] ?? ''));
                 if ($preferred !== '') {
@@ -184,6 +193,9 @@ textarea{resize:vertical;min-height:84px;}
       <?php if ($error): ?><div class="err"><?= $h($error) ?></div><?php endif; ?>
       <form method="post">
         <div class="hp"><label>Website<input type="text" name="website" tabindex="-1" autocomplete="off"></label></div>
+        <?php $ref = trim((string)($_POST['ref'] ?? ($_GET['ref'] ?? ''))); if ($ref !== ''): ?>
+          <input type="hidden" name="ref" value="<?= $h($ref) ?>">
+        <?php endif; ?>
         <div class="row">
           <label class="fld"><span><?= $h($T['first']) ?></span><input name="first_name" value="<?= $h($old['first_name'] ?? '') ?>" required></label>
           <label class="fld"><span><?= $h($T['last']) ?></span><input name="last_name" value="<?= $h($old['last_name'] ?? '') ?>"></label>

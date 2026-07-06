@@ -37,6 +37,7 @@ return [
     'nav_settings'     => 'Impostazioni',
     'nav_devices'       => 'Dispositivi',
     'nav_network_areas' => 'Aree di rete',
+    'nav_partners'      => 'Partner',
 
     // common
     'save'           => 'Salva',
@@ -68,6 +69,18 @@ return [
     'agent_leads_open' => 'aperti',
     'agent_leads_conv' => 'convertiti',
     'agent_leads_none' => 'Nessun lead assegnato a questo agente.',
+    // partner (segnalatori)
+    'pt_sub'        => 'Segnalatori che ti inviano clienti. Ognuno ha un link di segnalazione; una segnalazione vinta genera una provvigione.',
+    'pt_add'        => 'Aggiungi partner', 'pt_none' => 'Nessun partner.',
+    'pt_name'       => 'Nome partner', 'pt_ref' => 'Codice segnalazione', 'pt_ref_ph' => 'auto se vuoto',
+    'pt_pct'        => 'Provvigione %', 'pt_pw' => 'Password area', 'pt_pw_ph' => 'imposta per l\'accesso',
+    'pt_pw_keep'    => 'lascia vuoto per mantenere', 'pt_added' => 'Partner aggiunto.',
+    'pt_refs'       => 'segnalazioni', 'pt_referrals' => 'Segnalazioni', 'pt_no_refs' => 'Nessuna segnalazione.',
+    'pt_accruals'   => 'Provvigioni', 'pt_no_accruals' => 'Nessuna provvigione.',
+    'pt_pending'    => 'In attesa', 'pt_approved' => 'Approvate', 'pt_paid' => 'Pagate',
+    'pt_approve'    => 'Approva', 'pt_mark_paid' => 'Segna pagata', 'pt_stage' => 'Fase',
+    'acc_pending'   => 'In attesa', 'acc_approved' => 'Approvata', 'acc_paid' => 'Pagata', 'acc_cancelled' => 'Annullata',
+    'customer'      => 'Cliente', 'amount' => 'Provvigione',
     'optional'       => 'facoltativo',
 
     // fields
