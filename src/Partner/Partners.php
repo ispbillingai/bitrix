@@ -157,7 +157,7 @@ final class Partners
     {
         try {
             $pdo = Db::pdo();
-            $deal = $pdo->prepare("SELECT id, lead_id, value FROM deals WHERE id = ?");
+            $deal = $pdo->prepare("SELECT id, lead_id, amount FROM deals WHERE id = ?");
             $deal->execute([$dealId]);
             $d = $deal->fetch();
             if (!$d || empty($d['lead_id'])) {
@@ -175,7 +175,7 @@ final class Partners
                 return;
             }
             $pct  = (float)$partner['commission_pct'];
-            $base = (float)($d['value'] ?? 0);
+            $base = (float)($d['amount'] ?? 0);
             $amount = round($base * $pct / 100, 2);
 
             // INSERT IGNORE so a re-won / double-fire never duplicates (UNIQUE deal_id).
