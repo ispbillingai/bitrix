@@ -97,9 +97,9 @@ $ago = function (?string $ts) use ($t): string {
     <label class="fld"><span><?= $h($t('dev_th_device')) ?></span><input id="dv_name" placeholder="<?= $h($t('dev_name_ph')) ?>"></label>
     <div class="na-row">
       <label class="fld"><span><?= $h($t('dev_th_ip')) ?></span><input id="dv_ip" placeholder="192.168.100.10"></label>
-      <label class="fld"><span><?= $h($t('dev_th_area')) ?></span>
+      <label class="fld"><span><?= $h($t('dev_router')) ?></span>
         <select id="dv_area">
-          <option value="0">—</option>
+          <option value="0"><?= $h($t('dev_router_none')) ?></option>
           <?php foreach ($areas as $a): ?><option value="<?= (int)$a['id'] ?>"><?= $h($a['name']) ?></option><?php endforeach; ?>
         </select>
       </label>
@@ -250,11 +250,14 @@ $ago = function (?string $ts) use ($t): string {
 var DV = {
   add:<?= json_encode($t('dev_add')) ?>, edit:<?= json_encode($t('dev_edit_title')) ?>,
   reqErr:<?= json_encode($t('dev_req_err')) ?>, dupErr:<?= json_encode($t('dev_dup_err')) ?>,
-  badIp:<?= json_encode($t('dev_bad_ip')) ?>, delConfirm:<?= json_encode($t('dev_delete_confirm')) ?>
+  badIp:<?= json_encode($t('dev_bad_ip')) ?>, delConfirm:<?= json_encode($t('dev_delete_confirm')) ?>,
+  routerErr:<?= json_encode($t('dev_router_req')) ?>,
+  firstArea:<?= json_encode($areas ? (string)(int)$areas[0]['id'] : '0') ?>,
+  hasAreas:<?= $areas ? 'true' : 'false' ?>
 };
 function dvEl(id){return document.getElementById(id);}
 function devOpen(){ dvEl('devModalTitle').textContent=DV.add; dvEl('dv_id').value=''; dvEl('dv_name').value='';
-  dvEl('dv_ip').value=''; dvEl('dv_area').value='0'; dvEl('dv_sort').value=0; dvEl('dv_active').checked=true;
+  dvEl('dv_ip').value=''; dvEl('dv_area').value=DV.firstArea; dvEl('dv_sort').value=0; dvEl('dv_active').checked=true;
   dvEl('devModalBg').classList.add('show'); }
 function devEdit(d){ dvEl('devModalTitle').textContent=DV.edit; dvEl('dv_id').value=d.id; dvEl('dv_name').value=d.name||'';
   dvEl('dv_ip').value=d.ip||''; dvEl('dv_area').value=String(d.area_id||0); dvEl('dv_sort').value=d.sort_order||0;
@@ -265,6 +268,8 @@ function devSave(btn){
     ip:dvEl('dv_ip').value.trim(), area_id:parseInt(dvEl('dv_area').value||'0',10),
     sort_order:parseInt(dvEl('dv_sort').value||'0',10), active:dvEl('dv_active').checked?1:0 };
   if(!body.name||!body.ip){ alert(DV.reqErr); return; }
+  // A device must belong to a router (customer) when any routers exist.
+  if(DV.hasAreas && !body.area_id){ alert(DV.routerErr); return; }
   btn.disabled=true;
   fetch('device-api.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
     .then(function(r){return r.json();})

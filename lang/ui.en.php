@@ -374,6 +374,9 @@ return [
     'dev_dup_err'      => 'A device with that IP already exists.',
     'dev_bad_ip'       => 'That IP address is not valid.',
     'dev_delete_confirm' => 'Delete this device and its history?',
+    'dev_router'       => 'Customer / Router',
+    'dev_router_none'  => '— none —',
+    'dev_router_req'   => 'Please choose which router (customer) this device belongs to.',
 
     // ---- Network areas (routers) ----
     'na_title'         => 'Network areas',

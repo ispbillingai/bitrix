@@ -374,6 +374,9 @@ return [
     'dev_dup_err'      => 'Esiste già un dispositivo con questo IP.',
     'dev_bad_ip'       => 'Indirizzo IP non valido.',
     'dev_delete_confirm' => 'Eliminare questo dispositivo e la sua cronologia?',
+    'dev_router'       => 'Cliente / Router',
+    'dev_router_none'  => '— nessuno —',
+    'dev_router_req'   => 'Scegli a quale router (cliente) appartiene questo dispositivo.',
 
     // ---- Aree di rete (router) ----
     'na_title'         => 'Aree di rete',

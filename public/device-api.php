@@ -166,6 +166,21 @@ if ($action === 'save_device') {
         echo json_encode(['ok' => false, 'error' => 'bad_ip']);
         exit;
     }
+    // A device must be associated with a router when any routers exist.
+    $areaCount = (int)$pdo->query("SELECT COUNT(*) FROM network_areas")->fetchColumn();
+    if ($areaCount > 0 && !$areaId) {
+        echo json_encode(['ok' => false, 'error' => 'router_required']);
+        exit;
+    }
+    // Reject a non-existent area id.
+    if ($areaId) {
+        $stmt = $pdo->prepare("SELECT COUNT(*) FROM network_areas WHERE id = ?");
+        $stmt->execute([$areaId]);
+        if ((int)$stmt->fetchColumn() === 0) {
+            echo json_encode(['ok' => false, 'error' => 'bad_router']);
+            exit;
+        }
+    }
 
     try {
         if ($id > 0) {
