@@ -5,16 +5,19 @@
  * public/device-api.php. In scope: $t, $h, $pdo. Visible to admin + tech.
  */
 $rows = $pdo->query(
-    "SELECT d.name, d.ip, d.status, d.latency_ms, d.last_seen_at, d.last_checked_at, a.name AS area_name
+    "SELECT d.name, d.ip, d.status, d.latency_ms, d.last_seen_at, d.last_checked_at, d.area_id, a.name AS area_name
        FROM devices d LEFT JOIN network_areas a ON a.id = d.area_id
       ORDER BY d.sort_order, d.id"
 )->fetchAll();
 
 $log = $pdo->query(
-    "SELECT e.created_at, e.event_type, e.latency_ms, d.name, d.ip
+    "SELECT e.created_at, e.event_type, e.latency_ms, d.name, d.ip, d.area_id
        FROM device_events e JOIN devices d ON d.id = e.device_id
       ORDER BY e.id DESC LIMIT 100"
 )->fetchAll();
+
+// Customers = network areas (each router is one customer site). Used by the filter.
+$areas = $pdo->query("SELECT id, name FROM network_areas ORDER BY sort_order, id")->fetchAll();
 
 $staleAfter = 180;
 $ago = function (?string $ts) use ($t): string {
@@ -29,7 +32,20 @@ $ago = function (?string $ts) use ($t): string {
 ?>
 <div class="dev-head">
   <h2><?= $h($t('dev_title')) ?></h2>
-  <button class="btn primary" id="devCheckNow"><?= $h($t('dev_check_now')) ?></button>
+  <div class="dev-head-actions">
+    <?php if (count($areas) > 1): ?>
+    <label class="dev-filter">
+      <span class="muted small"><?= $h($t('dev_filter_customer')) ?></span>
+      <select id="devAreaFilter">
+        <option value=""><?= $h($t('dev_filter_all')) ?></option>
+        <?php foreach ($areas as $a): ?>
+          <option value="<?= (int)$a['id'] ?>"><?= $h($a['name']) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </label>
+    <?php endif; ?>
+    <button class="btn primary" id="devCheckNow"><?= $h($t('dev_check_now')) ?></button>
+  </div>
 </div>
 <p class="muted small" style="margin:-6px 0 14px"><?= $h($t('dev_sub')) ?></p>
 
@@ -45,7 +61,7 @@ $ago = function (?string $ts) use ($t): string {
     $st = $stale ? 'unknown' : $r['status'];
     [$cls, $label] = $st === 'up' ? ['ok', $t('dev_up')] : ($st === 'down' ? ['down', $t('dev_down')] : ['unk', $t('dev_unknown')]);
 ?>
-  <tr data-ip="<?= $h($r['ip']) ?>">
+  <tr data-ip="<?= $h($r['ip']) ?>" data-area="<?= (int)($r['area_id'] ?? 0) ?>">
     <td><strong><?= $h($r['name']) ?></strong></td>
     <td class="mono small"><?= $h($r['ip']) ?></td>
     <td class="small muted"><?= $h($r['area_name'] ?? '—') ?></td>
@@ -64,7 +80,7 @@ $ago = function (?string $ts) use ($t): string {
 </tr></thead><tbody>
 <?php if (!$log): ?><tr><td colspan="3" class="muted"><?= $h($t('dev_log_empty')) ?></td></tr><?php endif; ?>
 <?php foreach ($log as $e): ?>
-  <tr>
+  <tr data-area="<?= (int)($e['area_id'] ?? 0) ?>">
     <td class="small"><?= $h($e['created_at']) ?></td>
     <td><?= $h($e['name']) ?> <span class="mono small muted"><?= $h($e['ip']) ?></span></td>
     <td><span class="dev-pill dev-<?= $e['event_type'] === 'up' ? 'ok' : 'down' ?>"><?= $h($e['event_type'] === 'up' ? $t('dev_evt_up') : $t('dev_evt_down')) ?></span>
@@ -76,6 +92,9 @@ $ago = function (?string $ts) use ($t): string {
 
 <style>
 .dev-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
+.dev-head-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap;}
+.dev-filter{display:flex;align-items:center;gap:7px;}
+.dev-filter select{padding:6px 10px;border-radius:8px;border:1px solid var(--line,#28303f);background:var(--surface2,#1c2533);color:var(--txt,#e7ecf4);font-size:13px;}
 .dev-pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:999px;font-weight:600;font-size:12px;}
 .dev-pill::before{content:"";width:8px;height:8px;border-radius:50%;background:currentColor;}
 .dev-ok{background:var(--green-bg,rgba(63,184,104,.13));color:var(--green,#3fb868);}
@@ -116,5 +135,57 @@ $ago = function (?string $ts) use ($t): string {
       .finally(function(){ btn.disabled=false; btn.textContent=o; setTimeout(function(){location.reload();},400); });
   }); }
   setInterval(refresh, 10000);
+
+  // ---- customer/router filter ----
+  var sel = document.getElementById('devAreaFilter');
+  if (sel) {
+    var KEY = 'devAreaFilter';
+    function applyFilter(area) {
+      area = String(area || '');
+      // Device rows
+      var devRows = document.querySelectorAll('#devTable tbody tr[data-area]');
+      var shownDev = 0;
+      devRows.forEach(function (row) {
+        var match = !area || row.getAttribute('data-area') === area;
+        row.style.display = match ? '' : 'none';
+        if (match) { shownDev++; }
+      });
+      toggleEmpty('devTable', shownDev, 7);
+      // Log rows
+      var logRows = document.querySelectorAll('#devLog tbody tr[data-area]');
+      var shownLog = 0;
+      logRows.forEach(function (row) {
+        var match = !area || row.getAttribute('data-area') === area;
+        row.style.display = match ? '' : 'none';
+        if (match) { shownLog++; }
+      });
+      toggleEmpty('devLog', shownLog, 3);
+    }
+    // Insert/remove a "no rows for this customer" placeholder row.
+    function toggleEmpty(tableId, shown, cols) {
+      var tbody = document.querySelector('#' + tableId + ' tbody');
+      if (!tbody) { return; }
+      var ph = tbody.querySelector('.dev-empty-filter');
+      if (shown === 0 && !ph) {
+        var tr = document.createElement('tr');
+        tr.className = 'dev-empty-filter';
+        tr.innerHTML = '<td colspan="' + cols + '" class="muted">' + <?= json_encode($t('dev_filter_none')) ?> + '</td>';
+        tbody.appendChild(tr);
+      } else if (shown > 0 && ph) {
+        ph.remove();
+      }
+    }
+    // Initial value: ?area= param wins, else last saved choice.
+    var params = new URLSearchParams(location.search);
+    var initial = params.get('area') || localStorage.getItem(KEY) || '';
+    if (initial && sel.querySelector('option[value="' + initial + '"]')) {
+      sel.value = initial;
+    }
+    applyFilter(sel.value);
+    sel.addEventListener('change', function () {
+      localStorage.setItem(KEY, sel.value);
+      applyFilter(sel.value);
+    });
+  }
 })();
 </script>

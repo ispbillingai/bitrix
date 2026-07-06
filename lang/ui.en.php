@@ -362,6 +362,9 @@ return [
     'dev_th_event'     => 'Event',
     'dev_evt_down'     => 'Went offline',
     'dev_evt_up'       => 'Back online',
+    'dev_filter_customer' => 'Customer',
+    'dev_filter_all'   => 'All customers',
+    'dev_filter_none'  => 'No devices for this customer.',
 
     // ---- Network areas (routers) ----
     'na_title'         => 'Network areas',

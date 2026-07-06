@@ -362,6 +362,9 @@ return [
     'dev_th_event'     => 'Evento',
     'dev_evt_down'     => 'Andato offline',
     'dev_evt_up'       => 'Tornato online',
+    'dev_filter_customer' => 'Cliente',
+    'dev_filter_all'   => 'Tutti i clienti',
+    'dev_filter_none'  => 'Nessun dispositivo per questo cliente.',
 
     // ---- Aree di rete (router) ----
     'na_title'         => 'Aree di rete',
