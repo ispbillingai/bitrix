@@ -16,7 +16,7 @@ $meId = (int)($_SESSION['glue_user']['id'] ?? 0);
     <label class="fld"><span><?= $h($t('u_username')) ?></span><input name="username" required></label>
     <label class="fld"><span><?= $h($t('u_password')) ?></span><input name="password" required></label>
     <label class="fld"><span><?= $h($t('u_role')) ?></span>
-      <select name="role"><option value="agent"><?= $h($t('role_agent')) ?></option><option value="admin"><?= $h($t('role_admin')) ?></option></select></label>
+      <select name="role"><option value="agent"><?= $h($t('role_agent')) ?></option><option value="tech"><?= $h($t('role_tech')) ?></option><option value="admin"><?= $h($t('role_admin')) ?></option></select></label>
   </div>
   <div class="row">
     <label class="fld"><span><?= $h($t('u_fullname')) ?></span><input name="full_name"></label>
@@ -44,6 +44,7 @@ $meId = (int)($_SESSION['glue_user']['id'] ?? 0);
           <label class="fld"><span><?= $h($t('u_title')) ?></span><input name="title" value="<?= $h($u['title'] ?? '') ?>"></label>
           <label class="fld"><span><?= $h($t('u_role')) ?></span>
             <select name="role"><option value="agent"<?= $u['role'] === 'agent' ? ' selected' : '' ?>><?= $h($t('role_agent')) ?></option>
+              <option value="tech"<?= $u['role'] === 'tech' ? ' selected' : '' ?>><?= $h($t('role_tech')) ?></option>
               <option value="admin"<?= $u['role'] === 'admin' ? ' selected' : '' ?>><?= $h($t('role_admin')) ?></option></select></label>
         </div>
         <div class="row">

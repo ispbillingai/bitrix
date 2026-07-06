@@ -98,8 +98,12 @@ try { (new Scheduler())->tickWeb(); } catch (Throwable $e) {
 // no settings/agents/campaigns/global logs. Admins (and the master login) see all.
 $role    = (string)($_SESSION['glue_user']['role'] ?? 'admin');
 $isAgent = $role === 'agent';
+// Technical-area users: not a CRM role — they only see network monitoring
+// (Devices + Network areas), no leads/deals/etc. Not scoped like agents.
+$isTech  = $role === 'tech';
 $scopeId = $isAgent ? (int)($_SESSION['glue_user']['id'] ?? 0) : null; // null = no scope (admin)
 $agentViews   = ['overview', 'leads', 'deals', 'appointments', 'tasks', 'messages', 'tickets', 'instructions'];
+$techViews    = ['devices', 'network_areas'];
 $agentActions = [
     'lead_move', 'lead_convert', 'lead_note',
     'deal_move', 'deal_note', 'deal_invite',
@@ -563,15 +567,32 @@ $agents = Auth::agents();
 $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_format((float)$n, 0);
 
 $views = ['overview', 'leads', 'deals', 'contacts', 'appointments', 'tasks', 'tickets',
-          'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents', 'settings', 'instructions'];
+          'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents',
+          'devices', 'network_areas', 'settings', 'instructions'];
+// network_areas is admin-only (it manages router credentials); techs get devices.
+if ($view === 'network_areas' && !($role === 'admin')) {
+    // handled below via the role whitelists
+}
 $view = in_array($tab, $views, true) ? $tab : 'overview';
 // Agents can't reach admin views, even by typing the URL.
 if ($isAgent && !in_array($view, $agentViews, true)) {
     $view = 'overview';
     $tab  = 'overview';
 }
+// Technical-area users can only reach their two views. Default them to Devices.
+if ($isTech) {
+    if (!in_array($view, $techViews, true)) {
+        $view = 'devices';
+        $tab  = 'devices';
+    }
+    // network_areas edits credentials — keep it admin-only even for tech.
+    if ($view === 'network_areas') {
+        $view = 'devices';
+        $tab  = 'devices';
+    }
+}
 
-render_head($t, $h, $lang, $tab, $flash, $flashType, $isAgent);
+render_head($t, $h, $lang, $tab, $flash, $flashType, $isAgent, $isTech);
 
 require dirname(__DIR__) . '/views/' . $view . '.php';
 
@@ -597,7 +618,7 @@ function render_login(callable $t, callable $h, string $lang, ?string $err): voi
 </body></html>
 <?php }
 
-function render_head(callable $t, callable $h, string $lang, string $tab, ?string $flash, string $flashType, bool $isAgent = false): void {
+function render_head(callable $t, callable $h, string $lang, string $tab, ?string $flash, string $flashType, bool $isAgent = false, bool $isTech = false): void {
     $brand = (string)\Glue\Config::get('app.company_name', '') ?: $t('app_title');
     $nav = [
         'overview' => 'nav_overview', 'leads' => 'nav_leads', 'deals' => 'nav_deals',
@@ -605,10 +626,13 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
         'tickets' => 'nav_tickets',
         'campaigns' => 'nav_campaigns', 'messages' => 'nav_messages', 'outbound' => 'nav_outbound',
         'reminders' => 'nav_reminders', 'templates' => 'nav_templates',
+        'devices' => 'nav_devices', 'network_areas' => 'nav_network_areas',
         'events' => 'nav_events', 'agents' => 'nav_agents', 'instructions' => 'nav_instr', 'settings' => 'nav_settings',
     ];
     if ($isAgent) { // agents only see their own work
         $nav = array_intersect_key($nav, array_flip(['overview', 'leads', 'deals', 'appointments', 'tasks', 'messages', 'instructions']));
+    } elseif ($isTech) { // technical-area users only see device monitoring
+        $nav = array_intersect_key($nav, array_flip(['devices']));
     } ?>
 <!DOCTYPE html><html lang="<?= $h($lang) ?>"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -835,6 +859,8 @@ function svg(string $name): string {
         'instructions'=> '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
         'settings'    => '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
         'database'    => '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>',
+        'devices'     => '<rect x="4" y="3" width="16" height="12" rx="1"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="15" x2="12" y2="21"/>',
+        'network_areas' => '<rect x="9" y="2" width="6" height="6" rx="1"/><rect x="3" y="16" width="6" height="6" rx="1"/><rect x="15" y="16" width="6" height="6" rx="1"/><path d="M12 8v4M12 12H6v4M12 12h6v4"/>',
         'link'        => '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
         'mail'        => '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/>',
         'send'        => '<line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>',
