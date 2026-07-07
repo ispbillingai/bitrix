@@ -30,6 +30,7 @@ $T = [
     'it' => [
         'title' => 'Richiedi informazioni', 'intro' => 'Compila il modulo e un nostro consulente ti contatterà al più presto.',
         'first' => 'Nome', 'last' => 'Cognome', 'email' => 'Email', 'phone' => 'Telefono',
+        'country' => 'Prefisso internazionale', 'phone_ph' => 'es. 339 1234567',
         'company' => 'Azienda', 'message' => 'Messaggio', 'message_ph' => 'Come possiamo aiutarti?',
         'preferred' => 'Quando preferisci essere contattato? (facoltativo)',
         'consent' => 'Ho letto e accetto l’informativa sulla privacy.',
@@ -42,6 +43,7 @@ $T = [
     'en' => [
         'title' => 'Request information', 'intro' => 'Fill in the form and one of our consultants will contact you shortly.',
         'first' => 'First name', 'last' => 'Last name', 'email' => 'Email', 'phone' => 'Phone',
+        'country' => 'Country code', 'phone_ph' => 'e.g. 339 1234567',
         'company' => 'Company', 'message' => 'Message', 'message_ph' => 'How can we help you?',
         'preferred' => 'When would you prefer to be contacted? (optional)',
         'consent' => 'I have read and accept the privacy policy.',
@@ -52,6 +54,30 @@ $T = [
         'err_consent' => 'You must accept the privacy policy.',
     ],
 ][$lang];
+
+// Country dial codes for the phone field. Customers are almost all Italian and
+// rarely type +39 themselves, so the form asks for the country (default Italy)
+// and prepends the prefix server-side. dial => [flag, it-name, en-name].
+$countries = [
+    '39'  => ['🇮🇹', 'Italia', 'Italy'],
+    '44'  => ['🇬🇧', 'Regno Unito', 'United Kingdom'],
+    '33'  => ['🇫🇷', 'Francia', 'France'],
+    '49'  => ['🇩🇪', 'Germania', 'Germany'],
+    '34'  => ['🇪🇸', 'Spagna', 'Spain'],
+    '41'  => ['🇨🇭', 'Svizzera', 'Switzerland'],
+    '43'  => ['🇦🇹', 'Austria', 'Austria'],
+    '32'  => ['🇧🇪', 'Belgio', 'Belgium'],
+    '31'  => ['🇳🇱', 'Paesi Bassi', 'Netherlands'],
+    '351' => ['🇵🇹', 'Portogallo', 'Portugal'],
+    '30'  => ['🇬🇷', 'Grecia', 'Greece'],
+    '40'  => ['🇷🇴', 'Romania', 'Romania'],
+    '48'  => ['🇵🇱', 'Polonia', 'Poland'],
+    '355' => ['🇦🇱', 'Albania', 'Albania'],
+    '1'   => ['🇺🇸', 'USA / Canada', 'USA / Canada'],
+    '971' => ['🇦🇪', 'Emirati Arabi', 'UAE'],
+    '212' => ['🇲🇦', 'Marocco', 'Morocco'],
+    '254' => ['🇰🇪', 'Kenya', 'Kenya'],
+];
 
 $h = fn($s): string => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
 $company = (string)Config::get('app.company_name', (string)Config::get('mail.from_name', 'Company'));
@@ -71,6 +97,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $email = trim((string)($_POST['email'] ?? ''));
         $phone = trim((string)($_POST['phone'] ?? ''));
         $old = $_POST;
+
+        // Prepend the chosen country prefix (default Italy) unless the customer
+        // already typed an international number (+... or 00...).
+        $cc = (string)($_POST['phone_cc'] ?? '39');
+        $cc = isset($countries[$cc]) ? $cc : '39';
+        if ($phone !== '') {
+            $digits = preg_replace('/\D+/', '', $phone) ?? '';
+            if (str_starts_with($phone, '+')) {
+                $phone = $digits === '' ? '' : '+' . $digits;
+            } elseif (str_starts_with($digits, '00')) {
+                $phone = '+' . substr($digits, 2);
+            } else {
+                $digits = ltrim($digits, '0'); // drop a single trunk zero
+                $phone = $digits === '' ? '' : '+' . $cc . $digits;
+            }
+        }
 
         if ($name === '' || ($email === '' && $phone === '')) {
             $error = $T['err_required'];
@@ -145,7 +187,11 @@ body{font-family:'Inter',system-ui,sans-serif;color:var(--txt);background:var(--
 .row{display:flex;gap:13px;} .row .fld{flex:1;}
 input,textarea{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:9px;background:var(--bg);
   color:var(--txt);font-size:14px;outline:none;font-family:inherit;transition:border-color .12s;}
-input:focus,textarea:focus{border-color:var(--accent);}
+input:focus,textarea:focus,select:focus{border-color:var(--accent);}
+.phonewrap{display:flex;gap:8px;}
+.phonewrap select{flex:0 0 auto;max-width:150px;padding:11px 9px;border:1px solid var(--line);border-radius:9px;
+  background:var(--bg);color:var(--txt);font-size:14px;outline:none;font-family:inherit;transition:border-color .12s;}
+.phonewrap input{flex:1;min-width:0;}
 textarea{resize:vertical;min-height:84px;}
 .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden;}
 .consent{display:flex;gap:10px;align-items:flex-start;margin:6px 0 20px;color:var(--muted);font-size:13px;line-height:1.5;}
@@ -202,7 +248,18 @@ textarea{resize:vertical;min-height:84px;}
         </div>
         <div class="row">
           <label class="fld"><span><?= $h($T['email']) ?></span><input type="email" name="email" value="<?= $h($old['email'] ?? '') ?>"></label>
-          <label class="fld"><span><?= $h($T['phone']) ?></span><input name="phone" value="<?= $h($old['phone'] ?? '') ?>"></label>
+          <div class="fld"><span><?= $h($T['phone']) ?></span>
+            <div class="phonewrap">
+              <select name="phone_cc" aria-label="<?= $h($T['country']) ?>">
+                <?php $selCc = (string)($old['phone_cc'] ?? '39'); foreach ($countries as $dial => $c): ?>
+                  <option value="<?= $h($dial) ?>" <?= $dial === $selCc ? 'selected' : '' ?>>
+                    <?= $h($c[0]) ?> +<?= $h($dial) ?> <?= $h($lang === 'it' ? $c[1] : $c[2]) ?>
+                  </option>
+                <?php endforeach; ?>
+              </select>
+              <input name="phone" type="tel" value="<?= $h($old['phone'] ?? '') ?>" placeholder="<?= $h($T['phone_ph']) ?>">
+            </div>
+          </div>
         </div>
         <label class="fld"><span><?= $h($T['company']) ?></span><input name="company" value="<?= $h($old['company'] ?? '') ?>"></label>
         <label class="fld"><span><?= $h($T['message']) ?></span><textarea name="message" placeholder="<?= $h($T['message_ph']) ?>"><?= $h($old['message'] ?? '') ?></textarea></label>
