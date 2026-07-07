@@ -40,53 +40,81 @@ final class TextMeBot
     /** $phoneE164 like +254712345678. Returns ['ok'=>bool, 'http'=>int, ...]. */
     public function sendWhatsapp(string $phoneE164, string $text): array
     {
-        $gap = max(0, (int)($this->cfg['min_gap_seconds'] ?? 8));
+        // TextMeBot bans on "1 message per 5 seconds"; keep a safe margin over 5s.
+        $gap = max(0, (int)($this->cfg['min_gap_seconds'] ?? 6));
 
         $res = [];
         for ($attempt = 0; $attempt <= self::RETRIES; $attempt++) {
             $this->waitForSlot($gap);
             $res = $this->callApi($phoneE164, $text);
+            $this->recordSend();
             if ($res['ok'] || !self::looksRateLimited($res)) {
                 return $res;
             }
             // Rate-limited despite the gap: back off a full gap and try again.
             if ($attempt < self::RETRIES) {
-                sleep(max($gap, 5));
+                sleep($gap);
             }
         }
         return $res;
     }
 
+    /** Last send time within THIS process — Settings is request-cached, so two
+     *  sends in one request would otherwise read the same stale timestamp. */
+    private static int $lastSendAt = 0;
+
     /**
-     * App-wide spacing between sends. The last-send timestamp lives in the
-     * `settings` table so web requests, webhooks and cron all share it. The
-     * slot is claimed *before* sending so two concurrent requests don't both
-     * fire immediately. Never throws (missing table => just send).
+     * Block until at least $gap seconds have passed since the previous send.
+     * The timestamp is tracked both in-process (static, for two sends in one
+     * request) and in the `settings` table (shared across web requests, webhooks
+     * and cron). Never throws — settings being unavailable just skips the shared
+     * part. Does NOT record the send time; recordSend() does that after the call
+     * so a failed/blocked attempt doesn't push the next one further out.
      */
     private function waitForSlot(int $gap): void
     {
         if ($gap <= 0) {
             return;
         }
+        $last = self::$lastSendAt;
         try {
-            $last = (int)Settings::get('textmebot.last_send_at', 0);
+            $last = max($last, (int)Settings::get('textmebot.last_send_at', 0));
+        } catch (Throwable) {
+            // settings unavailable — fall back to the in-process timestamp
+        }
+        if ($last > 0) {
             $wait = $last + $gap - time();
             if ($wait > 0) {
-                sleep(min($wait, $gap));
+                sleep($wait);
             }
-            Settings::set('textmebot.last_send_at', (string)time());
-        } catch (Throwable) {
-            // settings unavailable — don't block the send
         }
     }
 
-    /** TextMeBot's "too fast" answer: non-success body mentioning a wait/limit. */
+    /** Stamp "a send just happened" in-process and in shared settings. */
+    private function recordSend(): void
+    {
+        self::$lastSendAt = time();
+        try {
+            Settings::set('textmebot.last_send_at', (string)self::$lastSendAt);
+        } catch (Throwable) {
+            // settings unavailable — in-process stamp still spaces this request
+        }
+    }
+
+    /**
+     * TextMeBot's "too fast" answer. The live gateway returns HTTP 403 with a body
+     * like "ERROR: There is currently a limit of 1 messages per 5 seconds to
+     * prevent a ban". Match that plus the usual rate-limit phrasings.
+     */
     private static function looksRateLimited(array $res): bool
     {
         $body = strtolower((string)($res['body'] ?? ''));
-        return str_contains($body, 'wait')
-            || str_contains($body, 'too many')
-            || (int)($res['http'] ?? 0) === 429;
+        $http = (int)($res['http'] ?? 0);
+        return $http === 429 || $http === 403
+            || str_contains($body, 'limit of')
+            || str_contains($body, 'per 5 seconds')
+            || str_contains($body, 'wait')
+            || str_contains($body, 'too many');
     }
 
     private function callApi(string $phoneE164, string $text): array
