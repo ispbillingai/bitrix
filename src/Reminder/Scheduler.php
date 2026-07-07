@@ -218,10 +218,12 @@ final class Scheduler
         $lang = $this->resolveLang($r);
         $channel = $r['channel'];
         $okAny = false;
+        $hadRecipient = false;
 
         if ($channel === 'whatsapp' || $channel === 'both') {
             $phone = $this->recipientPhone($r, $vars);
             if ($phone !== '') {
+                $hadRecipient = true;
                 $text = Templates::whatsapp($ruleKey, $vars, $lang);
                 $okAny = $this->notifier->whatsapp($phone, $text, $reminderId) || $okAny;
             }
@@ -229,14 +231,19 @@ final class Scheduler
         if ($channel === 'email' || $channel === 'both') {
             $to = $this->recipientEmail($r, $vars);
             if ($to !== '') {
+                $hadRecipient = true;
                 $mail = Templates::email($ruleKey, $vars, $lang);
                 $okAny = $this->notifier->email($to, $mail['subject'], $mail['html'], $reminderId) || $okAny;
             }
         }
 
-        $this->mark($reminderId, $okAny ? 'sent' : 'failed');
+        // No phone/email to send to (e.g. a recurring agent nudge on a lead that
+        // isn't assigned yet) is a clean skip, not a failure — a repeating rule
+        // still re-enqueues below so it fires once the recipient exists.
+        $outcome = !$hadRecipient ? 'skipped' : ($okAny ? 'sent' : 'failed');
+        $this->mark($reminderId, $outcome);
         Log::write('scheduler', 'reminder_sent', $r['entity_type'], $entityId,
-            ['reminder_id' => $reminderId, 'rule' => $ruleKey, 'ok' => $okAny]);
+            ['reminder_id' => $reminderId, 'rule' => $ruleKey, 'ok' => $okAny, 'outcome' => $outcome]);
 
         // Recurring reminder: schedule the next occurrence. The stage guard above
         // already ended the chain if the record moved, so reaching here means it's
@@ -244,7 +251,7 @@ final class Scheduler
         // WhatsApp failure doesn't silently stop the cadence.
         $this->scheduleNextOccurrence($r);
 
-        return $okAny ? 'sent' : 'skipped';
+        return $outcome === 'sent' ? 'sent' : 'skipped';
     }
 
     /**
