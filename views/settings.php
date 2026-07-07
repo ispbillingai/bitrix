@@ -78,6 +78,8 @@ $pipelines = \Glue\Crm\Pipelines::all();
   <div class="row">
     <?php
     fld($h, 'reminders.lead_inactivity_hours', $t('f_lead_inact'), $cfg('reminders.lead_inactivity_hours', 3));
+    fld($h, 'reminders.lead_nudge_repeat_hours', $t('f_lead_repeat'), $cfg('reminders.lead_nudge_repeat_hours', 12));
+    fld($h, 'reminders.lead_customer_after_hours', $t('f_lead_cust'), $cfg('reminders.lead_customer_after_hours', 24));
     fld($h, 'reminders.deal_inactivity_hours', $t('f_deal_inact'), $cfg('reminders.deal_inactivity_hours', 3));
     fld($h, 'reminders.sign_after_sent_days', $t('f_sign_after'), $cfg('reminders.sign_after_sent_days', 15));
     fld($h, 'reminders.sign_overdue_every_days', $t('f_sign_every'), $cfg('reminders.sign_overdue_every_days', 3));

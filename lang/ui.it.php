@@ -60,6 +60,9 @@ return [
     'timeline'       => 'Cronologia',
     'system'         => 'Sistema',
     'unassigned'     => 'Non assegnato',
+    'filter_by_agent' => 'Vedi pipeline di',
+    'all_agents'      => 'Tutti gli agenti',
+    'clear'           => 'Rimuovi filtro',
     'portal_access_h'     => 'Accessi area privata',
     'portal_access_title' => 'Accessi area privata',
     'portal_access_count' => 'Accessi',
@@ -491,6 +494,8 @@ return [
 
     'sec_cadences'   => 'Tempistiche promemoria',
     'f_lead_inact'   => 'Inattività lead (ore)',
+    'f_lead_repeat'  => 'Ripeti promemoria lead (ore)',
+    'f_lead_cust'    => 'Avviso cliente non contattato (ore)',
     'f_deal_inact'   => 'Inattività trattativa (ore)',
     'f_sign_after'   => 'Sollecito firma dopo invio (giorni)',
     'f_sign_every'   => 'Sollecito firma ogni (giorni)',

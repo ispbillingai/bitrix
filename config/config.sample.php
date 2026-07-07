@@ -68,6 +68,9 @@ return [
     // Reminder cadences. Hours unless noted. Tune from Settings without code.
     'reminders' => [
         'lead_inactivity_hours'   => 3,   // req #4: seller notified if lead not worked
+        // Uncontacted lead keeps nudging on this cadence until it leaves NEW:
+        'lead_nudge_repeat_hours'   => 12,  // agent + customer nudge repeat (12h = twice a day)
+        'lead_customer_after_hours' => 24,  // first customer "please contact us" after 1 day
         'deal_inactivity_hours'   => 3,   // "To Work" timer for deals
         // Appointment reminders: minutes-before-event to fire (customer + seller).
         'appointment_offsets_min' => [1440, 120], // 24h and 2h before

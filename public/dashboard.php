@@ -102,6 +102,12 @@ $isAgent = $role === 'agent';
 // (Devices + Network areas), no leads/deals/etc. Not scoped like agents.
 $isTech  = $role === 'tech';
 $scopeId = $isAgent ? (int)($_SESSION['glue_user']['id'] ?? 0) : null; // null = no scope (admin)
+// Admin-only pipeline filter: ?agent=<id> narrows the Leads/Deals boards (and the
+// overview) to one seller. Agents are always hard-scoped to themselves and ignore it.
+$filterAgentId = (!$isAgent && !empty($_GET['agent'])) ? (int)$_GET['agent'] : null;
+if ($filterAgentId !== null) {
+    $scopeId = $filterAgentId;
+}
 $agentViews   = ['overview', 'leads', 'deals', 'appointments', 'tasks', 'messages', 'tickets', 'instructions'];
 $techViews    = ['devices', 'network_areas'];
 $agentActions = [
@@ -166,6 +172,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'app.default_country_code',
                     'crm.currency', 'crm.deal_quote_stage',
                     'reminders.lead_inactivity_hours', 'reminders.deal_inactivity_hours',
+                    'reminders.lead_nudge_repeat_hours', 'reminders.lead_customer_after_hours',
                     'reminders.sign_after_sent_days',
                     'reminders.sign_overdue_every_days', 'reminders.sign_overdue_max_days',
                     'reminders.sign_due_default_days',
@@ -811,6 +818,28 @@ function agent_select(callable $h, array $agents, string $name, $selected = null
         echo '<option value="' . $h($a['id']) . '"' . $sel . '>' . $h($label) . '</option>';
     }
     echo '</select>';
+}
+/**
+ * Admin-only "view one agent's pipeline" filter. A tiny GET form that reloads the
+ * board scoped to ?agent=<id>; the empty option clears it back to everyone. Keeps
+ * the current tab via the hidden field so the querystring stays on this view.
+ */
+function agent_filter(callable $h, callable $t, array $agents, string $tab, ?int $selected = null): void {
+    echo '<form method="get" class="agent-filter" style="margin:0 0 14px;display:flex;align-items:center;gap:8px">';
+    echo '<input type="hidden" name="tab" value="' . $h($tab) . '">';
+    echo '<span class="muted small">' . $h($t('filter_by_agent')) . '</span>';
+    echo '<select name="agent" onchange="this.form.submit()" style="padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface2);color:var(--txt);font-size:13px">';
+    echo '<option value="">' . $h($t('all_agents')) . '</option>';
+    foreach ($agents as $a) {
+        $label = trim((string)($a['full_name'] ?? '')) ?: $a['username'];
+        $sel = ($selected !== null && (int)$selected === (int)$a['id']) ? ' selected' : '';
+        echo '<option value="' . $h($a['id']) . '"' . $sel . '>' . $h($label) . '</option>';
+    }
+    echo '</select>';
+    if ($selected !== null) {
+        echo '<a class="btn ghost tiny" href="?tab=' . $h($tab) . '">' . $h($t('clear')) . '</a>';
+    }
+    echo '</form>';
 }
 /** Status pill with a localised label but the raw status as the CSS class. */
 function pill(callable $h, string $status, ?callable $t = null): string {

@@ -27,6 +27,11 @@ return [
             "⏰ Reminder: lead *{name}* (#{id}) has been waiting and hasn't "
             . "been worked yet. Please review it in the CRM.",
 
+        'lead_uncontacted_customer' => // to the CUSTOMER after a day with no contact
+            "Hi {name}, this is {company}. 👋 We received your request but haven't "
+            . "managed to reach you yet. Feel free to contact us directly at "
+            . "{office_phone}, or just reply to this message — we'd be glad to help!",
+
         'appointment_confirmed' =>
             "Hi {name}, your appointment with {company} is confirmed for {when}. "
             . "We look forward to seeing you!",
@@ -115,6 +120,12 @@ return [
             'subject' => 'Action needed: lead {name} not processed',
             'html'    => '<p>Lead <strong>{name}</strong> (#{id}) has not been worked yet. '
                 . 'Please review it in the CRM.</p>',
+        ],
+        'lead_uncontacted_customer' => [
+            'subject' => '{company}: can we help?',
+            'html'    => '<p>Hi {name},</p><p>this is {company}. We received your request but haven\'t '
+                . 'managed to reach you yet. You can contact us at <strong>{office_phone}</strong> '
+                . 'or simply reply to this email — we\'d be glad to help.</p>',
         ],
         'appointment_confirmed' => [
             'subject' => 'Your appointment with {company} is confirmed',

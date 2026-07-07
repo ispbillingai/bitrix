@@ -27,6 +27,12 @@ return [
             "⏰ Promemoria: il lead *{name}* (#{id}) è in attesa e non è "
             . "ancora stato lavorato. Verificalo nel CRM.",
 
+        'lead_uncontacted_customer' => // al CLIENTE dopo un giorno senza contatto
+            "Ciao {name}, siamo {company}. 👋 Abbiamo ricevuto la tua richiesta ma "
+            . "non siamo ancora riusciti a sentirti. Se vuoi, puoi contattarci "
+            . "direttamente al {office_phone} oppure rispondere a questo messaggio: "
+            . "saremo felici di aiutarti!",
+
         'appointment_confirmed' =>
             "Ciao {name}, il tuo appuntamento con {company} è confermato per il {when}. "
             . "Ti aspettiamo!",
@@ -115,6 +121,12 @@ return [
             'subject' => 'Azione richiesta: lead {name} non lavorato',
             'html'    => '<p>Il lead <strong>{name}</strong> (#{id}) non è ancora stato lavorato. '
                 . 'Verificalo nel CRM.</p>',
+        ],
+        'lead_uncontacted_customer' => [
+            'subject' => '{company}: possiamo aiutarti?',
+            'html'    => '<p>Ciao {name},</p><p>siamo {company}. Abbiamo ricevuto la tua richiesta ma '
+                . 'non siamo ancora riusciti a sentirti. Puoi contattarci al <strong>{office_phone}</strong> '
+                . 'oppure rispondere a questa email: saremo felici di aiutarti.</p>',
         ],
         'appointment_confirmed' => [
             'subject' => 'Il tuo appuntamento con {company} è confermato',

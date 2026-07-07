@@ -10,6 +10,9 @@ $rows = \Glue\Crm\Leads::all(300, $scopeId ?? null);
 ?>
 <h2><?= $h($t('nav_leads')) ?></h2>
 
+<?php if (empty($isAgent)): agent_filter($h, $t, $agents, 'leads', $filterAgentId ?? null); ?>
+<?php endif; ?>
+
 <?php if (empty($isAgent)): ?>
 <details class="drawer">
   <summary class="btn ghost" style="margin-bottom:14px"><?= svg('leads') ?> <?= $h($t('lead_new')) ?></summary>

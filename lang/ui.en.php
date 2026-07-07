@@ -60,6 +60,9 @@ return [
     'timeline'       => 'Timeline',
     'system'         => 'System',
     'unassigned'     => 'Unassigned',
+    'filter_by_agent' => 'View pipeline for',
+    'all_agents'      => 'All agents',
+    'clear'           => 'Clear',
     'portal_access_h'     => 'Private area access',
     'portal_access_title' => 'Private-area accesses',
     'portal_access_count' => 'Accesses',
@@ -491,6 +494,8 @@ return [
 
     'sec_cadences'   => 'Reminder timing',
     'f_lead_inact'   => 'Lead inactivity (hours)',
+    'f_lead_repeat'  => 'Repeat lead nudge (hours)',
+    'f_lead_cust'    => 'Uncontacted-customer notice (hours)',
     'f_deal_inact'   => 'Deal inactivity (hours)',
     'f_sign_after'   => 'Sign nudge after sent (days)',
     'f_sign_every'   => 'Sign nudge every (days)',

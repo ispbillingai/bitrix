@@ -41,20 +41,66 @@ final class Automation
         ]);
     }
 
-    /** #4 Activity reminder — nudge the agent if the lead hasn't left $fromStage in N hours. */
+    /**
+     * #4 Activity reminders for an uncontacted record. Two recurring cadences,
+     * both of which STOP automatically the moment the record leaves $fromStage
+     * (the skip_if_stage_changed_from guard ends the repeat chain):
+     *
+     *   - AGENT nudge: first after reminders.lead_inactivity_hours, then repeating
+     *     every reminders.lead_nudge_repeat_hours (default 12h = "twice a day")
+     *     until the lead is worked.
+     *   - CUSTOMER invite: after reminders.lead_customer_after_hours (default 24h)
+     *     of no contact, invite the lead to reach the agent/office, repeating on
+     *     the same cadence. Only enqueued when the customer is reachable.
+     *
+     * Deals keep the single agent "to work" timer (no customer-facing nudge).
+     */
     public static function inactivity(string $entityType, int $id, string $fromStage): void
     {
-        $cfgKey = $entityType === 'deal' ? 'reminders.deal_inactivity_hours' : 'reminders.lead_inactivity_hours';
-        $hours = (int)Config::get($cfgKey, 3);
-        self::sched()->enqueue([
-            'entity_type'    => $entityType,
+        $sched = self::sched();
+
+        if ($entityType === 'deal') {
+            $hours = (int)Config::get('reminders.deal_inactivity_hours', 3);
+            $sched->enqueue([
+                'entity_type'    => 'deal',
+                'entity_id'      => $id,
+                'rule_key'       => 'lead_inactivity',
+                'recipient_type' => 'agent',
+                'channel'        => 'both',
+                'due_at'         => date('Y-m-d H:i:s', time() + $hours * 3600),
+                'skip_if_stage_changed_from' => $fromStage,
+                'dedupe_key'     => "inactivity:deal:$id",
+            ]);
+            return;
+        }
+
+        // Lead — recurring agent nudge.
+        $firstH  = (int)Config::get('reminders.lead_inactivity_hours', 3);
+        $repeatH = max(1, (int)Config::get('reminders.lead_nudge_repeat_hours', 12));
+        $sched->enqueue([
+            'entity_type'    => 'lead',
             'entity_id'      => $id,
             'rule_key'       => 'lead_inactivity',
             'recipient_type' => 'agent',
             'channel'        => 'both',
-            'due_at'         => date('Y-m-d H:i:s', time() + $hours * 3600),
+            'due_at'         => date('Y-m-d H:i:s', time() + $firstH * 3600),
             'skip_if_stage_changed_from' => $fromStage,
-            'dedupe_key'     => "inactivity:$entityType:$id",
+            'repeat_every_hours'         => $repeatH,
+            'dedupe_key'     => "inactivity:lead:$id",
+        ]);
+
+        // Lead — recurring customer invite after a day of no contact.
+        $custH = max(1, (int)Config::get('reminders.lead_customer_after_hours', 24));
+        $sched->enqueue([
+            'entity_type'    => 'lead',
+            'entity_id'      => $id,
+            'rule_key'       => 'lead_uncontacted_customer',
+            'recipient_type' => 'customer',
+            'channel'        => 'both',
+            'due_at'         => date('Y-m-d H:i:s', time() + $custH * 3600),
+            'skip_if_stage_changed_from' => $fromStage,
+            'repeat_every_hours'         => $repeatH,
+            'dedupe_key'     => "uncontacted:lead:$id",
         ]);
     }
 

@@ -223,6 +223,7 @@ CREATE TABLE IF NOT EXISTS reminders (
     channel ENUM('whatsapp','email','both') NOT NULL DEFAULT 'both',
     due_at DATETIME NOT NULL,
     skip_if_stage_changed_from VARCHAR(64) NULL,
+    repeat_every_hours INT UNSIGNED NULL,   -- >0 => re-enqueue next occurrence after send
     payload JSON NULL,
     lang CHAR(2) NULL,
     status ENUM('pending','sent','skipped','cancelled','failed') NOT NULL DEFAULT 'pending',

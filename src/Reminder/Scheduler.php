@@ -47,9 +47,9 @@ final class Scheduler
     {
         $sql = 'INSERT INTO reminders
                 (entity_type, entity_id, rule_key, recipient_type, channel, due_at,
-                 skip_if_stage_changed_from, payload, lang, dedupe_key)
+                 skip_if_stage_changed_from, repeat_every_hours, payload, lang, dedupe_key)
                 VALUES (:entity_type, :entity_id, :rule_key, :recipient_type, :channel, :due_at,
-                        :skip_stage, :payload, :lang, :dedupe)
+                        :skip_stage, :repeat_hours, :payload, :lang, :dedupe)
                 ON DUPLICATE KEY UPDATE id = id';
         $stmt = $this->db->prepare($sql);
         $stmt->execute([
@@ -60,6 +60,7 @@ final class Scheduler
             ':channel'        => $r['channel'] ?? 'both',
             ':due_at'         => $r['due_at'],
             ':skip_stage'     => $r['skip_if_stage_changed_from'] ?? null,
+            ':repeat_hours'   => isset($r['repeat_every_hours']) ? max(0, (int)$r['repeat_every_hours']) ?: null : null,
             ':payload'        => isset($r['payload']) ? json_encode($r['payload'], JSON_UNESCAPED_UNICODE) : null,
             ':lang'           => $r['lang'] ?? null,
             ':dedupe'         => $r['dedupe_key'] ?? null,
@@ -202,7 +203,8 @@ final class Scheduler
         $payload    = $r['payload'] ? json_decode($r['payload'], true) : [];
 
         // Manual-silence guard: if the record has moved past the stage we were
-        // waiting on, skip (the seller already acted / changed the stage).
+        // waiting on, skip (the seller already acted / changed the stage). For a
+        // recurring reminder this also ENDS the chain — we don't re-enqueue.
         if (!empty($r['skip_if_stage_changed_from']) && $entityId > 0) {
             if ($this->stageMovedFrom($r['entity_type'], $entityId, $r['skip_if_stage_changed_from'])) {
                 $this->mark($reminderId, 'skipped');
@@ -235,7 +237,47 @@ final class Scheduler
         $this->mark($reminderId, $okAny ? 'sent' : 'failed');
         Log::write('scheduler', 'reminder_sent', $r['entity_type'], $entityId,
             ['reminder_id' => $reminderId, 'rule' => $ruleKey, 'ok' => $okAny]);
+
+        // Recurring reminder: schedule the next occurrence. The stage guard above
+        // already ended the chain if the record moved, so reaching here means it's
+        // still uncontacted. We re-enqueue regardless of send success so a transient
+        // WhatsApp failure doesn't silently stop the cadence.
+        $this->scheduleNextOccurrence($r);
+
         return $okAny ? 'sent' : 'skipped';
+    }
+
+    /**
+     * If this reminder repeats, enqueue the next occurrence one interval out. The
+     * dedupe_key carries the occurrence timestamp so each one is a distinct row,
+     * and skip_if_stage_changed_from is preserved so the guard keeps ending the
+     * chain when the record finally moves.
+     */
+    private function scheduleNextOccurrence(array $r): void
+    {
+        $everyH = (int)($r['repeat_every_hours'] ?? 0);
+        if ($everyH <= 0) {
+            return;
+        }
+        $nextTs = time() + $everyH * 3600;
+        $nextDue = date('Y-m-d H:i:s', $nextTs);
+        $base = $r['dedupe_key'] ?? ('recur:' . $r['rule_key'] . ':' . $r['entity_type'] . ':' . (int)$r['entity_id']);
+        // Strip any prior ":@<ts>" suffix so the key stays bounded, then re-stamp.
+        $base = preg_replace('/:@\d+$/', '', (string)$base);
+
+        $this->enqueue([
+            'entity_type'    => $r['entity_type'],
+            'entity_id'      => (int)$r['entity_id'],
+            'rule_key'       => $r['rule_key'],
+            'recipient_type' => $r['recipient_type'],
+            'channel'        => $r['channel'],
+            'due_at'         => $nextDue,
+            'skip_if_stage_changed_from' => $r['skip_if_stage_changed_from'] ?? null,
+            'repeat_every_hours'         => $everyH,
+            'payload'        => $r['payload'] ? json_decode((string)$r['payload'], true) : null,
+            'lang'           => $r['lang'] ?? null,
+            'dedupe_key'     => $base . ':@' . $nextTs,
+        ], false); // pure-queue: never send inline from the dispatcher
     }
 
     /** Build template vars from the local record (resolver) + payload + company. */
@@ -245,8 +287,14 @@ final class Scheduler
         $res = EntityResolver::resolve($r['entity_type'], $entityId);
         $company = (string)Config::get('mail.from_name', '')
             ?: (string)Config::get('app.company_name', 'our company');
+        // Number a customer should call: the assigned agent's phone if we have one,
+        // otherwise the office/logistics line, otherwise the company name.
+        $officePhone = (string)($res['agent_phone'] ?? '')
+            ?: (string)Config::get('logistics.phone', '')
+            ?: $company;
         $vars = [
             'company'        => $company,
+            'office_phone'   => $officePhone,
             'name'           => $res['customer_name'] ?? ($payload['name'] ?? 'there'),
             'customer_name'  => $res['customer_name'] ?? ($payload['name'] ?? 'the customer'),
             'customer_phone' => $res['customer_phone'] ?? ($payload['customer_phone'] ?? ''),
