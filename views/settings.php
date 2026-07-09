@@ -29,7 +29,7 @@ $pipelines = \Glue\Crm\Pipelines::all();
   <?php endforeach; ?>
 </div>
 
-<form method="post" class="card">
+<form method="post" class="card" enctype="multipart/form-data">
   <input type="hidden" name="do" value="save_settings">
   <h3><?= $h($t('sec_general')) ?></h3>
   <div class="row">
@@ -46,6 +46,18 @@ $pipelines = \Glue\Crm\Pipelines::all();
     fld($h, 'app.base_url', $t('f_base_url'), $cfg('app.base_url', ''), $t('f_base_url_h'));
     fld($h, 'app.intake_secret', $t('f_intake'), $cfg('app.intake_secret', ''), $t('f_intake_h'));
     ?>
+  </div>
+  <div class="row">
+    <label class="fld"><span><?= $h($t('f_welcome_img')) ?></span>
+      <input type="file" name="welcome_lead_image" accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp">
+      <small class="muted"><?= $h($t('f_welcome_img_h')) ?></small>
+      <?php if (($wimg = (string)$cfg('welcome.lead_image', '')) !== ''): ?>
+        <span style="margin-top:6px;display:flex;align-items:center;gap:10px">
+          <img src="<?= $h($wimg) ?>" alt="" style="max-height:90px;border-radius:8px;border:1px solid var(--line)">
+          <label style="display:inline-flex;align-items:center;gap:6px;font-size:13px">
+            <input type="checkbox" name="welcome_lead_image_clear" value="1"> <?= $h($t('f_welcome_img_clear')) ?></label></span>
+      <?php endif; ?>
+    </label>
   </div>
 
   <h3><?= $h($t('sec_whatsapp')) ?></h3>

@@ -37,8 +37,12 @@ final class TextMeBot
         return $key !== '' && !str_contains($key, 'YOUR_TEXTMEBOT');
     }
 
-    /** $phoneE164 like +254712345678. Returns ['ok'=>bool, 'http'=>int, ...]. */
-    public function sendWhatsapp(string $phoneE164, string $text): array
+    /**
+     * $phoneE164 like +254712345678. $mediaUrl (optional) is a public URL of an
+     * image TextMeBot attaches to the message (its `file` parameter; PDFs would
+     * use `document` instead). Returns ['ok'=>bool, 'http'=>int, ...].
+     */
+    public function sendWhatsapp(string $phoneE164, string $text, ?string $mediaUrl = null): array
     {
         // TextMeBot bans on "1 message per 5 seconds"; keep a safe margin over 5s.
         $gap = max(0, (int)($this->cfg['min_gap_seconds'] ?? 6));
@@ -46,7 +50,7 @@ final class TextMeBot
         $res = [];
         for ($attempt = 0; $attempt <= self::RETRIES; $attempt++) {
             $this->waitForSlot($gap);
-            $res = $this->callApi($phoneE164, $text);
+            $res = $this->callApi($phoneE164, $text, $mediaUrl);
             $this->recordSend();
             if ($res['ok'] || !self::looksRateLimited($res)) {
                 return $res;
@@ -117,13 +121,17 @@ final class TextMeBot
             || str_contains($body, 'too many');
     }
 
-    private function callApi(string $phoneE164, string $text): array
+    private function callApi(string $phoneE164, string $text, ?string $mediaUrl = null): array
     {
-        $url = ($this->cfg['endpoint'] ?? '') . '?' . http_build_query([
+        $params = [
             'recipient' => $phoneE164,
             'apikey'    => $this->cfg['api_key'] ?? '',
             'text'      => $text,
-        ]);
+        ];
+        if ($mediaUrl !== null && $mediaUrl !== '') {
+            $params['file'] = $mediaUrl;
+        }
+        $url = ($this->cfg['endpoint'] ?? '') . '?' . http_build_query($params);
 
         $ch = curl_init($url);
         curl_setopt_array($ch, [

@@ -83,6 +83,7 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
       <a class="btn ghost tiny" href="?tab=leads&m=<?= $h($ymPrev) ?>">‹</a>
       <b><?= $h($ym) ?></b>
       <a class="btn ghost tiny" href="?tab=leads&m=<?= $h($ymNext) ?>">›</a>
+      <a class="btn ghost tiny" href="?export=leads&m=<?= $h($ym) ?>" title="<?= $h($t('exp_all_title')) ?>"><?= $h($t('exp_excel')) ?></a>
     </span>
   </div>
   <div class="muted small" style="margin:-4px 0 12px"><?= $h($t('src_report_sub')) ?></div>
@@ -91,17 +92,18 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
   <div style="overflow-x:auto"><table><thead>
     <tr><th><?= $h($t('f_source')) ?></th>
         <th><?= $h($t('src_received')) ?></th><th><?= $h($t('src_converted')) ?></th>
-        <th><?= $h($t('src_junk')) ?></th><th><?= $h($t('src_open')) ?></th><th><?= $h($t('ov_conv')) ?></th></tr>
+        <th><?= $h($t('src_junk')) ?></th><th><?= $h($t('src_open')) ?></th><th><?= $h($t('ov_conv')) ?></th><th></th></tr>
   </thead><tbody>
     <?php foreach ($srcReport as $sr): foreach ($tot as $k => $v) { $tot[$k] += (int)$sr[$k]; }
         $pct = (int)$sr['received'] > 0 ? round(100 * (int)$sr['converted'] / (int)$sr['received']) : 0; ?>
       <tr><td><a href="?tab=leads&src=<?= $h(urlencode($sr['source'])) ?>"><?= $h($sr['source']) ?></a></td>
           <td><?= (int)$sr['received'] ?></td><td><?= (int)$sr['converted'] ?></td>
-          <td><?= (int)$sr['junk'] ?></td><td><?= (int)$sr['still_open'] ?></td><td><?= $pct ?>%</td></tr>
+          <td><?= (int)$sr['junk'] ?></td><td><?= (int)$sr['still_open'] ?></td><td><?= $pct ?>%</td>
+          <td><a class="btn ghost tiny" href="?export=leads&m=<?= $h($ym) ?>&src=<?= $h(urlencode($sr['source'])) ?>"><?= $h($t('exp_excel')) ?></a></td></tr>
     <?php endforeach; $tpct = $tot['received'] > 0 ? round(100 * $tot['converted'] / $tot['received']) : 0; ?>
     <tr style="font-weight:600"><td><?= $h($t('src_total')) ?></td>
         <td><?= $tot['received'] ?></td><td><?= $tot['converted'] ?></td>
-        <td><?= $tot['junk'] ?></td><td><?= $tot['still_open'] ?></td><td><?= $tpct ?>%</td></tr>
+        <td><?= $tot['junk'] ?></td><td><?= $tot['still_open'] ?></td><td><?= $tpct ?>%</td><td></td></tr>
   </tbody></table></div>
   <?php endif; ?>
 </div>

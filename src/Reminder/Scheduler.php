@@ -220,12 +220,17 @@ final class Scheduler
         $okAny = false;
         $hadRecipient = false;
 
+        // First-contact branding: the lead welcome (fires once per lead, on
+        // creation) carries the configured image on both channels.
+        $imageUrl = ($ruleKey === 'welcome' && $r['entity_type'] === 'lead'
+            && $r['recipient_type'] === 'customer') ? self::welcomeImageUrl() : '';
+
         if ($channel === 'whatsapp' || $channel === 'both') {
             $phone = $this->recipientPhone($r, $vars);
             if ($phone !== '') {
                 $hadRecipient = true;
                 $text = Templates::whatsapp($ruleKey, $vars, $lang);
-                $okAny = $this->notifier->whatsapp($phone, $text, $reminderId) || $okAny;
+                $okAny = $this->notifier->whatsapp($phone, $text, $reminderId, null, $imageUrl ?: null) || $okAny;
             }
         }
         if ($channel === 'email' || $channel === 'both') {
@@ -233,7 +238,10 @@ final class Scheduler
             if ($to !== '') {
                 $hadRecipient = true;
                 $mail = Templates::email($ruleKey, $vars, $lang);
-                $okAny = $this->notifier->email($to, $mail['subject'], $mail['html'], $reminderId) || $okAny;
+                $html = $imageUrl !== ''
+                    ? '<p><img src="' . htmlspecialchars($imageUrl, ENT_QUOTES) . '" alt="" style="max-width:100%;border-radius:8px"></p>' . $mail['html']
+                    : $mail['html'];
+                $okAny = $this->notifier->email($to, $mail['subject'], $html, $reminderId) || $okAny;
             }
         }
 
@@ -285,6 +293,24 @@ final class Scheduler
             'lang'           => $r['lang'] ?? null,
             'dedupe_key'     => $base . ':@' . $nextTs,
         ], false); // pure-queue: never send inline from the dispatcher
+    }
+
+    /**
+     * Absolute public URL of the welcome image ('' when none is configured).
+     * welcome.lead_image stores a site-relative path like /uploads/welcome-lead.png
+     * (set by the Settings upload); TextMeBot and email clients need it absolute.
+     */
+    private static function welcomeImageUrl(): string
+    {
+        $path = (string)Config::get('welcome.lead_image', '');
+        if ($path === '') {
+            return '';
+        }
+        if (preg_match('#^https?://#i', $path)) {
+            return $path;
+        }
+        $base = Config::appBaseUrl() ?: rtrim((string)Config::get('app.base_url', ''), '/');
+        return $base !== '' ? $base . $path : '';
     }
 
     /** Build template vars from the local record (resolver) + payload + company. */

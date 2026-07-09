@@ -22,9 +22,9 @@ final class Notifier
         $this->mail = new Mailer();
     }
 
-    public function whatsapp(string $phone, string $text, ?int $reminderId = null, ?int $campaignId = null): bool
+    public function whatsapp(string $phone, string $text, ?int $reminderId = null, ?int $campaignId = null, ?string $documentUrl = null): bool
     {
-        return (bool)$this->whatsappResult($phone, $text, $reminderId, $campaignId)['ok'];
+        return (bool)$this->whatsappResult($phone, $text, $reminderId, $campaignId, $documentUrl)['ok'];
     }
 
     public function email(string $to, string $subject, string $html, ?int $reminderId = null, ?int $campaignId = null): bool
@@ -37,7 +37,7 @@ final class Notifier
      * 'error'=>?string, 'http'=>int, 'body'=>..]. Use this when the caller wants
      * to show the user *why* a send failed (e.g. the Settings test buttons).
      */
-    public function whatsappResult(string $phone, string $text, ?int $reminderId = null, ?int $campaignId = null): array
+    public function whatsappResult(string $phone, string $text, ?int $reminderId = null, ?int $campaignId = null, ?string $documentUrl = null): array
     {
         $phone = self::normalizePhone($phone);
         if ($phone === '' || !$this->wa->enabled()) {
@@ -46,7 +46,7 @@ final class Notifier
             $this->record('whatsapp', $phone, null, $text, false, $res, $reminderId, $campaignId);
             return $res;
         }
-        $res = $this->wa->sendWhatsapp($phone, $text);
+        $res = $this->wa->sendWhatsapp($phone, $text, $documentUrl);
         $this->record('whatsapp', $phone, null, $text, (bool)$res['ok'], $res, $reminderId, $campaignId);
         return $res;
     }

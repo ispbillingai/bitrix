@@ -128,6 +128,48 @@ if (isset($_GET['dl'])) {
     exit('Not found');
 }
 
+// ---- leads export (?export=leads&m=YYYY-MM[&src=cashmatic]) — admin only ----
+// Excel-compatible CSV of the leads received in a month (optionally one source),
+// including each lead's full processing trail (stage moves + agent notes).
+if (($_GET['export'] ?? '') === 'leads' && !$isAgent) {
+    $xm  = preg_match('/^\d{4}-\d{2}$/', (string)($_GET['m'] ?? '')) ? (string)$_GET['m'] : date('Y-m');
+    $xsrc = mb_strtolower(trim((string)($_GET['src'] ?? '')));
+    $sql = "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name
+            FROM leads l LEFT JOIN users u ON u.id = l.assigned_to
+            WHERE l.received_at >= CONCAT(?, '-01')
+              AND l.received_at <  CONCAT(?, '-01') + INTERVAL 1 MONTH"
+        . ($xsrc !== '' ? ' AND l.source = ?' : '') . ' ORDER BY l.received_at';
+    $stmt = $pdo->prepare($sql);
+    $stmt->execute($xsrc !== '' ? [$xm, $xm, $xsrc] : [$xm, $xm]);
+    $xrows = $stmt->fetchAll();
+
+    $fname = 'leads_' . ($xsrc !== '' ? $xsrc : 'all') . '_' . $xm . '.csv';
+    header('Content-Type: text/csv; charset=UTF-8');
+    header('Content-Disposition: attachment; filename="' . $fname . '"');
+    $out = fopen('php://output', 'w');
+    fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel reads accents correctly
+    $sep = ';';                   // Italian Excel expects semicolons
+    fputcsv($out, ['ID', $t('th_created'), $t('f_name'), $t('f_phone'), $t('f_email'),
+        $t('f_source'), $t('th_stage'), $t('th_status'), $t('th_agent'),
+        $t('f_message'), $t('exp_processing')], $sep);
+    foreach ($xrows as $xr) {
+        $trail = [];
+        foreach (array_reverse(Activities::forEntity('lead', (int)$xr['id'], 200)) as $a) {
+            $who = $a['full_name'] ?: ($a['username'] ?: $t('system'));
+            $trail[] = '[' . $a['created_at'] . '] ' . $who . ': ' . $a['body'];
+        }
+        fputcsv($out, [
+            $xr['id'], $xr['received_at'], $xr['customer_name'], $xr['customer_phone'],
+            $xr['customer_email'], $xr['source'],
+            stage_label($t, (string)$xr['stage_code'], Pipelines::label('lead', (string)$xr['stage_code'])),
+            $xr['status'], $xr['agent_name'] ?: ($xr['agent_username'] ?: ''),
+            (string)$xr['comments'], implode("\n", $trail),
+        ], $sep);
+    }
+    fclose($out);
+    exit;
+}
+
 // ---- POST actions ----
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $do = $_POST['do'] ?? '';
@@ -200,6 +242,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 // checkbox: present only when ticked
                 $pairs['bitrix.sync_enabled'] = $post('bitrix.sync_enabled') !== null ? 'true' : 'false';
+                // Welcome image (sent with the first-contact lead message on both
+                // channels). Stored under /uploads with a fixed name; the setting
+                // keeps the site-relative path. The clear checkbox removes it.
+                if (!empty($_POST['welcome_lead_image_clear'])) {
+                    foreach (glob(__DIR__ . '/uploads/welcome-lead.*') ?: [] as $old) { @unlink($old); }
+                    $pairs['welcome.lead_image'] = '';
+                } elseif (!empty($_FILES['welcome_lead_image']['tmp_name'])
+                    && is_uploaded_file($_FILES['welcome_lead_image']['tmp_name'])) {
+                    $ext = strtolower(pathinfo((string)$_FILES['welcome_lead_image']['name'], PATHINFO_EXTENSION));
+                    if (in_array($ext, ['jpg', 'jpeg', 'png', 'webp'], true)
+                        && str_starts_with((string)mime_content_type($_FILES['welcome_lead_image']['tmp_name']), 'image/')) {
+                        foreach (glob(__DIR__ . '/uploads/welcome-lead.*') ?: [] as $old) { @unlink($old); }
+                        $dest = __DIR__ . '/uploads/welcome-lead.' . $ext;
+                        if (move_uploaded_file($_FILES['welcome_lead_image']['tmp_name'], $dest)) {
+                            $pairs['welcome.lead_image'] = '/uploads/welcome-lead.' . $ext;
+                        }
+                    } else {
+                        $flashType = 'err';
+                        $flash = $t('welcome_img_bad');
+                    }
+                }
                 // Comma/space-separated number lists -> JSON arrays (so Config::get
                 // returns an array the cadence code can loop over). Clearing a field
                 // stores '' so it falls back to the built-in default.
