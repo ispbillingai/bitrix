@@ -1,3 +1,10 @@
 # Ticket attachments are served only through the permission-checked
 # ?dl= endpoint — never directly.
 Require all denied
+
+# Exception: the welcome image is meant to be public — TextMeBot fetches it
+# by URL to attach it to the first-contact WhatsApp, and the welcome email
+# embeds it.
+<FilesMatch "^welcome-lead\.(jpe?g|png|webp)$">
+    Require all granted
+</FilesMatch>
