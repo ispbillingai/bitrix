@@ -33,8 +33,13 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
     <div class="row">
       <label class="fld"><span><?= $h($t('f_company')) ?></span><input name="company"></label>
       <label class="fld"><span><?= $h($t('f_source')) ?></span>
-        <input name="source" value="manual" list="lead-sources">
-        <datalist id="lead-sources"><?php foreach ($sources as $s): ?><option value="<?= $h($s) ?>"></option><?php endforeach; ?></datalist></label>
+        <select name="source" onchange="document.getElementById('src-new').style.display=this.value===''?'':'none'">
+          <?php foreach ($sources as $s): ?>
+            <option value="<?= $h($s) ?>"<?= $s === 'manual' ? ' selected' : '' ?>><?= $h($s) ?></option>
+          <?php endforeach; ?>
+          <option value=""><?= $h($t('src_new_opt')) ?></option>
+        </select>
+        <input name="source_new" id="src-new" placeholder="<?= $h($t('src_new_ph')) ?>" style="display:none;margin-top:6px"></label>
       <label class="fld"><span><?= $h($t('f_lang')) ?></span>
         <select name="lang"><option value="">—</option><option value="it">IT</option><option value="en">EN</option></select></label>
     </div>

@@ -72,6 +72,8 @@ return [
     'src_junk'       => 'Discarded',
     'src_open'       => 'Still open',
     'src_total'      => 'Total',
+    'src_new_opt'    => '+ new source…',
+    'src_new_ph'     => 'Name of the new source (e.g. cashmatic)',
     'timeline'       => 'Timeline',
     'system'         => 'System',
     'unassigned'     => 'Unassigned',

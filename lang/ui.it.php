@@ -72,6 +72,8 @@ return [
     'src_junk'       => 'Scartati',
     'src_open'       => 'Ancora aperti',
     'src_total'      => 'Totale',
+    'src_new_opt'    => '+ nuova origine…',
+    'src_new_ph'     => 'Nome della nuova origine (es. cashmatic)',
     'timeline'       => 'Cronologia',
     'system'         => 'Sistema',
     'unassigned'     => 'Non assegnato',

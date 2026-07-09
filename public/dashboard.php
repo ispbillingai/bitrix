@@ -265,10 +265,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // ---------- leads ----------
             case 'lead_create':
+                // Source comes from the dropdown; picking "+ new source…" (empty
+                // value) uses the free-text field instead.
+                $src = trim((string)($_POST['source'] ?? '')) ?: trim((string)($_POST['source_new'] ?? ''));
                 Leads::create([
                     'name' => $_POST['name'] ?? '', 'phone' => $_POST['phone'] ?? '', 'email' => $_POST['email'] ?? '',
                     'company' => $_POST['company'] ?? '', 'comments' => $_POST['comments'] ?? '',
-                    'source' => $_POST['source'] ?? 'manual', 'lang' => $_POST['lang'] ?? null,
+                    'source' => $src ?: 'manual', 'lang' => $_POST['lang'] ?? null,
                 ], $uid);
                 $flash = $t('saved');
                 $tab = 'leads';
