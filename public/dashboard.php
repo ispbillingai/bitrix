@@ -111,7 +111,7 @@ if ($filterAgentId !== null) {
 $agentViews   = ['overview', 'leads', 'deals', 'appointments', 'tasks', 'messages', 'tickets', 'instructions'];
 $techViews    = ['devices', 'network_areas'];
 $agentActions = [
-    'lead_move', 'lead_convert', 'lead_note',
+    'lead_create', 'lead_move', 'lead_convert', 'lead_note',
     'deal_move', 'deal_note', 'deal_invite',
     'appt_create', 'appt_schedule', 'appt_status',
     'task_complete', 'task_status', 'ticket_reply', 'ticket_status', 'ticket_open_staff', 'change_my_password',
@@ -149,7 +149,7 @@ if (($_GET['export'] ?? '') === 'leads' && !$isAgent) {
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel reads accents correctly
     $sep = ';';                   // Italian Excel expects semicolons
-    fputcsv($out, ['ID', $t('th_created'), $t('f_name'), $t('f_phone'), $t('f_email'),
+    fputcsv($out, ['ID', $t('th_created'), $t('f_name'), $t('f_phone'), $t('f_email'), $t('f_vat'),
         $t('f_source'), $t('th_stage'), $t('th_status'), $t('th_agent'),
         $t('f_message'), $t('exp_processing')], $sep);
     foreach ($xrows as $xr) {
@@ -160,7 +160,7 @@ if (($_GET['export'] ?? '') === 'leads' && !$isAgent) {
         }
         fputcsv($out, [
             $xr['id'], $xr['received_at'], $xr['customer_name'], $xr['customer_phone'],
-            $xr['customer_email'], $xr['source'],
+            $xr['customer_email'], (string)($xr['vat_number'] ?? ''), $xr['source'],
             stage_label($t, (string)$xr['stage_code'], Pipelines::label('lead', (string)$xr['stage_code'])),
             $xr['status'], $xr['agent_name'] ?: ($xr['agent_username'] ?: ''),
             (string)$xr['comments'], implode("\n", $trail),
@@ -328,14 +328,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // ---------- leads ----------
             case 'lead_create':
+                // 90-day VAT exclusivity: the first enterer of a VAT number owns
+                // it; someone else re-entering it is blocked and notified.
+                $vat = \Glue\Crm\VatLock::normalize((string)($_POST['vat_number'] ?? ''));
+                if ($vat !== '') {
+                    $vc = \Glue\Crm\VatLock::claim($vat, 'agent', (int)$uid);
+                    if (!$vc['ok']) {
+                        \Glue\Crm\VatLock::notifyTaken('agent', (int)$uid, $vat, (string)$vc['available_at']);
+                        if (!empty($vc['lead_id'])) {
+                            Activities::add('lead', (int)$vc['lead_id'], 'system',
+                                "Blocked duplicate entry of VAT $vat (locked until " . date('d/m/Y', strtotime((string)$vc['available_at'])) . ')', $uid);
+                        }
+                        $flash = sprintf($t('vat_taken_flash'), $vat, date('d/m/Y', strtotime((string)$vc['available_at'])));
+                        $flashType = 'err';
+                        $tab = 'leads';
+                        break;
+                    }
+                }
                 // Source comes from the dropdown; picking "+ new source…" (empty
                 // value) uses the free-text field instead.
                 $src = trim((string)($_POST['source'] ?? '')) ?: trim((string)($_POST['source_new'] ?? ''));
-                Leads::create([
+                $newLeadId = Leads::create([
                     'name' => $_POST['name'] ?? '', 'phone' => $_POST['phone'] ?? '', 'email' => $_POST['email'] ?? '',
                     'company' => $_POST['company'] ?? '', 'comments' => $_POST['comments'] ?? '',
                     'source' => $src ?: 'manual', 'lang' => $_POST['lang'] ?? null,
+                    'vat_number' => $vat,
                 ], $uid);
+                // An agent's own entry is theirs: auto-assign so it shows in their scope.
+                if ($isAgent && $scopeId) {
+                    Leads::assign($newLeadId, $scopeId, $uid);
+                }
+                if ($vat !== '' && !empty($vc['fresh'])) {
+                    \Glue\Crm\VatLock::attachLead($vat, $newLeadId);
+                    \Glue\Crm\VatLock::notifyThanks('agent', (int)$uid, $vat, trim((string)($_POST['name'] ?? '')));
+                }
                 $flash = $t('saved');
                 $tab = 'leads';
                 break;

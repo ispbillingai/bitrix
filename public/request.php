@@ -31,7 +31,8 @@ $T = [
         'title' => 'Richiedi informazioni', 'intro' => 'Compila il modulo e un nostro consulente ti contatterà al più presto.',
         'first' => 'Nome', 'last' => 'Cognome', 'email' => 'Email', 'phone' => 'Telefono',
         'country' => 'Prefisso internazionale', 'phone_ph' => 'es. 339 1234567',
-        'company' => 'Azienda', 'message' => 'Messaggio', 'message_ph' => 'Come possiamo aiutarti?',
+        'company' => 'Azienda', 'vat' => 'Partita IVA (facoltativa)', 'vat_ph' => 'es. 01234567890',
+        'message' => 'Messaggio', 'message_ph' => 'Come possiamo aiutarti?',
         'preferred' => 'Quando preferisci essere contattato? (facoltativo)',
         'consent' => 'Ho letto e accetto l’informativa sulla privacy.',
         'send' => 'Invia richiesta', 'ok_title' => 'Richiesta inviata!',
@@ -44,7 +45,8 @@ $T = [
         'title' => 'Request information', 'intro' => 'Fill in the form and one of our consultants will contact you shortly.',
         'first' => 'First name', 'last' => 'Last name', 'email' => 'Email', 'phone' => 'Phone',
         'country' => 'Country code', 'phone_ph' => 'e.g. 339 1234567',
-        'company' => 'Company', 'message' => 'Message', 'message_ph' => 'How can we help you?',
+        'company' => 'Company', 'vat' => 'VAT number (optional)', 'vat_ph' => 'e.g. 01234567890',
+        'message' => 'Message', 'message_ph' => 'How can we help you?',
         'preferred' => 'When would you prefer to be contacted? (optional)',
         'consent' => 'I have read and accept the privacy policy.',
         'send' => 'Send request', 'ok_title' => 'Request sent!',
@@ -125,22 +127,51 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $refCode = trim((string)($_POST['ref'] ?? ($_GET['ref'] ?? '')));
                 $partner = $refCode !== '' ? \Glue\Partner\Partners::byRefCode($refCode) : null;
 
-                $leadId = Leads::create([
-                    'name'     => $name,
-                    'email'    => $email,
-                    'phone'    => $phone,
-                    'company'  => trim((string)($_POST['company'] ?? '')),
-                    'comments' => trim((string)($_POST['message'] ?? '')),
-                    'source'   => $partner ? 'partner' : 'website',
-                    'lang'     => $lang,
-                ]);
+                // 90-day VAT exclusivity for partner entries: a VAT already claimed
+                // by someone else blocks the duplicate — the visitor still sees the
+                // success screen, the partner is notified it's taken, and the
+                // original lead's timeline records the attempt.
+                $vat = \Glue\Crm\VatLock::normalize((string)($_POST['vat_number'] ?? ''));
+                $vatBlocked = false;
+                $vc = ['ok' => true, 'fresh' => false];
+                if ($vat !== '' && $partner) {
+                    $vc = \Glue\Crm\VatLock::claim($vat, 'partner', (int)$partner['id']);
+                    if (!$vc['ok']) {
+                        $vatBlocked = true;
+                        \Glue\Crm\VatLock::notifyTaken('partner', (int)$partner['id'], $vat, (string)$vc['available_at']);
+                        if (!empty($vc['lead_id'])) {
+                            \Glue\Crm\Activities::add('lead', (int)$vc['lead_id'], 'system',
+                                "Blocked duplicate entry of VAT $vat via partner {$partner['name']} (locked until "
+                                . date('d/m/Y', strtotime((string)$vc['available_at'])) . ')');
+                        }
+                        Log::write('request_form', 'vat_blocked', 'lead', (int)($vc['lead_id'] ?? 0),
+                            ['vat' => $vat, 'partner_id' => (int)$partner['id']]);
+                    }
+                }
 
-                if ($partner) {
-                    \Glue\Partner\Partners::attributeLead($leadId, (int)$partner['id']);
+                if (!$vatBlocked) {
+                    $leadId = Leads::create([
+                        'name'     => $name,
+                        'email'    => $email,
+                        'phone'    => $phone,
+                        'company'  => trim((string)($_POST['company'] ?? '')),
+                        'comments' => trim((string)($_POST['message'] ?? '')),
+                        'source'   => $partner ? 'partner' : 'website',
+                        'lang'     => $lang,
+                        'vat_number' => $vat,
+                    ]);
+
+                    if ($partner) {
+                        \Glue\Partner\Partners::attributeLead($leadId, (int)$partner['id']);
+                        if ($vat !== '' && !empty($vc['fresh'])) {
+                            \Glue\Crm\VatLock::attachLead($vat, $leadId);
+                            \Glue\Crm\VatLock::notifyThanks('partner', (int)$partner['id'], $vat, $name);
+                        }
+                    }
                 }
 
                 $preferred = trim((string)($_POST['preferred_at'] ?? ''));
-                if ($preferred !== '') {
+                if ($preferred !== '' && !$vatBlocked) {
                     Appointments::request([
                         'name' => $name, 'email' => $email, 'phone' => $phone,
                         'preferred_at' => $preferred, 'lead_id' => $leadId, 'lang' => $lang,
@@ -261,7 +292,10 @@ textarea{resize:vertical;min-height:84px;}
             </div>
           </div>
         </div>
-        <label class="fld"><span><?= $h($T['company']) ?></span><input name="company" value="<?= $h($old['company'] ?? '') ?>"></label>
+        <div class="row">
+          <label class="fld"><span><?= $h($T['company']) ?></span><input name="company" value="<?= $h($old['company'] ?? '') ?>"></label>
+          <label class="fld"><span><?= $h($T['vat']) ?></span><input name="vat_number" value="<?= $h($old['vat_number'] ?? '') ?>" placeholder="<?= $h($T['vat_ph']) ?>"></label>
+        </div>
         <label class="fld"><span><?= $h($T['message']) ?></span><textarea name="message" placeholder="<?= $h($T['message_ph']) ?>"><?= $h($old['message'] ?? '') ?></textarea></label>
         <label class="fld"><span><?= $h($T['preferred']) ?></span><input type="datetime-local" name="preferred_at" value="<?= $h($old['preferred_at'] ?? '') ?>"></label>
         <label class="consent"><input type="checkbox" name="consent" value="1"><span><?= $h($T['consent']) ?></span></label>

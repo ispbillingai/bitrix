@@ -97,6 +97,15 @@ return [
             . "Utente: {username}\n"
             . "Password: {password}\n"
             . "Cambia la password dopo il primo accesso.",
+
+        'vat_thanks' => // all'agente/partner che ha inserito un lead con P.IVA nuova
+            "Grazie {enterer_name} per aver inserito un nuovo lead! 🎉 "
+            . "La partita IVA {vat} ({customer_name}) è riservata a te per {lock_days} giorni, fino al {until}. — {company}",
+
+        'vat_taken' => // all'agente/partner bloccato: P.IVA già inserita da altri
+            "Ciao {enterer_name}, la partita IVA {vat} risulta già inserita da un altro collaboratore. "
+            . "Come da regolamento tornerà disponibile per la lavorazione dopo il periodo di {lock_days} giorni, "
+            . "il {available_date}. — {company}",
     ],
 
     'email' => [
@@ -208,6 +217,18 @@ return [
                 . '<p><a href="{link}">Accedi al pannello</a></p>'
                 . '<p>Utente: <strong>{username}</strong><br>Password: <strong>{password}</strong></p>'
                 . '<p>Cambia la password dopo il primo accesso.</p>',
+        ],
+        'vat_thanks' => [
+            'subject' => 'Nuovo lead registrato — P.IVA {vat} riservata a te',
+            'html'    => '<p>Grazie {enterer_name} per aver inserito un nuovo lead!</p>'
+                . '<p>La partita IVA <strong>{vat}</strong> ({customer_name}) è riservata a te per '
+                . '<strong>{lock_days} giorni</strong>, fino al <strong>{until}</strong>.</p><p>{company}</p>',
+        ],
+        'vat_taken' => [
+            'subject' => 'P.IVA {vat} già inserita da un altro collaboratore',
+            'html'    => '<p>Ciao {enterer_name},</p><p>la partita IVA <strong>{vat}</strong> risulta già inserita '
+                . 'da un altro collaboratore. Come da regolamento tornerà disponibile per la lavorazione dopo il '
+                . 'periodo di {lock_days} giorni, il <strong>{available_date}</strong>.</p><p>{company}</p>',
         ],
     ],
 ];

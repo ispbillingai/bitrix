@@ -44,18 +44,21 @@ final class Leads
         $pipelineId = Pipelines::defaultId('lead');
         $firstStage = Pipelines::firstStageCode('lead');
 
+        $vat = VatLock::normalize((string)($d['vat_number'] ?? ''));
+
         $stmt = Db::pdo()->prepare(
             'INSERT INTO leads
                 (contact_id, title, source, pipeline_id, stage_code, status,
-                 customer_name, customer_phone, customer_email, comments, lang,
+                 customer_name, customer_phone, customer_email, vat_number, comments, lang,
                  received_at, stage_changed_at)
              VALUES (:contact_id, :title, :source, :pipeline_id, :stage, "open",
-                 :name, :phone, :email, :comments, :lang, NOW(), NOW())'
+                 :name, :phone, :email, :vat, :comments, :lang, NOW(), NOW())'
         );
         $stmt->execute([
             ':contact_id' => $contactId, ':title' => $title, ':source' => $source,
             ':pipeline_id' => $pipelineId, ':stage' => $firstStage,
             ':name' => $name ?: null, ':phone' => $phone ?: null, ':email' => $email ?: null,
+            ':vat' => $vat ?: null,
             ':comments' => $d['comments'] ?? null, ':lang' => $lang,
         ]);
         $leadId = (int)Db::pdo()->lastInsertId();
@@ -228,10 +231,11 @@ final class Leads
         return $stmt->fetchAll();
     }
 
-    /** Permanently remove a lead plus its timeline and pending reminders (test-data cleanup). */
+    /** Permanently remove a lead plus its timeline, pending reminders and VAT claim (test-data cleanup). */
     public static function delete(int $leadId, ?int $actorId = null): void
     {
         (new Scheduler())->cancelForEntity('lead', $leadId);
+        VatLock::releaseForLead($leadId);
         Db::pdo()->prepare("DELETE FROM activities WHERE entity_type='lead' AND entity_id=?")->execute([$leadId]);
         Db::pdo()->prepare('DELETE FROM leads WHERE id=?')->execute([$leadId]);
         Log::write('crm', 'lead_deleted', 'lead', $leadId, ['by' => $actorId]);

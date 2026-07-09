@@ -96,6 +96,15 @@ return [
             . "Username: {username}\n"
             . "Password: {password}\n"
             . "Please change your password after the first login.",
+
+        'vat_thanks' => // to the agent/partner who entered a lead with a new VAT number
+            "Thank you {enterer_name} for entering a new lead! 🎉 "
+            . "VAT number {vat} ({customer_name}) is reserved for you for {lock_days} days, until {until}. — {company}",
+
+        'vat_taken' => // to the blocked agent/partner: VAT already entered by someone else
+            "Hi {enterer_name}, VAT number {vat} has already been entered by another associate. "
+            . "As per the rules it will become available for processing again after the {lock_days}-day period, "
+            . "on {available_date}. — {company}",
     ],
 
     'email' => [
@@ -207,6 +216,18 @@ return [
                 . '<p><a href="{link}">Sign in to the dashboard</a></p>'
                 . '<p>Username: <strong>{username}</strong><br>Password: <strong>{password}</strong></p>'
                 . '<p>Please change your password after the first login.</p>',
+        ],
+        'vat_thanks' => [
+            'subject' => 'New lead registered — VAT {vat} reserved for you',
+            'html'    => '<p>Thank you {enterer_name} for entering a new lead!</p>'
+                . '<p>VAT number <strong>{vat}</strong> ({customer_name}) is reserved for you for '
+                . '<strong>{lock_days} days</strong>, until <strong>{until}</strong>.</p><p>{company}</p>',
+        ],
+        'vat_taken' => [
+            'subject' => 'VAT {vat} already entered by another associate',
+            'html'    => '<p>Hi {enterer_name},</p><p>VAT number <strong>{vat}</strong> has already been entered '
+                . 'by another associate. As per the rules it will become available for processing again after the '
+                . '{lock_days}-day period, on <strong>{available_date}</strong>.</p><p>{company}</p>',
         ],
     ],
 ];

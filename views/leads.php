@@ -20,7 +20,6 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
 <?php if (empty($isAgent)): agent_filter($h, $t, $agents, 'leads', $filterAgentId ?? null); ?>
 <?php endif; ?>
 
-<?php if (empty($isAgent)): ?>
 <details class="drawer">
   <summary class="btn ghost" style="margin-bottom:14px"><?= svg('leads') ?> <?= $h($t('lead_new')) ?></summary>
   <form method="post" class="card" style="margin-top:12px">
@@ -32,6 +31,7 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
     </div>
     <div class="row">
       <label class="fld"><span><?= $h($t('f_company')) ?></span><input name="company"></label>
+      <label class="fld"><span><?= $h($t('f_vat')) ?></span><input name="vat_number" placeholder="<?= $h($t('f_vat_ph')) ?>"></label>
       <label class="fld"><span><?= $h($t('f_source')) ?></span>
         <select name="source" onchange="document.getElementById('src-new').style.display=this.value===''?'':'none'">
           <?php foreach ($sources as $s): ?>
@@ -47,7 +47,6 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
     <button class="btn"><?= $h($t('save')) ?></button>
   </form>
 </details>
-<?php endif; ?>
 
 <div class="kanban" id="kb-lead">
   <?php foreach ($stages as $s): $cards = $byStage[$s['code']] ?? []; ?>
@@ -124,7 +123,7 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
     <summary style="display:flex;align-items:center;gap:12px;padding:13px 18px;cursor:pointer">
       <?= avatar($h, $r['customer_name']) ?>
       <span style="flex:1;min-width:0"><b><?= $h($r['customer_name'] ?: ('#' . $r['id'])) ?></b>
-        <span class="muted small"> · <?= $h($r['customer_phone']) ?> <?= $h($r['customer_email']) ?></span>
+        <span class="muted small"> · <?= $h($r['customer_phone']) ?> <?= $h($r['customer_email']) ?><?= !empty($r['vat_number']) ? ' · ' . $h($t('f_vat')) . ' ' . $h($r['vat_number']) : '' ?></span>
         <?php if ($msg !== ''): ?><span class="muted small" style="display:block;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">“<?= $h($msg) ?>”</span><?php endif; ?></span>
       <span class="pill"><?= $h(stage_label($t, $r['stage_code'], \Glue\Crm\Pipelines::label('lead', $r['stage_code']))) ?></span>
       <?= pill($h, $r['status'], $t) ?>
