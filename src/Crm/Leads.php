@@ -31,7 +31,8 @@ final class Leads
         $name   = trim((string)($d['name'] ?? ''));
         $phone  = trim((string)($d['phone'] ?? ''));
         $email  = trim((string)($d['email'] ?? ''));
-        $source = trim((string)($d['source'] ?? 'website')) ?: 'website';
+        // Lowercase so "Cashmatic" and "cashmatic" count as one source in reports.
+        $source = mb_strtolower(trim((string)($d['source'] ?? 'website'))) ?: 'website';
         $lang   = Templates::lang($d['lang'] ?? null);
         $title  = trim((string)($d['title'] ?? '')) ?: ($name !== '' ? "Request: $name" : 'New request');
 
@@ -150,11 +151,18 @@ final class Leads
         return $stmt->fetch() ?: null;
     }
 
-    /** @return array<int,array> recent leads with agent label ($assignedTo scopes to one seller) */
-    public static function all(int $limit = 300, ?int $assignedTo = null): array
+    /** @return array<int,array> recent leads with agent label ($assignedTo scopes to one seller, $source to one origin) */
+    public static function all(int $limit = 300, ?int $assignedTo = null, ?string $source = null): array
     {
         $limit = max(1, min(1000, $limit));
-        $where = $assignedTo ? ' WHERE l.assigned_to = ' . (int)$assignedTo : '';
+        $conds = [];
+        if ($assignedTo) {
+            $conds[] = 'l.assigned_to = ' . (int)$assignedTo;
+        }
+        if ($source !== null && $source !== '') {
+            $conds[] = 'l.source = ' . Db::pdo()->quote($source);
+        }
+        $where = $conds ? ' WHERE ' . implode(' AND ', $conds) : '';
         return Db::pdo()->query(
             "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name
              FROM leads l LEFT JOIN users u ON u.id = l.assigned_to
@@ -182,6 +190,51 @@ final class Leads
             $out[$r['stage_code']][] = $r;
         }
         return $out;
+    }
+
+    /** @return string[] known sources (seed suggestions + everything already in the table) for the form's datalist */
+    public static function sources(): array
+    {
+        $db = Db::pdo()->query(
+            "SELECT DISTINCT source FROM leads WHERE source IS NOT NULL AND source <> '' ORDER BY source"
+        )->fetchAll(\PDO::FETCH_COLUMN);
+        return array_values(array_unique(array_merge(['manual', 'website', 'cashmatic'], $db)));
+    }
+
+    /**
+     * Per-source counts for leads received in one month ('YYYY-MM') — the basis
+     * of the monthly partner report (e.g. "leads received from Cashmatic and
+     * how they were processed").
+     * @return array<int,array{source:string,received:int,converted:int,junk:int,still_open:int}>
+     */
+    public static function sourceReport(string $ym): array
+    {
+        if (!preg_match('/^\d{4}-\d{2}$/', $ym)) {
+            return [];
+        }
+        $stmt = Db::pdo()->prepare(
+            "SELECT source,
+                    COUNT(*)                 AS received,
+                    SUM(status='converted')  AS converted,
+                    SUM(status='junk')       AS junk,
+                    SUM(status='open')       AS still_open
+             FROM leads
+             WHERE received_at >= CONCAT(?, '-01')
+               AND received_at <  CONCAT(?, '-01') + INTERVAL 1 MONTH
+             GROUP BY source
+             ORDER BY received DESC, source"
+        );
+        $stmt->execute([$ym, $ym]);
+        return $stmt->fetchAll();
+    }
+
+    /** Permanently remove a lead plus its timeline and pending reminders (test-data cleanup). */
+    public static function delete(int $leadId, ?int $actorId = null): void
+    {
+        (new Scheduler())->cancelForEntity('lead', $leadId);
+        Db::pdo()->prepare("DELETE FROM activities WHERE entity_type='lead' AND entity_id=?")->execute([$leadId]);
+        Db::pdo()->prepare('DELETE FROM leads WHERE id=?')->execute([$leadId]);
+        Log::write('crm', 'lead_deleted', 'lead', $leadId, ['by' => $actorId]);
     }
 
     public static function count(string $where = ''): int

@@ -6,7 +6,14 @@
  */
 $stages = \Glue\Crm\Pipelines::stagesForEntity('lead');
 $byStage = \Glue\Crm\Leads::byStage($scopeId ?? null);
-$rows = \Glue\Crm\Leads::all(300, $scopeId ?? null);
+$sources = \Glue\Crm\Leads::sources();
+$srcFilter = mb_strtolower(trim((string)($_GET['src'] ?? '')));
+$rows = \Glue\Crm\Leads::all(300, $scopeId ?? null, $srcFilter ?: null);
+// monthly per-source report (admin): ?m=YYYY-MM, defaults to the current month
+$ym = preg_match('/^\d{4}-\d{2}$/', (string)($_GET['m'] ?? '')) ? (string)$_GET['m'] : date('Y-m');
+$ymPrev = date('Y-m', strtotime($ym . '-01 -1 month'));
+$ymNext = date('Y-m', strtotime($ym . '-01 +1 month'));
+$srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
 ?>
 <h2><?= $h($t('nav_leads')) ?></h2>
 
@@ -25,7 +32,9 @@ $rows = \Glue\Crm\Leads::all(300, $scopeId ?? null);
     </div>
     <div class="row">
       <label class="fld"><span><?= $h($t('f_company')) ?></span><input name="company"></label>
-      <label class="fld"><span><?= $h($t('f_source')) ?></span><input name="source" value="manual"></label>
+      <label class="fld"><span><?= $h($t('f_source')) ?></span>
+        <input name="source" value="manual" list="lead-sources">
+        <datalist id="lead-sources"><?php foreach ($sources as $s): ?><option value="<?= $h($s) ?>"></option><?php endforeach; ?></datalist></label>
       <label class="fld"><span><?= $h($t('f_lang')) ?></span>
         <select name="lang"><option value="">—</option><option value="it">IT</option><option value="en">EN</option></select></label>
     </div>
@@ -48,6 +57,7 @@ $rows = \Glue\Crm\Leads::all(300, $scopeId ?? null);
             <b><?= $h($nm) ?></b>
             <div class="meta">
               <span><?= $h($c['source']) ?></span>
+              <span title="<?= $h(short_time($c['received_at'])) ?>"><?= $h(time_ago($c['received_at'], $t)) ?></span>
               <?php if ($ag): ?><span><?= avatar($h, $ag) ?> <?= $h($ag) ?></span><?php endif; ?>
             </div>
             <?php $cmsg = trim((string)($c['comments'] ?? '')); if ($cmsg !== ''): ?>
@@ -60,7 +70,44 @@ $rows = \Glue\Crm\Leads::all(300, $scopeId ?? null);
   <?php endforeach; ?>
 </div>
 
-<h3 style="margin-top:22px"><?= $h($t('all')) ?> · <?= count($rows) ?></h3>
+<?php if (empty($isAgent)): ?>
+<div class="panel" style="margin-top:22px">
+  <div class="panel-h">
+    <h3><?= svg('leads') ?><?= $h($t('src_report')) ?></h3>
+    <span style="display:flex;align-items:center;gap:8px">
+      <a class="btn ghost tiny" href="?tab=leads&m=<?= $h($ymPrev) ?>">‹</a>
+      <b><?= $h($ym) ?></b>
+      <a class="btn ghost tiny" href="?tab=leads&m=<?= $h($ymNext) ?>">›</a>
+    </span>
+  </div>
+  <div class="muted small" style="margin:-4px 0 12px"><?= $h($t('src_report_sub')) ?></div>
+  <?php if (!$srcReport): ?><div class="empty"><?= $h($t('none_yet')) ?></div>
+  <?php else: $tot = ['received' => 0, 'converted' => 0, 'junk' => 0, 'still_open' => 0]; ?>
+  <div style="overflow-x:auto"><table><thead>
+    <tr><th><?= $h($t('f_source')) ?></th>
+        <th><?= $h($t('src_received')) ?></th><th><?= $h($t('src_converted')) ?></th>
+        <th><?= $h($t('src_junk')) ?></th><th><?= $h($t('src_open')) ?></th><th><?= $h($t('ov_conv')) ?></th></tr>
+  </thead><tbody>
+    <?php foreach ($srcReport as $sr): foreach ($tot as $k => $v) { $tot[$k] += (int)$sr[$k]; }
+        $pct = (int)$sr['received'] > 0 ? round(100 * (int)$sr['converted'] / (int)$sr['received']) : 0; ?>
+      <tr><td><a href="?tab=leads&src=<?= $h(urlencode($sr['source'])) ?>"><?= $h($sr['source']) ?></a></td>
+          <td><?= (int)$sr['received'] ?></td><td><?= (int)$sr['converted'] ?></td>
+          <td><?= (int)$sr['junk'] ?></td><td><?= (int)$sr['still_open'] ?></td><td><?= $pct ?>%</td></tr>
+    <?php endforeach; $tpct = $tot['received'] > 0 ? round(100 * $tot['converted'] / $tot['received']) : 0; ?>
+    <tr style="font-weight:600"><td><?= $h($t('src_total')) ?></td>
+        <td><?= $tot['received'] ?></td><td><?= $tot['converted'] ?></td>
+        <td><?= $tot['junk'] ?></td><td><?= $tot['still_open'] ?></td><td><?= $tpct ?>%</td></tr>
+  </tbody></table></div>
+  <?php endif; ?>
+</div>
+<?php endif; ?>
+
+<h3 style="margin-top:22px"><?= $h($t('all')) ?> · <?= count($rows) ?>
+  <?php if ($srcFilter !== ''): ?>
+    <span class="pill"><?= $h($srcFilter) ?></span>
+    <a class="btn ghost tiny" href="?tab=leads"><?= $h($t('clear')) ?></a>
+  <?php endif; ?>
+</h3>
 <?php if (!$rows): ?><div class="empty"><?= $h($t('none_yet')) ?></div><?php endif; ?>
 <?php foreach ($rows as $r):
     $ag = $r['agent_name'] ?: $r['agent_username'];
@@ -103,11 +150,17 @@ $rows = \Glue\Crm\Leads::all(300, $scopeId ?? null);
                 <option value="<?= $h($s['code']) ?>"<?= $s['code'] === $r['stage_code'] ? ' selected' : '' ?>><?= $h(stage_label($t, $s['code'], $s['name'])) ?></option>
               <?php endforeach; ?>
             </select>
+            <input name="note" placeholder="<?= $h($t('move_note_ph')) ?>" style="max-width:220px">
             <button class="btn tiny ghost"><?= $h($t('move')) ?></button></form>
           <?php if ($r['status'] === 'open'): ?>
           <form method="post" class="inline" onsubmit="return confirm('<?= $h($t('confirm_convert')) ?>')">
             <input type="hidden" name="do" value="lead_convert"><input type="hidden" name="id" value="<?= $h($r['id']) ?>">
             <button class="btn tiny"><?= svg('deals') ?> <?= $h($t('convert')) ?></button></form>
+          <?php endif; ?>
+          <?php if (empty($isAgent)): ?>
+          <form method="post" class="inline" onsubmit="return confirm('<?= $h($t('confirm_lead_delete')) ?>')">
+            <input type="hidden" name="do" value="lead_delete"><input type="hidden" name="id" value="<?= $h($r['id']) ?>">
+            <button class="btn tiny ghost" style="color:var(--red)"><?= $h($t('delete')) ?></button></form>
           <?php endif; ?>
           <form method="post" style="margin-top:12px"><input type="hidden" name="do" value="lead_note">
             <input type="hidden" name="id" value="<?= $h($r['id']) ?>">
@@ -153,7 +206,9 @@ $rows = \Glue\Crm\Leads::all(300, $scopeId ?? null);
     body.addEventListener('drop',e=>{
       e.preventDefault();body.classList.remove('drag');
       if(!dragId)return;
+      const note=(prompt(<?= json_encode($t('move_note_prompt'), JSON_UNESCAPED_UNICODE) ?>)||'').trim();
       const fd=new FormData();fd.append('do','lead_move');fd.append('ajax','1');fd.append('id',dragId);fd.append('stage',body.dataset.stage);
+      if(note)fd.append('note',note);
       fetch('?',{method:'POST',body:fd}).then(r=>r.json()).then(()=>location.reload());
     });
   });

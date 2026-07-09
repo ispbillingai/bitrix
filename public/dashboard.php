@@ -280,7 +280,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
             case 'lead_move':
                 Leads::moveStage((int)$_POST['id'], (string)$_POST['stage'], $uid);
+                // Optional note describing how the contact evolved, recorded on the
+                // same timeline as the stage change (agents fill it when moving).
+                $moveNote = trim((string)($_POST['note'] ?? ''));
+                if ($moveNote !== '') {
+                    Activities::add('lead', (int)$_POST['id'], 'note', $moveNote, $uid);
+                }
                 if ($ajax) { echo json_encode(['ok' => true]); exit; }
+                $tab = 'leads';
+                break;
+            case 'lead_delete': // admin only (not whitelisted for agents) — test-data cleanup
+                Leads::delete((int)$_POST['id'], $uid);
+                $flash = $t('lead_deleted');
                 $tab = 'leads';
                 break;
             case 'lead_convert':
@@ -803,6 +814,15 @@ function feed_icon(string $source): string {
 function short_time(?string $dt): string {
     $ts = $dt ? strtotime($dt) : false;
     return $ts ? date('M j, H:i', $ts) : (string)$dt;
+}
+/** Compact localized "how long ago" — e.g. "35 min ago" / "3 h fa" / "2 days ago". */
+function time_ago(?string $dt, callable $t): string {
+    $ts = $dt ? strtotime($dt) : false;
+    if (!$ts) { return ''; }
+    $s = max(0, time() - $ts);
+    if ($s < 3600)  { return sprintf($t('ago_min'), max(1, intdiv($s, 60))); }
+    if ($s < 86400) { return sprintf($t('ago_h'), intdiv($s, 3600)); }
+    return sprintf($t('ago_d'), intdiv($s, 86400));
 }
 function fld(callable $h, string $name, string $label, $value, string $hint = ''): void {
     echo '<label class="fld"><span>' . $h($label) . '</span>'
