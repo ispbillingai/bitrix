@@ -202,9 +202,59 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
 
 <script>
 (function(){
-  let dragId = null;
+  const STAGES = <?= json_encode(array_map(
+      fn($s) => ['code' => $s['code'], 'name' => stage_label($t, $s['code'], $s['name']), 'color' => $s['color'] ?: '#5b6cff'],
+      $stages
+  ), JSON_UNESCAPED_UNICODE) ?>;
+  const NOTE_PROMPT = <?= json_encode($t('move_note_prompt'), JSON_UNESCAPED_UNICODE) ?>;
+  const MOVE_TITLE  = <?= json_encode($t('move_to'), JSON_UNESCAPED_UNICODE) ?>;
+  const CANCEL_TXT  = <?= json_encode($t('cancel'), JSON_UNESCAPED_UNICODE) ?>;
+
+  function doMove(id, stage){
+    const note=(prompt(NOTE_PROMPT)||'').trim();
+    const fd=new FormData();fd.append('do','lead_move');fd.append('ajax','1');fd.append('id',id);fd.append('stage',stage);
+    if(note)fd.append('note',note);
+    fetch('?',{method:'POST',body:fd}).then(r=>r.json()).then(()=>location.reload());
+  }
+
+  // Tap-to-move: HTML5 drag events never fire on iOS/Android touch screens, so
+  // tapping a card opens a stage menu instead. Desktop keeps drag & drop too.
+  function openMoveMenu(id, current){
+    const ov=document.createElement('div');
+    ov.style.cssText='position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:1000;display:flex;align-items:flex-end;justify-content:center';
+    const box=document.createElement('div');
+    box.style.cssText='background:var(--surface,#161c28);border:1px solid var(--line,#28303f);border-radius:14px 14px 0 0;padding:16px;width:100%;max-width:480px;max-height:75vh;overflow-y:auto';
+    const title=document.createElement('div');
+    title.style.cssText='font-weight:700;margin-bottom:10px';
+    title.textContent=MOVE_TITLE;
+    box.appendChild(title);
+    STAGES.forEach(s=>{
+      const b=document.createElement('button');
+      b.type='button';
+      b.style.cssText='display:flex;align-items:center;gap:10px;width:100%;padding:12px;margin-bottom:8px;border:1px solid var(--line,#28303f);border-radius:10px;background:var(--surface2,#1c2533);color:inherit;font:inherit;cursor:pointer'+(s.code===current?';opacity:.45':'');
+      b.innerHTML='<span style="flex:0 0 auto;width:9px;height:9px;border-radius:50%;background:'+s.color+'"></span>';
+      b.appendChild(document.createTextNode(s.name));
+      b.addEventListener('click',()=>{document.body.removeChild(ov);if(s.code!==current)doMove(id,s.code);});
+      box.appendChild(b);
+    });
+    const c=document.createElement('button');
+    c.type='button';c.textContent=CANCEL_TXT;
+    c.style.cssText='width:100%;padding:12px;border:none;border-radius:10px;background:transparent;color:var(--muted,#8b95a7);font:inherit;cursor:pointer';
+    c.addEventListener('click',()=>document.body.removeChild(ov));
+    box.appendChild(c);
+    ov.addEventListener('click',e=>{if(e.target===ov)document.body.removeChild(ov);});
+    ov.appendChild(box);
+    document.body.appendChild(ov);
+  }
+
+  let dragId=null, dragging=false;
   document.querySelectorAll('#kb-lead .kcard').forEach(card=>{
-    card.addEventListener('dragstart',e=>{dragId=card.dataset.id;e.dataTransfer.effectAllowed='move';});
+    card.addEventListener('dragstart',e=>{dragId=card.dataset.id;dragging=true;e.dataTransfer.effectAllowed='move';});
+    card.addEventListener('dragend',()=>setTimeout(()=>{dragging=false;},80));
+    card.addEventListener('click',()=>{
+      if(dragging)return;
+      openMoveMenu(card.dataset.id, card.closest('.kbody').dataset.stage);
+    });
   });
   document.querySelectorAll('#kb-lead .kbody').forEach(body=>{
     body.addEventListener('dragover',e=>{e.preventDefault();body.classList.add('drag');});
@@ -212,10 +262,8 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
     body.addEventListener('drop',e=>{
       e.preventDefault();body.classList.remove('drag');
       if(!dragId)return;
-      const note=(prompt(<?= json_encode($t('move_note_prompt'), JSON_UNESCAPED_UNICODE) ?>)||'').trim();
-      const fd=new FormData();fd.append('do','lead_move');fd.append('ajax','1');fd.append('id',dragId);fd.append('stage',body.dataset.stage);
-      if(note)fd.append('note',note);
-      fetch('?',{method:'POST',body:fd}).then(r=>r.json()).then(()=>location.reload());
+      doMove(dragId, body.dataset.stage);
+      dragId=null;
     });
   });
 })();

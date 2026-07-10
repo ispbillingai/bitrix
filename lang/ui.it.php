@@ -61,6 +61,7 @@ return [
     'confirm_lead_delete' => 'Eliminare definitivamente questo lead e la sua cronologia?',
     'lead_deleted'   => 'Lead eliminato.',
     'move_note_ph'   => 'Nota su questo passaggio (facoltativa)',
+    'move_to'        => 'Sposta in…',
     'move_note_prompt' => 'Aggiungi una nota sull\'evoluzione del contatto (facoltativa):',
     'ago_min'        => '%d min fa',
     'ago_h'          => '%d ore fa',

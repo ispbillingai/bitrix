@@ -61,6 +61,7 @@ return [
     'confirm_lead_delete' => 'Permanently delete this lead and its timeline?',
     'lead_deleted'   => 'Lead deleted.',
     'move_note_ph'   => 'Note on this change (optional)',
+    'move_to'        => 'Move to…',
     'move_note_prompt' => 'Add a note about how the contact evolved (optional):',
     'ago_min'        => '%d min ago',
     'ago_h'          => '%d h ago',

@@ -38,10 +38,13 @@ $chart = [
     'tSent' => $t('lg_sent'), 'tFailed' => $t('lg_failed'),
 ];
 
-// lead funnel by stage
+// lead funnel by stage. No status filter: converted leads sit in the won stage
+// (status 'converted') and discarded ones in the lost stage (status 'junk') —
+// filtering on status='open' kept those two rows permanently at zero.
 $leadStages = \Glue\Crm\Pipelines::stagesForEntity('lead');
-$leadCounts = $pdo->query("SELECT stage_code, COUNT(*) c FROM leads WHERE status='open'$sLead GROUP BY stage_code")
+$leadCounts = $pdo->query("SELECT stage_code, COUNT(*) c FROM leads" . ($scope ? " WHERE assigned_to = $scope" : '') . ' GROUP BY stage_code')
     ->fetchAll(PDO::FETCH_KEY_PAIR);
+$funnelTotal = array_sum(array_map('intval', $leadCounts));
 
 $events = $pdo->query("SELECT * FROM events ORDER BY id DESC LIMIT 8")->fetchAll();
 $upcoming = $pdo->query("SELECT * FROM reminders WHERE status='pending' ORDER BY due_at ASC LIMIT 8")->fetchAll();
@@ -73,7 +76,7 @@ $mailOk = (string)$cfg('mail.from_email', '') !== '';
   <div class="panel">
     <div class="panel-h"><h3><?= svg('leads') ?><?= $h($t('ov_funnel')) ?></h3></div>
     <?php if (!$leadStages): ?><div class="empty"><?= $h($t('none_yet')) ?></div><?php endif; ?>
-    <?php foreach ($leadStages as $s): $c = (int)($leadCounts[$s['code']] ?? 0); $pct = $openLeads > 0 ? round(100 * $c / $openLeads) : 0; ?>
+    <?php foreach ($leadStages as $s): $c = (int)($leadCounts[$s['code']] ?? 0); $pct = $funnelTotal > 0 ? round(100 * $c / $funnelTotal) : 0; ?>
       <div style="margin-bottom:12px">
         <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
           <span><span class="dotc" style="display:inline-block;width:8px;height:8px;border-radius:50%;background:<?= $h($s['color'] ?: '#5b6cff') ?>;margin-right:7px"></span><?= $h(stage_label($t, $s['code'], $s['name'])) ?></span>
