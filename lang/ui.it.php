@@ -62,6 +62,7 @@ return [
     'lead_deleted'   => 'Lead eliminato.',
     'move_note_ph'   => 'Nota su questo passaggio (facoltativa)',
     'move_to'        => 'Sposta in…',
+    'lead_already_converted' => 'Questo lead è già stato convertito.',
     'move_note_prompt' => 'Aggiungi una nota sull\'evoluzione del contatto (facoltativa):',
     'ago_min'        => '%d min fa',
     'ago_h'          => '%d ore fa',

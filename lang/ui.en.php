@@ -62,6 +62,7 @@ return [
     'lead_deleted'   => 'Lead deleted.',
     'move_note_ph'   => 'Note on this change (optional)',
     'move_to'        => 'Move to…',
+    'lead_already_converted' => 'This lead was already converted.',
     'move_note_prompt' => 'Add a note about how the contact evolved (optional):',
     'ago_min'        => '%d min ago',
     'ago_h'          => '%d h ago',

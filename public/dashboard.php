@@ -388,6 +388,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
             case 'lead_convert':
                 $dealId = Leads::convert((int)$_POST['id'], $uid);
+                if (!$dealId) { // already converted (double-submit) or gone
+                    $flash = $t('lead_already_converted');
+                    $flashType = 'err';
+                    $tab = 'leads';
+                    break;
+                }
                 // Also send the customer their portal login link on conversion, so a
                 // converted request gets into the portal straight away (same as the
                 // manual "Send portal access" button on the deal). Best-effort.

@@ -125,7 +125,9 @@ final class Leads
     public static function convert(int $leadId, ?int $actorId = null): int
     {
         $lead = self::find($leadId);
-        if (!$lead) {
+        // Only an open lead converts — a second tap of the Convert button (seen
+        // in the wild: two deals 7s apart) must not create a duplicate deal.
+        if (!$lead || $lead['status'] !== 'open') {
             return 0;
         }
         $dealId = Deals::create([
