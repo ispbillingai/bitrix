@@ -105,6 +105,9 @@ final class Scheduler
         if (!$row) {
             return 'skipped'; // future-dated, already sent, or cancelled
         }
+        if (!$this->claimForDispatch($row)) {
+            return 'skipped'; // another process got there first
+        }
         try {
             return $this->dispatchOne($row);
         } catch (Throwable $e) {
@@ -150,6 +153,9 @@ final class Scheduler
 
         $sent = $skipped = $failed = 0;
         foreach ($rows as $r) {
+            if (!$this->claimForDispatch($r)) {
+                continue; // a concurrent dispatcher owns this one
+            }
             try {
                 $outcome = $this->dispatchOne($r);
                 $outcome === 'sent' ? $sent++ : $skipped++;
@@ -192,6 +198,23 @@ final class Scheduler
             return ['ran' => true, 'due' => 0];
         }
         return ['ran' => true] + $this->runDue();
+    }
+
+    /**
+     * Atomically claim a due reminder before dispatching it (optimistic lock on
+     * `attempts`). Web-tick dispatch runs on page loads, so two simultaneous
+     * requests can both select the same due row; without this claim both sent it
+     * (customers received every recurring reminder twice) and each re-enqueue
+     * forked the repeat chain. Exactly one caller wins the UPDATE.
+     */
+    private function claimForDispatch(array $r): bool
+    {
+        $stmt = $this->db->prepare(
+            "UPDATE reminders SET attempts = attempts + 1
+             WHERE id = ? AND status = 'pending' AND attempts = ?"
+        );
+        $stmt->execute([(int)$r['id'], (int)$r['attempts']]);
+        return $stmt->rowCount() === 1;
     }
 
     /** Returns 'sent' or 'skipped'. */
@@ -274,7 +297,14 @@ final class Scheduler
         if ($everyH <= 0) {
             return;
         }
-        $nextTs = time() + $everyH * 3600;
+        // Deterministic occurrence time: step the ROW's due_at forward by whole
+        // intervals until it lands in the future. Using time() here made the
+        // dedupe key differ between two racing dispatchers (1s apart), forking
+        // the chain into two — the "same notification arrives twice" bug.
+        $intervalS = $everyH * 3600;
+        $prev = strtotime((string)$r['due_at']) ?: time();
+        $steps = max(1, intdiv(max(0, time() - $prev), $intervalS) + 1);
+        $nextTs = $prev + $steps * $intervalS;
         $nextDue = date('Y-m-d H:i:s', $nextTs);
         $base = $r['dedupe_key'] ?? ('recur:' . $r['rule_key'] . ':' . $r['entity_type'] . ':' . (int)$r['entity_id']);
         // Strip any prior ":@<ts>" suffix so the key stays bounded, then re-stamp.
@@ -384,17 +414,18 @@ final class Scheduler
         return $current !== null && $current !== $fromStage;
     }
 
+    // attempts is incremented by claimForDispatch(), not here.
     private function mark(int $id, string $status): void
     {
         $this->db->prepare(
-            "UPDATE reminders SET status=?, attempts=attempts+1, sent_at=NOW() WHERE id=?"
+            "UPDATE reminders SET status=?, sent_at=NOW() WHERE id=?"
         )->execute([$status, $id]);
     }
 
     private function markFailed(int $id, string $error): void
     {
         $this->db->prepare(
-            "UPDATE reminders SET status='failed', attempts=attempts+1, last_error=? WHERE id=?"
+            "UPDATE reminders SET status='failed', last_error=? WHERE id=?"
         )->execute([mb_substr($error, 0, 1000), $id]);
     }
 }
