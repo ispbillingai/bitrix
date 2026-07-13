@@ -120,9 +120,9 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
     $msg = trim((string)($r['comments'] ?? ''));
     $timeline = \Glue\Crm\Activities::forEntity('lead', (int)$r['id'], 20); ?>
   <details class="drawer card" style="padding:0;margin-bottom:8px">
-    <summary style="display:flex;align-items:center;gap:12px;padding:13px 18px;cursor:pointer">
+    <summary class="dw-sum">
       <?= avatar($h, $r['customer_name']) ?>
-      <span style="flex:1;min-width:0"><b><?= $h($r['customer_name'] ?: ('#' . $r['id'])) ?></b>
+      <span class="dw-info"><b><?= $h($r['customer_name'] ?: ('#' . $r['id'])) ?></b>
         <span class="muted small"> · <?= $h($r['customer_phone']) ?> <?= $h($r['customer_email']) ?><?= !empty($r['vat_number']) ? ' · ' . $h($t('f_vat')) . ' ' . $h($r['vat_number']) : '' ?></span>
         <?php if ($msg !== ''): ?><span class="muted small" style="display:block;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">“<?= $h($msg) ?>”</span><?php endif; ?></span>
       <span class="pill"><?= $h(stage_label($t, $r['stage_code'], \Glue\Crm\Pipelines::label('lead', $r['stage_code']))) ?></span>

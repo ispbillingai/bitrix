@@ -41,9 +41,9 @@ $money = fn($n) => (string)\Glue\Config::get('crm.currency', 'EUR') . ' ' . numb
     $refUrl = $base . '/request.php?ref=' . rawurlencode((string)$p['ref_code']);
 ?>
   <details class="drawer card" style="padding:0;margin-bottom:8px">
-    <summary style="display:flex;align-items:center;gap:12px;padding:13px 18px;cursor:pointer">
+    <summary class="dw-sum">
       <?= avatar($h, $p['name']) ?>
-      <span style="flex:1;min-width:0"><b><?= $h($p['name']) ?></b>
+      <span class="dw-info"><b><?= $h($p['name']) ?></b>
         <span class="muted small"> · <?= number_format((float)$p['commission_pct'], 1) ?>% · <?= count($refs) ?> <?= $h($t('pt_refs')) ?></span></span>
       <span class="pill" title="<?= $h($t('pt_pending')) ?>" style="color:var(--amber)"><?= $h($money($tot['pending'])) ?></span>
       <span class="badge <?= (int)$p['active'] ? 'ok' : 'no' ?>"><span class="dot"></span><?= (int)$p['active'] ? $h($t('u_active')) : $h($t('u_disabled')) ?></span>

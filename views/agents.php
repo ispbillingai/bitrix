@@ -29,9 +29,9 @@ $meId = (int)($_SESSION['glue_user']['id'] ?? 0);
 
 <?php foreach ($users as $u): $id = (int)$u['id']; $nm = trim((string)($u['full_name'] ?? '')) ?: $u['username']; ?>
   <details class="drawer card" style="padding:0;margin-bottom:8px">
-    <summary style="display:flex;align-items:center;gap:12px;padding:13px 18px;cursor:pointer">
+    <summary class="dw-sum">
       <?= avatar($h, $nm) ?>
-      <span style="flex:1"><b><?= $h($nm) ?></b>
+      <span class="dw-info"><b><?= $h($nm) ?></b>
         <?php if ($id === $meId): ?> <span class="muted small"><?= $h($t('u_you')) ?></span><?php endif; ?>
         <span class="muted small"> · @<?= $h($u['username']) ?> · <?= $h($u['title'] ?? '') ?></span></span>
       <span class="pill"><?= $h($u['role']) ?></span>

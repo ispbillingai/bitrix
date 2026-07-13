@@ -73,8 +73,8 @@ foreach ($byStage as $code => $cards) {
     $ag = $r['agent_name'] ?: $r['agent_username'];
     $timeline = \Glue\Crm\Activities::forEntity('deal', (int)$r['id'], 20); ?>
   <details class="drawer card" style="padding:0;margin-bottom:8px">
-    <summary style="display:flex;align-items:center;gap:12px;padding:13px 18px;cursor:pointer">
-      <span style="flex:1"><?php if (!empty($r['offer_status']) && isset($ledColor[$r['offer_status']])): ?><span class="dotc" style="background:<?= $ledColor[$r['offer_status']] ?>" title="<?= $h($ledLabel($r['offer_status'])) ?>"></span> <?php endif; ?><b><?= $h($r['title']) ?></b>
+    <summary class="dw-sum">
+      <span class="dw-info"><?php if (!empty($r['offer_status']) && isset($ledColor[$r['offer_status']])): ?><span class="dotc" style="background:<?= $ledColor[$r['offer_status']] ?>" title="<?= $h($ledLabel($r['offer_status'])) ?>"></span> <?php endif; ?><b><?= $h($r['title']) ?></b>
         <span class="muted small"> · <?= $h($r['customer_name']) ?></span></span>
       <span class="amt" style="color:var(--green);font-weight:600"><?= $h($money($r['amount'], $r['currency'])) ?></span>
       <span class="pill"><?= $h(stage_label($t, $r['stage_code'], \Glue\Crm\Pipelines::label('deal', $r['stage_code']))) ?></span>

@@ -1174,6 +1174,17 @@ tbody tr:hover{background:var(--surface2);} tr:last-child td{border-bottom:none;
 .lb .mini{font-size:11.5px;color:var(--muted);}
 details.drawer{margin-bottom:8px;} details.drawer>summary{cursor:pointer;list-style:none;}
 details.drawer>summary::-webkit-details-marker{display:none;}
+/* Drawer header row (leads/deals/partners/agents): avatar · .dw-info · pills · agent.
+   .dw-info carries the name + phone + email and absorbs the slack. */
+summary.dw-sum{display:flex;align-items:center;gap:12px;padding:13px 18px;}
+.dw-info{flex:1;min-width:0;}
+@media(max-width:560px){
+  /* A phone number is one unbreakable token. Squeezed into what the pills leave over on
+     a narrow screen it overflowed the card and agents could not read it, so let the row
+     wrap and give .dw-info the full width. */
+  summary.dw-sum{flex-wrap:wrap;row-gap:6px;}
+  .dw-info{flex-basis:100%;}
+}
 /* hamburger (mobile only) + off-canvas backdrop */
 .navtoggle{display:none;background:var(--surface2);border:1px solid var(--line);color:var(--txt);
   border-radius:8px;padding:7px;cursor:pointer;align-items:center;justify-content:center;margin-right:4px;}
