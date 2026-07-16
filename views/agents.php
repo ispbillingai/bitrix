@@ -60,7 +60,7 @@ $meId = (int)($_SESSION['glue_user']['id'] ?? 0);
           <?php foreach ($agLeads as $al): ?>
           <tr>
             <td><?= $h($al['customer_name'] ?: ('#' . $al['id'])) ?></td>
-            <td class="small muted"><?= $h($al['customer_phone'] ?? '') ?></td>
+            <td class="small muted"><?= phone_link($h, $al['customer_phone'] ?? '') ?></td>
             <td><span class="pill"><?= $h(stage_label($t, $al['stage_code'], \Glue\Crm\Pipelines::label('lead', $al['stage_code']))) ?></span></td>
             <td><?= pill($h, $al['status'], $t) ?></td>
           </tr>

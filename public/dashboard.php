@@ -904,6 +904,23 @@ function avatar(callable $h, ?string $name): string {
     $ini = $n !== '' ? strtoupper(mb_substr($n, 0, 1)) : '?';
     return '<span class="avatar">' . $h($ini) . '</span>';
 }
+/**
+ * Render a phone number as a click-to-call link with a phone icon. The visible
+ * text keeps the human formatting; the tel: href is reduced to digits plus a
+ * single leading + so the dialer receives a clean number. Returns '' for an empty
+ * phone (callers drop it straight into a template). onclick stops propagation so
+ * tapping the number inside a <summary> drawer header dials instead of toggling.
+ */
+function phone_link(callable $h, ?string $phone): string {
+    $raw = trim((string)$phone);
+    if ($raw === '') { return ''; }
+    $digits = preg_replace('/[^\d+]/', '', $raw);          // keep digits and +
+    $plus   = ($digits !== '' && $digits[0] === '+') ? '+' : '';
+    $tel    = $plus . str_replace('+', '', $digits);       // at most one leading +
+    if ($tel === '' || $tel === '+') { return $h($raw); }  // no dialable digits
+    return '<a class="tel" href="tel:' . $h($tel) . '" onclick="event.stopPropagation()">'
+        . svg('phone') . '<span>' . $h($raw) . '</span></a>';
+}
 function feed_icon(string $source): string {
     return ['form_intake' => 'leads', 'crm' => 'leads', 'bitrix_event' => 'link', 'sync' => 'link',
         'scheduler' => 'clock', 'campaign' => 'mega', 'appointment' => 'appointments',
@@ -1038,6 +1055,7 @@ function svg(string $name): string {
         'alert'       => '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
         'check'       => '<path d="M20 6 9 17l-5-5"/>',
         'trophy'      => '<path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4z"/><path d="M5 4H3v2a3 3 0 0 0 3 3M19 4h2v2a3 3 0 0 1-3 3"/>',
+        'phone'       => '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>',
     ];
     $body = $p[$name] ?? $p['overview'];
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' . $body . '</svg>';
@@ -1178,6 +1196,10 @@ details.drawer>summary::-webkit-details-marker{display:none;}
    .dw-info carries the name + phone + email and absorbs the slack. */
 summary.dw-sum{display:flex;align-items:center;gap:12px;padding:13px 18px;}
 .dw-info{flex:1;min-width:0;}
+/* Click-to-call number: accent-coloured link + phone glyph, sits inline in muted text. */
+a.tel{display:inline-flex;align-items:center;gap:4px;color:var(--accent);white-space:nowrap;vertical-align:baseline;}
+a.tel svg{width:13px;height:13px;flex:0 0 auto;}
+a.tel:hover{text-decoration:underline;}
 @media(max-width:560px){
   /* A phone number is one unbreakable token. Squeezed into what the pills leave over on
      a narrow screen it overflowed the card and agents could not read it, so let the row

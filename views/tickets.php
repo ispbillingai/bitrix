@@ -90,7 +90,7 @@ $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
         <div>
           <b><?= $h($cur['subject']) ?></b>
           <div class="muted small"><?= $h($cur['customer_name']) ?>
-            <?= $cur['customer_phone'] ? ' · ' . $h($cur['customer_phone']) : '' ?>
+            <?= $cur['customer_phone'] ? ' · ' . phone_link($h, $cur['customer_phone']) : '' ?>
             <?= $cur['customer_email'] ? ' · ' . $h($cur['customer_email']) : '' ?>
             <?php if (empty($isAgent)): ?> · 👤 <?= $h($cur['agent_name'] ?: $cur['agent_username'] ?: $t('unassigned')) ?><?php endif; ?>
             · <?= !empty($cur['customer_seen_at'])

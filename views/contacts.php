@@ -34,7 +34,7 @@ $rows = \Glue\Crm\Contacts::all(300);
 <?php foreach ($rows as $r): ?>
   <tr>
     <td><?= avatar($h, $r['name']) ?> <?= $h($r['name']) ?></td>
-    <td><?= $h($r['company']) ?></td><td><?= $h($r['phone']) ?></td><td><?= $h($r['email']) ?></td>
+    <td><?= $h($r['company']) ?></td><td><?= phone_link($h, $r['phone']) ?></td><td><?= $h($r['email']) ?></td>
     <td><span class="pill"><?= $h($r['lang']) ?></span></td><td class="small muted"><?= $h(short_time($r['created_at'])) ?></td>
   </tr>
 <?php endforeach; ?>

@@ -123,7 +123,7 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
     <summary class="dw-sum">
       <?= avatar($h, $r['customer_name']) ?>
       <span class="dw-info"><b><?= $h($r['customer_name'] ?: ('#' . $r['id'])) ?></b>
-        <span class="muted small"> · <?= $h($r['customer_phone']) ?> <?= $h($r['customer_email']) ?><?= !empty($r['vat_number']) ? ' · ' . $h($t('f_vat')) . ' ' . $h($r['vat_number']) : '' ?></span>
+        <span class="muted small"> · <?= phone_link($h, $r['customer_phone']) ?> <?= $h($r['customer_email']) ?><?= !empty($r['vat_number']) ? ' · ' . $h($t('f_vat')) . ' ' . $h($r['vat_number']) : '' ?></span>
         <?php if ($msg !== ''): ?><span class="muted small" style="display:block;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">“<?= $h($msg) ?>”</span><?php endif; ?></span>
       <span class="pill"><?= $h(stage_label($t, $r['stage_code'], \Glue\Crm\Pipelines::label('lead', $r['stage_code']))) ?></span>
       <?= pill($h, $r['status'], $t) ?>

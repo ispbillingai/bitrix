@@ -36,7 +36,7 @@ $rows = \Glue\Crm\Appointments::all(300, $scopeId ?? null);
     $when = $r['starts_at'] ?: $r['preferred_at']; ?>
   <tr>
     <td><b><?= $h($r['customer_name'] ?: ('#' . $r['id'])) ?></b><br>
-      <span class="muted small"><?= $h($r['customer_phone']) ?> <?= $h($r['customer_email']) ?></span></td>
+      <span class="muted small"><?= phone_link($h, $r['customer_phone']) ?> <?= $h($r['customer_email']) ?></span></td>
     <td><?= $when ? $h(date('D j M Y, H:i', strtotime($when))) : '<span class="muted">—</span>' ?>
       <?php if (!$r['starts_at'] && $r['preferred_at']): ?><br><span class="muted small"><?= $h($t('appt_pref_label')) ?></span><?php endif; ?></td>
     <td><?= $ag ? $h($ag) : '<span class="muted">—</span>' ?></td>
