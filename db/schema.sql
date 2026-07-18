@@ -105,6 +105,7 @@ CREATE TABLE IF NOT EXISTS leads (
     contact_id BIGINT UNSIGNED NULL,
     title VARCHAR(190) NULL,
     source VARCHAR(48) NULL,
+    zone VARCHAR(80) NULL,
     pipeline_id INT UNSIGNED NULL,
     stage_code VARCHAR(48) NOT NULL DEFAULT 'NEW',
     assigned_to INT UNSIGNED NULL,
@@ -112,6 +113,7 @@ CREATE TABLE IF NOT EXISTS leads (
     customer_name VARCHAR(190) NULL,
     customer_phone VARCHAR(32) NULL,
     customer_email VARCHAR(190) NULL,
+    vat_number VARCHAR(32) NULL,
     comments TEXT NULL,
     lang CHAR(2) NOT NULL DEFAULT 'it',
     received_at DATETIME NULL,
@@ -121,7 +123,9 @@ CREATE TABLE IF NOT EXISTS leads (
     KEY idx_stage (pipeline_id, stage_code),
     KEY idx_assigned (assigned_to),
     KEY idx_status (status),
-    KEY idx_contact (contact_id)
+    KEY idx_contact (contact_id),
+    KEY idx_zone (zone),
+    KEY idx_vat (vat_number)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS deals (

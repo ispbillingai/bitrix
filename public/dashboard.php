@@ -111,7 +111,7 @@ if ($filterAgentId !== null) {
 $agentViews   = ['overview', 'leads', 'deals', 'appointments', 'tasks', 'messages', 'tickets', 'instructions'];
 $techViews    = ['devices', 'network_areas'];
 $agentActions = [
-    'lead_create', 'lead_move', 'lead_convert', 'lead_note',
+    'lead_create', 'lead_move', 'lead_convert', 'lead_note', 'lead_edit',
     'deal_move', 'deal_note', 'deal_invite',
     'appt_create', 'appt_schedule', 'appt_status',
     'task_complete', 'task_status', 'ticket_reply', 'ticket_status', 'ticket_open_staff', 'change_my_password',
@@ -150,7 +150,7 @@ if (($_GET['export'] ?? '') === 'leads' && !$isAgent) {
     fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel reads accents correctly
     $sep = ';';                   // Italian Excel expects semicolons
     fputcsv($out, ['ID', $t('th_created'), $t('f_name'), $t('f_phone'), $t('f_email'), $t('f_vat'),
-        $t('f_source'), $t('th_stage'), $t('th_status'), $t('th_agent'),
+        $t('f_source'), $t('f_zone'), $t('th_stage'), $t('th_status'), $t('th_agent'),
         $t('f_message'), $t('exp_processing')], $sep);
     foreach ($xrows as $xr) {
         $trail = [];
@@ -161,6 +161,7 @@ if (($_GET['export'] ?? '') === 'leads' && !$isAgent) {
         fputcsv($out, [
             $xr['id'], $xr['received_at'], $xr['customer_name'], $xr['customer_phone'],
             $xr['customer_email'], (string)($xr['vat_number'] ?? ''), $xr['source'],
+            (string)($xr['zone'] ?? ''),
             stage_label($t, (string)$xr['stage_code'], Pipelines::label('lead', (string)$xr['stage_code'])),
             $xr['status'], $xr['agent_name'] ?: ($xr['agent_username'] ?: ''),
             (string)$xr['comments'], implode("\n", $trail),
@@ -351,7 +352,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $newLeadId = Leads::create([
                     'name' => $_POST['name'] ?? '', 'phone' => $_POST['phone'] ?? '', 'email' => $_POST['email'] ?? '',
                     'company' => $_POST['company'] ?? '', 'comments' => $_POST['comments'] ?? '',
-                    'source' => $src ?: 'manual', 'lang' => $_POST['lang'] ?? null,
+                    'source' => $src ?: 'manual', 'zone' => $_POST['zone'] ?? '', 'lang' => $_POST['lang'] ?? null,
                     'vat_number' => $vat,
                 ], $uid);
                 // An agent's own entry is theirs: auto-assign so it shows in their scope.
@@ -413,6 +414,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 Activities::add('lead', (int)$_POST['id'], 'note', (string)$_POST['body'], $uid);
                 $tab = 'leads';
                 break;
+            case 'lead_edit': // #15 edit a lead's name/other data
+                // Only send keys the form actually posted so update() leaves the rest
+                // untouched. A VAT change re-claims exclusivity for the enterer.
+                $editData = [];
+                foreach (['name', 'phone', 'email', 'company', 'source', 'zone', 'comments', 'lang'] as $ef) {
+                    if (array_key_exists($ef, $_POST)) { $editData[$ef] = $_POST[$ef]; }
+                }
+                $newVat = \Glue\Crm\VatLock::normalize((string)($_POST['vat_number'] ?? ''));
+                $editLead = Leads::find((int)$_POST['id']);
+                $oldVat = \Glue\Crm\VatLock::normalize((string)($editLead['vat_number'] ?? ''));
+                if ($editLead && $newVat !== $oldVat && $newVat !== '') {
+                    // Editing to a VAT owned by someone else is blocked, exactly like entry.
+                    $vc = \Glue\Crm\VatLock::claim($newVat, 'agent', (int)$uid, (int)$_POST['id']);
+                    if (!$vc['ok']) {
+                        \Glue\Crm\VatLock::notifyTaken('agent', (int)$uid, $newVat, (string)$vc['available_at']);
+                        $flash = sprintf($t('vat_taken_flash'), $newVat, date('d/m/Y', strtotime((string)$vc['available_at'])));
+                        $flashType = 'err';
+                        $tab = 'leads';
+                        break;
+                    }
+                    if (!empty($vc['fresh'])) {
+                        \Glue\Crm\VatLock::notifyThanks('agent', (int)$uid, $newVat, trim((string)($_POST['name'] ?? '')));
+                    }
+                }
+                if (array_key_exists('vat_number', $_POST)) { $editData['vat_number'] = $newVat; }
+                Leads::update((int)$_POST['id'], $editData, $uid);
+                $flash = $t('lead_saved');
+                $tab = 'leads';
+                break;
 
             // ---------- deals ----------
             case 'deal_create':
@@ -439,6 +469,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
             case 'deal_note':
                 Activities::add('deal', (int)$_POST['id'], 'note', (string)$_POST['body'], $uid);
+                $tab = 'deals';
+                break;
+            case 'deal_delete': // admin only (not whitelisted for agents) — #13 remove a wrong/rejected deal
+                Deals::delete((int)$_POST['id'], $uid);
+                $flash = $t('deal_deleted');
                 $tab = 'deals';
                 break;
             case 'deal_invite': // create/refresh the customer's portal access and send the magic link
@@ -1056,6 +1091,7 @@ function svg(string $name): string {
         'check'       => '<path d="M20 6 9 17l-5-5"/>',
         'trophy'      => '<path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4z"/><path d="M5 4H3v2a3 3 0 0 0 3 3M19 4h2v2a3 3 0 0 1-3 3"/>',
         'phone'       => '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>',
+        'pin'         => '<path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/><circle cx="12" cy="10" r="3"/>',
     ];
     $body = $p[$name] ?? $p['overview'];
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' . $body . '</svg>';

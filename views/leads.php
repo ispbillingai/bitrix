@@ -7,8 +7,10 @@
 $stages = \Glue\Crm\Pipelines::stagesForEntity('lead');
 $byStage = \Glue\Crm\Leads::byStage($scopeId ?? null);
 $sources = \Glue\Crm\Leads::sources();
+$zones   = \Glue\Crm\Leads::zones();
 $srcFilter = mb_strtolower(trim((string)($_GET['src'] ?? '')));
-$rows = \Glue\Crm\Leads::all(300, $scopeId ?? null, $srcFilter ?: null);
+$zoneFilter = trim((string)($_GET['zone'] ?? ''));
+$rows = \Glue\Crm\Leads::all(300, $scopeId ?? null, $srcFilter ?: null, $zoneFilter ?: null);
 // monthly per-source report (admin): ?m=YYYY-MM, defaults to the current month
 $ym = preg_match('/^\d{4}-\d{2}$/', (string)($_GET['m'] ?? '')) ? (string)$_GET['m'] : date('Y-m');
 $ymPrev = date('Y-m', strtotime($ym . '-01 -1 month'));
@@ -40,6 +42,10 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
           <option value=""><?= $h($t('src_new_opt')) ?></option>
         </select>
         <input name="source_new" id="src-new" placeholder="<?= $h($t('src_new_ph')) ?>" style="display:none;margin-top:6px"></label>
+    </div>
+    <div class="row">
+      <label class="fld"><span><?= $h($t('f_zone')) ?></span>
+        <input name="zone" list="zone-list" placeholder="<?= $h($t('f_zone_ph')) ?>"></label>
       <label class="fld"><span><?= $h($t('f_lang')) ?></span>
         <select name="lang"><option value="">—</option><option value="it">IT</option><option value="en">EN</option></select></label>
     </div>
@@ -47,6 +53,8 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
     <button class="btn"><?= $h($t('save')) ?></button>
   </form>
 </details>
+<datalist id="zone-list"><?php foreach ($zones as $z): ?><option value="<?= $h($z) ?>"><?php endforeach; ?></datalist>
+<datalist id="src-list"><?php foreach ($sources as $s): ?><option value="<?= $h($s) ?>"><?php endforeach; ?></datalist>
 
 <div class="kanban" id="kb-lead">
   <?php foreach ($stages as $s): $cards = $byStage[$s['code']] ?? []; ?>
@@ -108,12 +116,27 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
 </div>
 <?php endif; ?>
 
-<h3 style="margin-top:22px"><?= $h($t('all')) ?> · <?= count($rows) ?>
+<div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:22px">
+  <h3 style="margin:0"><?= $h($t('all')) ?> · <?= count($rows) ?></h3>
   <?php if ($srcFilter !== ''): ?>
-    <span class="pill"><?= $h($srcFilter) ?></span>
+    <span class="pill"><?= $h($t('f_source')) ?>: <?= $h($srcFilter) ?></span>
+  <?php endif; ?>
+  <?php if ($zones): ?>
+    <form method="get" class="inline" style="margin:0">
+      <input type="hidden" name="tab" value="leads">
+      <?php if ($srcFilter !== ''): ?><input type="hidden" name="src" value="<?= $h($srcFilter) ?>"><?php endif; ?>
+      <select name="zone" onchange="this.form.submit()">
+        <option value=""><?= $h($t('zone_all')) ?></option>
+        <?php foreach ($zones as $z): ?>
+          <option value="<?= $h($z) ?>"<?= $z === $zoneFilter ? ' selected' : '' ?>><?= $h($z) ?></option>
+        <?php endforeach; ?>
+      </select>
+    </form>
+  <?php endif; ?>
+  <?php if ($srcFilter !== '' || $zoneFilter !== ''): ?>
     <a class="btn ghost tiny" href="?tab=leads"><?= $h($t('clear')) ?></a>
   <?php endif; ?>
-</h3>
+</div>
 <?php if (!$rows): ?><div class="empty"><?= $h($t('none_yet')) ?></div><?php endif; ?>
 <?php foreach ($rows as $r):
     $ag = $r['agent_name'] ?: $r['agent_username'];
@@ -123,7 +146,7 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
     <summary class="dw-sum">
       <?= avatar($h, $r['customer_name']) ?>
       <span class="dw-info"><b><?= $h($r['customer_name'] ?: ('#' . $r['id'])) ?></b>
-        <span class="muted small"> · <?= phone_link($h, $r['customer_phone']) ?> <?= $h($r['customer_email']) ?><?= !empty($r['vat_number']) ? ' · ' . $h($t('f_vat')) . ' ' . $h($r['vat_number']) : '' ?></span>
+        <span class="muted small"> · <?= phone_link($h, $r['customer_phone']) ?> <?= $h($r['customer_email']) ?><?= !empty($r['vat_number']) ? ' · ' . $h($t('f_vat')) . ' ' . $h($r['vat_number']) : '' ?><?= !empty($r['zone']) ? ' · ' . svg('pin') . ' ' . $h($r['zone']) : '' ?></span>
         <?php if ($msg !== ''): ?><span class="muted small" style="display:block;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">“<?= $h($msg) ?>”</span><?php endif; ?></span>
       <span class="pill"><?= $h(stage_label($t, $r['stage_code'], \Glue\Crm\Pipelines::label('lead', $r['stage_code']))) ?></span>
       <?= pill($h, $r['status'], $t) ?>
@@ -143,6 +166,32 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
       <div class="cols c-1-1" style="margin-bottom:0">
         <div>
           <h3><?= $h($t('actions')) ?></h3>
+          <details class="drawer" style="margin-bottom:12px">
+            <summary class="btn tiny ghost"><?= $h($t('lead_edit')) ?></summary>
+            <form method="post" class="card" style="margin-top:10px">
+              <input type="hidden" name="do" value="lead_edit">
+              <input type="hidden" name="id" value="<?= $h($r['id']) ?>">
+              <div class="row">
+                <label class="fld"><span><?= $h($t('f_name')) ?></span><input name="name" value="<?= $h($r['customer_name']) ?>" required></label>
+                <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone" value="<?= $h($r['customer_phone']) ?>"></label>
+              </div>
+              <div class="row">
+                <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email" value="<?= $h($r['customer_email']) ?>"></label>
+                <label class="fld"><span><?= $h($t('f_vat')) ?></span><input name="vat_number" value="<?= $h($r['vat_number'] ?? '') ?>" placeholder="<?= $h($t('f_vat_ph')) ?>"></label>
+              </div>
+              <div class="row">
+                <label class="fld"><span><?= $h($t('f_source')) ?></span><input name="source" list="src-list" value="<?= $h($r['source']) ?>"></label>
+                <label class="fld"><span><?= $h($t('f_zone')) ?></span><input name="zone" list="zone-list" value="<?= $h($r['zone'] ?? '') ?>" placeholder="<?= $h($t('f_zone_ph')) ?>"></label>
+                <label class="fld"><span><?= $h($t('f_lang')) ?></span>
+                  <select name="lang">
+                    <option value="it"<?= ($r['lang'] ?? '') === 'it' ? ' selected' : '' ?>>IT</option>
+                    <option value="en"<?= ($r['lang'] ?? '') === 'en' ? ' selected' : '' ?>>EN</option>
+                  </select></label>
+              </div>
+              <label class="fld"><span><?= $h($t('f_message')) ?></span><textarea name="comments" rows="2"><?= $h($r['comments'] ?? '') ?></textarea></label>
+              <button class="btn tiny"><?= $h($t('save')) ?></button>
+            </form>
+          </details>
           <?php if (empty($isAgent)): ?>
           <form method="post" class="inline"><input type="hidden" name="do" value="lead_assign">
             <input type="hidden" name="id" value="<?= $h($r['id']) ?>">

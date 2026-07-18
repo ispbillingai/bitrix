@@ -109,6 +109,11 @@ foreach ($byStage as $code => $cards) {
             <input type="hidden" name="id" value="<?= $h($r['id']) ?>">
             <label class="fld"><span><?= $h($t('add_note')) ?></span><textarea name="body" rows="2" required></textarea></label>
             <button class="btn tiny ghost"><?= $h($t('save')) ?></button></form>
+          <?php if (empty($isAgent)): ?>
+          <form method="post" class="inline" style="margin-top:12px" onsubmit="return confirm('<?= $h($t('confirm_deal_delete')) ?>')">
+            <input type="hidden" name="do" value="deal_delete"><input type="hidden" name="id" value="<?= $h($r['id']) ?>">
+            <button class="btn tiny ghost" style="color:var(--red)"><?= $h($t('delete')) ?></button></form>
+          <?php endif; ?>
         </div>
         <div>
           <h3><?= $h($t('timeline')) ?></h3>

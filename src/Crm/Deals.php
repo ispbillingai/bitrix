@@ -229,6 +229,22 @@ final class Deals
         return (int)Db::pdo()->query($sql)->fetchColumn();
     }
 
+    /**
+     * Permanently remove a deal plus its timeline, pending reminders and any pending
+     * partner commission accrual (#13 — the "delete the deal" option, used to clear
+     * a wrongly-created or rejected deal). Paid/approved accruals are left intact so
+     * settled commissions are never silently erased.
+     */
+    public static function delete(int $dealId, ?int $actorId = null): void
+    {
+        (new Scheduler())->cancelForEntity('deal', $dealId);
+        Db::pdo()->prepare("DELETE FROM partner_accruals WHERE deal_id = ? AND status IN ('pending','cancelled')")
+            ->execute([$dealId]);
+        Db::pdo()->prepare("DELETE FROM activities WHERE entity_type='deal' AND entity_id=?")->execute([$dealId]);
+        Db::pdo()->prepare('DELETE FROM deals WHERE id=?')->execute([$dealId]);
+        Log::write('crm', 'deal_deleted', 'deal', $dealId, ['by' => $actorId]);
+    }
+
     private static function agent(int $id): ?array
     {
         $stmt = Db::pdo()->prepare('SELECT id, username, full_name, email, phone FROM users WHERE id = ?');

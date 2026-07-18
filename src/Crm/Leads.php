@@ -33,6 +33,7 @@ final class Leads
         $email  = trim((string)($d['email'] ?? ''));
         // Lowercase so "Cashmatic" and "cashmatic" count as one source in reports.
         $source = mb_strtolower(trim((string)($d['source'] ?? 'website'))) ?: 'website';
+        $zone   = trim((string)($d['zone'] ?? ''));
         $lang   = Templates::lang($d['lang'] ?? null);
         $title  = trim((string)($d['title'] ?? '')) ?: ($name !== '' ? "Request: $name" : 'New request');
 
@@ -48,14 +49,15 @@ final class Leads
 
         $stmt = Db::pdo()->prepare(
             'INSERT INTO leads
-                (contact_id, title, source, pipeline_id, stage_code, status,
+                (contact_id, title, source, zone, pipeline_id, stage_code, status,
                  customer_name, customer_phone, customer_email, vat_number, comments, lang,
                  received_at, stage_changed_at)
-             VALUES (:contact_id, :title, :source, :pipeline_id, :stage, "open",
+             VALUES (:contact_id, :title, :source, :zone, :pipeline_id, :stage, "open",
                  :name, :phone, :email, :vat, :comments, :lang, NOW(), NOW())'
         );
         $stmt->execute([
             ':contact_id' => $contactId, ':title' => $title, ':source' => $source,
+            ':zone' => $zone ?: null,
             ':pipeline_id' => $pipelineId, ':stage' => $firstStage,
             ':name' => $name ?: null, ':phone' => $phone ?: null, ':email' => $email ?: null,
             ':vat' => $vat ?: null,
@@ -156,8 +158,8 @@ final class Leads
         return $stmt->fetch() ?: null;
     }
 
-    /** @return array<int,array> recent leads with agent label ($assignedTo scopes to one seller, $source to one origin) */
-    public static function all(int $limit = 300, ?int $assignedTo = null, ?string $source = null): array
+    /** @return array<int,array> recent leads with agent label ($assignedTo scopes to one seller, $source to one origin, $zone to one area) */
+    public static function all(int $limit = 300, ?int $assignedTo = null, ?string $source = null, ?string $zone = null): array
     {
         $limit = max(1, min(1000, $limit));
         $conds = [];
@@ -166,6 +168,9 @@ final class Leads
         }
         if ($source !== null && $source !== '') {
             $conds[] = 'l.source = ' . Db::pdo()->quote($source);
+        }
+        if ($zone !== null && $zone !== '') {
+            $conds[] = 'l.zone = ' . Db::pdo()->quote($zone);
         }
         $where = $conds ? ' WHERE ' . implode(' AND ', $conds) : '';
         return Db::pdo()->query(
@@ -204,6 +209,75 @@ final class Leads
             "SELECT DISTINCT source FROM leads WHERE source IS NOT NULL AND source <> '' ORDER BY source"
         )->fetchAll(\PDO::FETCH_COLUMN);
         return array_values(array_unique(array_merge(['manual', 'website', 'cashmatic'], $db)));
+    }
+
+    /** @return string[] zones already used on leads (for the form datalist + the filter dropdown). */
+    public static function zones(): array
+    {
+        return Db::pdo()->query(
+            "SELECT DISTINCT zone FROM leads WHERE zone IS NOT NULL AND zone <> '' ORDER BY zone"
+        )->fetchAll(\PDO::FETCH_COLUMN);
+    }
+
+    /**
+     * Edit a lead's own fields (name/other data — #15). Only keys present in $d are
+     * touched; the linked contact's name/phone/email/company are kept in step so the
+     * portal + timeline stay consistent. Returns true if the lead exists.
+     * @param array $d name|phone|email|company|vat_number|source|zone|comments|lang
+     */
+    public static function update(int $leadId, array $d, ?int $actorId = null): bool
+    {
+        $lead = self::find($leadId);
+        if (!$lead) {
+            return false;
+        }
+        // input key => [lead column, normalizer]. 'company' has no lead column — it
+        // is synced to the contact only (below), like on create.
+        $map = [
+            'name'       => ['customer_name',  fn($v) => trim((string)$v) ?: null],
+            'phone'      => ['customer_phone', fn($v) => trim((string)$v) ?: null],
+            'email'      => ['customer_email', fn($v) => trim((string)$v) ?: null],
+            'vat_number' => ['vat_number',     fn($v) => VatLock::normalize((string)$v) ?: null],
+            'source'     => ['source',         fn($v) => mb_strtolower(trim((string)$v)) ?: null],
+            'zone'       => ['zone',           fn($v) => trim((string)$v) ?: null],
+            'comments'   => ['comments',       fn($v) => (string)$v !== '' ? (string)$v : null],
+            'lang'       => ['lang',           fn($v) => Templates::lang($v)],
+        ];
+        $sets = [];
+        $args = [];
+        foreach ($map as $in => [$col, $norm]) {
+            if (!array_key_exists($in, $d)) {
+                continue;
+            }
+            if ($in === 'lang' && trim((string)$d[$in]) === '') {
+                continue; // blank language = leave as-is
+            }
+            $sets[] = "$col = ?";
+            $args[] = $norm($d[$in]);
+        }
+        if ($sets) {
+            $args[] = $leadId;
+            Db::pdo()->prepare('UPDATE leads SET ' . implode(', ', $sets) . ' WHERE id = ?')->execute($args);
+        }
+
+        // Keep the linked contact's core fields in step (name/phone/email/company).
+        $cid = (int)($lead['contact_id'] ?? 0);
+        if ($cid > 0) {
+            $cSets = [];
+            $cArgs = [];
+            foreach (['name' => 'name', 'phone' => 'phone', 'email' => 'email', 'company' => 'company'] as $in => $ccol) {
+                if (array_key_exists($in, $d)) { $cSets[] = "$ccol = ?"; $cArgs[] = trim((string)$d[$in]); }
+            }
+            if ($cSets) {
+                $cArgs[] = $cid;
+                Db::pdo()->prepare('UPDATE contacts SET ' . implode(', ', $cSets) . ' WHERE id = ?')->execute($cArgs);
+            }
+        }
+
+        Activities::add('lead', $leadId, 'system', 'Lead details edited', $actorId);
+        Log::write('crm', 'lead_updated', 'lead', $leadId, ['by' => $actorId]);
+        self::pushSync($leadId);
+        return true;
     }
 
     /**
