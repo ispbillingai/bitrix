@@ -150,7 +150,8 @@ if (($_GET['export'] ?? '') === 'leads' && !$isAgent) {
     fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel reads accents correctly
     $sep = ';';                   // Italian Excel expects semicolons
     fputcsv($out, ['ID', $t('th_created'), $t('f_name'), $t('f_phone'), $t('f_email'), $t('f_vat'),
-        $t('f_source'), $t('f_zone'), $t('th_stage'), $t('th_status'), $t('th_agent'),
+        $t('f_source'), $t('f_zone'), $t('f_fair'), $t('f_fair_city'),
+        $t('th_stage'), $t('th_status'), $t('th_agent'),
         $t('f_message'), $t('exp_processing')], $sep);
     foreach ($xrows as $xr) {
         $trail = [];
@@ -161,7 +162,7 @@ if (($_GET['export'] ?? '') === 'leads' && !$isAgent) {
         fputcsv($out, [
             $xr['id'], $xr['received_at'], $xr['customer_name'], $xr['customer_phone'],
             $xr['customer_email'], (string)($xr['vat_number'] ?? ''), $xr['source'],
-            (string)($xr['zone'] ?? ''),
+            (string)($xr['zone'] ?? ''), (string)($xr['fair_name'] ?? ''), (string)($xr['fair_city'] ?? ''),
             stage_label($t, (string)$xr['stage_code'], Pipelines::label('lead', (string)$xr['stage_code'])),
             $xr['status'], $xr['agent_name'] ?: ($xr['agent_username'] ?: ''),
             (string)$xr['comments'], implode("\n", $trail),
@@ -354,6 +355,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'company' => $_POST['company'] ?? '', 'comments' => $_POST['comments'] ?? '',
                     'source' => $src ?: 'manual', 'zone' => $_POST['zone'] ?? '', 'lang' => $_POST['lang'] ?? null,
                     'vat_number' => $vat,
+                    // set by the trade-fair form (#16); blank on the standard form
+                    'fair_name' => $_POST['fair_name'] ?? '', 'fair_city' => $_POST['fair_city'] ?? '',
                 ], $uid);
                 // An agent's own entry is theirs: auto-assign so it shows in their scope.
                 if ($isAgent && $scopeId) {
@@ -418,7 +421,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Only send keys the form actually posted so update() leaves the rest
                 // untouched. A VAT change re-claims exclusivity for the enterer.
                 $editData = [];
-                foreach (['name', 'phone', 'email', 'company', 'source', 'zone', 'comments', 'lang'] as $ef) {
+                foreach (['name', 'phone', 'email', 'company', 'source', 'zone', 'fair_name', 'fair_city', 'comments', 'lang'] as $ef) {
                     if (array_key_exists($ef, $_POST)) { $editData[$ef] = $_POST[$ef]; }
                 }
                 $newVat = \Glue\Crm\VatLock::normalize((string)($_POST['vat_number'] ?? ''));

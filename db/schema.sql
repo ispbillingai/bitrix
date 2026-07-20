@@ -106,6 +106,8 @@ CREATE TABLE IF NOT EXISTS leads (
     title VARCHAR(190) NULL,
     source VARCHAR(48) NULL,
     zone VARCHAR(80) NULL,
+    fair_name VARCHAR(120) NULL,
+    fair_city VARCHAR(120) NULL,
     pipeline_id INT UNSIGNED NULL,
     stage_code VARCHAR(48) NOT NULL DEFAULT 'NEW',
     assigned_to INT UNSIGNED NULL,
@@ -125,7 +127,18 @@ CREATE TABLE IF NOT EXISTS leads (
     KEY idx_status (status),
     KEY idx_contact (contact_id),
     KEY idx_zone (zone),
-    KEY idx_vat (vat_number)
+    KEY idx_vat (vat_number),
+    KEY idx_fair (fair_name)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+-- Public-form view counter (how many times a shareable form was opened).
+CREATE TABLE IF NOT EXISTS form_views (
+    id         BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    form_key   VARCHAR(32) NOT NULL,
+    ref        VARCHAR(120) NULL,
+    ip         VARCHAR(45) NULL,
+    created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_form_time (form_key, created_at)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE IF NOT EXISTS deals (

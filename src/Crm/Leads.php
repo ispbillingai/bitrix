@@ -47,17 +47,21 @@ final class Leads
 
         $vat = VatLock::normalize((string)($d['vat_number'] ?? ''));
 
+        $fairName = trim((string)($d['fair_name'] ?? ''));
+        $fairCity = trim((string)($d['fair_city'] ?? ''));
+
         $stmt = Db::pdo()->prepare(
             'INSERT INTO leads
-                (contact_id, title, source, zone, pipeline_id, stage_code, status,
+                (contact_id, title, source, zone, fair_name, fair_city, pipeline_id, stage_code, status,
                  customer_name, customer_phone, customer_email, vat_number, comments, lang,
                  received_at, stage_changed_at)
-             VALUES (:contact_id, :title, :source, :zone, :pipeline_id, :stage, "open",
+             VALUES (:contact_id, :title, :source, :zone, :fair_name, :fair_city, :pipeline_id, :stage, "open",
                  :name, :phone, :email, :vat, :comments, :lang, NOW(), NOW())'
         );
         $stmt->execute([
             ':contact_id' => $contactId, ':title' => $title, ':source' => $source,
             ':zone' => $zone ?: null,
+            ':fair_name' => $fairName ?: null, ':fair_city' => $fairCity ?: null,
             ':pipeline_id' => $pipelineId, ':stage' => $firstStage,
             ':name' => $name ?: null, ':phone' => $phone ?: null, ':email' => $email ?: null,
             ':vat' => $vat ?: null,
@@ -219,6 +223,22 @@ final class Leads
         )->fetchAll(\PDO::FETCH_COLUMN);
     }
 
+    /** @return string[] fair names already used (datalist on the trade-fair form). */
+    public static function fairs(): array
+    {
+        return Db::pdo()->query(
+            "SELECT DISTINCT fair_name FROM leads WHERE fair_name IS NOT NULL AND fair_name <> '' ORDER BY fair_name"
+        )->fetchAll(\PDO::FETCH_COLUMN);
+    }
+
+    /** @return string[] fair cities already used (datalist on the trade-fair form). */
+    public static function fairCities(): array
+    {
+        return Db::pdo()->query(
+            "SELECT DISTINCT fair_city FROM leads WHERE fair_city IS NOT NULL AND fair_city <> '' ORDER BY fair_city"
+        )->fetchAll(\PDO::FETCH_COLUMN);
+    }
+
     /**
      * Edit a lead's own fields (name/other data — #15). Only keys present in $d are
      * touched; the linked contact's name/phone/email/company are kept in step so the
@@ -240,6 +260,8 @@ final class Leads
             'vat_number' => ['vat_number',     fn($v) => VatLock::normalize((string)$v) ?: null],
             'source'     => ['source',         fn($v) => mb_strtolower(trim((string)$v)) ?: null],
             'zone'       => ['zone',           fn($v) => trim((string)$v) ?: null],
+            'fair_name'  => ['fair_name',      fn($v) => trim((string)$v) ?: null],
+            'fair_city'  => ['fair_city',      fn($v) => trim((string)$v) ?: null],
             'comments'   => ['comments',       fn($v) => (string)$v !== '' ? (string)$v : null],
             'lang'       => ['lang',           fn($v) => Templates::lang($v)],
         ];

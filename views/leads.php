@@ -8,6 +8,10 @@ $stages = \Glue\Crm\Pipelines::stagesForEntity('lead');
 $byStage = \Glue\Crm\Leads::byStage($scopeId ?? null);
 $sources = \Glue\Crm\Leads::sources();
 $zones   = \Glue\Crm\Leads::zones();
+$fairs      = \Glue\Crm\Leads::fairs();
+$fairCities = \Glue\Crm\Leads::fairCities();
+$fairViews  = \Glue\Crm\FormViews::stats('fair');
+$fairUrl    = \Glue\Config::appBaseUrl() . '/fair.php';
 $srcFilter = mb_strtolower(trim((string)($_GET['src'] ?? '')));
 $zoneFilter = trim((string)($_GET['zone'] ?? ''));
 $rows = \Glue\Crm\Leads::all(300, $scopeId ?? null, $srcFilter ?: null, $zoneFilter ?: null);
@@ -53,8 +57,47 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
     <button class="btn"><?= $h($t('save')) ?></button>
   </form>
 </details>
+<details class="drawer">
+  <summary class="btn ghost" style="margin-bottom:14px"><?= svg('leads') ?> <?= $h($t('fair_new')) ?></summary>
+  <div class="card" style="margin-top:12px">
+    <div class="muted small" style="margin-bottom:14px;padding-bottom:12px;border-bottom:1px solid var(--line)">
+      <?= $h($t('fair_public_link')) ?>:
+      <a href="<?= $h($fairUrl) ?>" target="_blank"><?= $h($fairUrl) ?></a>
+      · <strong><?= (int)$fairViews['total'] ?></strong> <?= $h($t('fair_views')) ?>
+      (<?= (int)$fairViews['month'] ?> <?= $h($t('fair_views_month')) ?>)
+      <div style="margin-top:4px"><?= $h($t('fair_link_hint')) ?></div>
+    </div>
+    <form method="post">
+      <input type="hidden" name="do" value="lead_create">
+      <input type="hidden" name="source" value="fiera">
+      <div class="row">
+        <label class="fld"><span><?= $h($t('f_fair')) ?></span>
+          <input name="fair_name" list="fair-list" placeholder="<?= $h($t('f_fair_ph')) ?>" required></label>
+        <label class="fld"><span><?= $h($t('f_fair_city')) ?></span>
+          <input name="fair_city" list="faircity-list" placeholder="<?= $h($t('f_fair_city_ph')) ?>"></label>
+      </div>
+      <div class="row">
+        <label class="fld"><span><?= $h($t('f_name')) ?></span><input name="name" required></label>
+        <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone"></label>
+        <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email"></label>
+      </div>
+      <div class="row">
+        <label class="fld"><span><?= $h($t('f_company')) ?></span><input name="company"></label>
+        <label class="fld"><span><?= $h($t('f_vat')) ?></span><input name="vat_number" placeholder="<?= $h($t('f_vat_ph')) ?>"></label>
+        <label class="fld"><span><?= $h($t('f_zone')) ?></span><input name="zone" list="zone-list" placeholder="<?= $h($t('f_zone_ph')) ?>"></label>
+        <label class="fld"><span><?= $h($t('f_lang')) ?></span>
+          <select name="lang"><option value="">—</option><option value="it">IT</option><option value="en">EN</option></select></label>
+      </div>
+      <label class="fld"><span><?= $h($t('f_message')) ?></span><textarea name="comments" rows="2"></textarea></label>
+      <button class="btn"><?= $h($t('save')) ?></button>
+    </form>
+  </div>
+</details>
+
 <datalist id="zone-list"><?php foreach ($zones as $z): ?><option value="<?= $h($z) ?>"><?php endforeach; ?></datalist>
 <datalist id="src-list"><?php foreach ($sources as $s): ?><option value="<?= $h($s) ?>"><?php endforeach; ?></datalist>
+<datalist id="fair-list"><?php foreach ($fairs as $f): ?><option value="<?= $h($f) ?>"><?php endforeach; ?></datalist>
+<datalist id="faircity-list"><?php foreach ($fairCities as $fc): ?><option value="<?= $h($fc) ?>"><?php endforeach; ?></datalist>
 
 <div class="kanban" id="kb-lead">
   <?php foreach ($stages as $s): $cards = $byStage[$s['code']] ?? []; ?>
@@ -146,7 +189,7 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
     <summary class="dw-sum">
       <?= avatar($h, $r['customer_name']) ?>
       <span class="dw-info"><b><?= $h($r['customer_name'] ?: ('#' . $r['id'])) ?></b>
-        <span class="muted small"> · <?= phone_link($h, $r['customer_phone']) ?> <?= $h($r['customer_email']) ?><?= !empty($r['vat_number']) ? ' · ' . $h($t('f_vat')) . ' ' . $h($r['vat_number']) : '' ?><?= !empty($r['zone']) ? ' · ' . $h($t('f_zone')) . ' ' . $h($r['zone']) : '' ?></span>
+        <span class="muted small"> · <?= phone_link($h, $r['customer_phone']) ?> <?= $h($r['customer_email']) ?><?= !empty($r['vat_number']) ? ' · ' . $h($t('f_vat')) . ' ' . $h($r['vat_number']) : '' ?><?= !empty($r['zone']) ? ' · ' . $h($t('f_zone')) . ' ' . $h($r['zone']) : '' ?><?= !empty($r['fair_name']) ? ' · ' . $h($t('f_fair')) . ' ' . $h($r['fair_name']) . (!empty($r['fair_city']) ? ' (' . $h($r['fair_city']) . ')' : '') : '' ?></span>
         <?php if ($msg !== ''): ?><span class="muted small" style="display:block;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">“<?= $h($msg) ?>”</span><?php endif; ?></span>
       <span class="pill"><?= $h(stage_label($t, $r['stage_code'], \Glue\Crm\Pipelines::label('lead', $r['stage_code']))) ?></span>
       <?= pill($h, $r['status'], $t) ?>
@@ -187,6 +230,10 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
                     <option value="it"<?= ($r['lang'] ?? '') === 'it' ? ' selected' : '' ?>>IT</option>
                     <option value="en"<?= ($r['lang'] ?? '') === 'en' ? ' selected' : '' ?>>EN</option>
                   </select></label>
+              </div>
+              <div class="row">
+                <label class="fld"><span><?= $h($t('f_fair')) ?></span><input name="fair_name" list="fair-list" value="<?= $h($r['fair_name'] ?? '') ?>"></label>
+                <label class="fld"><span><?= $h($t('f_fair_city')) ?></span><input name="fair_city" list="faircity-list" value="<?= $h($r['fair_city'] ?? '') ?>"></label>
               </div>
               <label class="fld"><span><?= $h($t('f_message')) ?></span><textarea name="comments" rows="2"><?= $h($r['comments'] ?? '') ?></textarea></label>
               <button class="btn tiny"><?= $h($t('save')) ?></button>
