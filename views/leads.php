@@ -206,6 +206,12 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
           <div style="white-space:pre-wrap;line-height:1.55"><?= nl2br($h($msg)) ?></div>
         </div>
       <?php endif; ?>
+      <?php if (!empty($r['source_url'])): ?>
+        <div class="muted small" style="margin:8px 0 4px">
+          <?= $h($t('f_source_url')) ?>:
+          <a href="<?= $h($r['source_url']) ?>" target="_blank" rel="noopener nofollow"><?= $h($r['source_url']) ?></a>
+        </div>
+      <?php endif; ?>
       <div class="cols c-1-1" style="margin-bottom:0">
         <div>
           <h3><?= $h($t('actions')) ?></h3>

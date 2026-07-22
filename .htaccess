@@ -14,6 +14,11 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
+    # PHP-FPM/CGI drops the Authorization header; the lead API accepts a Bearer
+    # token there, so hand it through as an env var PHP can see.
+    RewriteCond %{HTTP:Authorization} .
+    RewriteRule ^ - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]
+
     # Map everything into /public via an internal redirect. The leading-slash
     # target makes Apache re-evaluate with REQUEST_URI now starting /public/,
     # so the !^/public/ guard stops it after one pass (no loop). migrate.php is

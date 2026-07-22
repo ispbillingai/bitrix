@@ -33,6 +33,10 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
   submit it creates a lead and, if a time was given, an appointment request.
 - **Website intake** (`public/webhooks/form-intake.php`): your existing site form
   POSTs here on submit (same fields) and a lead is created — no rebuild needed.
+- **Lead API** (`public/webhooks/lead.php`): a partner company POSTs leads from
+  their own software. Documented contract, Bearer token, retry-safe via their
+  `external_id`. Spec to hand an integrator: [docs/lead-api.md](docs/lead-api.md)
+  ([italiano](docs/lead-api.it.md)).
 - **Leads / Pipeline**: kanban boards, drag a card to change stage. Assigning a
   lead to a seller messages the customer that seller's profile. Convert a lead to
   a deal; the deal pipeline runs the signing/closing automations.
@@ -46,7 +50,7 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 
 | Requirement | This CRM |
 |---|---|
-| Lead acquisition (form, website, trade-show, partner email) | `request.php` + `form-intake.php` → `Crm\Leads::create` |
+| Lead acquisition (form, website, partner software, trade-show, partner email) | `request.php` + `webhooks/form-intake.php` + `webhooks/lead.php` → `Crm\LeadIntake` → `Crm\Leads::create` |
 | Auto welcome (email + WhatsApp) | `welcome` reminder enqueued on lead create |
 | Assign lead to seller → send seller profile | `Crm\Leads::assign` → `agent_assigned` |
 | Activity reminder if lead not worked in N hours | `lead_inactivity`, silenced when the lead leaves the first stage |
@@ -76,14 +80,15 @@ public/
   dashboard.php            CRM control panel (controller; renders /views)
   campaign.php             create a mass campaign
   webhooks/
+    lead.php               partner lead API (documented, Bearer, retry-safe)
     form-intake.php        website/Jotform lead → Crm\Leads
     appointment-intake.php appointment request → Crm\Appointments
     bitrix-event.php       optional inbound (guarded by sync flag)
 views/                     dashboard page partials (overview, leads, deals, …)
 src/
   Bootstrap, Config, Db, Settings, Auth, Event/Log
-  Crm/   Pipelines, Contacts, Leads, Deals, Appointments, Tasks, Tickets,
-         Automation, Activities, EntityResolver   — the CRM domain
+  Crm/   Pipelines, Contacts, Leads, LeadIntake, Deals, Appointments, Tasks,
+         Tickets, Automation, Activities, EntityResolver   — the CRM domain
   Portal/  Account (customer login + magic link), Otp (signing codes)
   Reminder/  Scheduler (queue), Templates (copy)
   Notify/    Notifier, TextMeBot (WhatsApp), Mailer
@@ -124,6 +129,11 @@ curl https://<host>/index.php
 curl -X POST "https://<host>/webhooks/form-intake.php?secret=INTAKE_SECRET" \
   -H 'Content-Type: application/json' \
   -d '{"nome":"Mario","cognome":"Rossi","telefono":"+393331234567","email":"mario@example.com","messaggio":"Info","lang":"it"}'
+
+# the partner lead API (docs/lead-api.md)
+curl -X POST "https://<host>/webhooks/lead.php" -H 'Authorization: Bearer INTAKE_SECRET' \
+  -H 'Content-Type: application/json' \
+  -d '{"source":"partner","source_url":"https://partner.it/contatti","external_id":"1","name":"Mario Rossi","phone":"+393331234567"}'
 
 # flush the queue (welcome message, etc.)
 php bin/scheduler.php

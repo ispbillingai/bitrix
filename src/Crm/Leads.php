@@ -23,7 +23,7 @@ final class Leads
 {
     /**
      * Create a lead at the pipeline's first stage and schedule its automations.
-     * @param array $d name|phone|email|source|title|comments|company|lang
+     * @param array $d name|phone|email|source|source_url|external_id|title|comments|company|lang
      * @return int new lead id
      */
     public static function create(array $d, ?int $actorId = null): int
@@ -50,16 +50,24 @@ final class Leads
         $fairName = trim((string)($d['fair_name'] ?? ''));
         $fairCity = trim((string)($d['fair_city'] ?? ''));
 
+        // Set only by the API intake (webhooks/lead.php): the sender's own id for
+        // this request, and the site it was submitted on.
+        $externalId = trim((string)($d['external_id'] ?? ''));
+        $sourceUrl  = trim((string)($d['source_url'] ?? ''));
+
         $stmt = Db::pdo()->prepare(
             'INSERT INTO leads
-                (contact_id, title, source, zone, fair_name, fair_city, pipeline_id, stage_code, status,
+                (contact_id, title, source, external_id, source_url, zone, fair_name, fair_city,
+                 pipeline_id, stage_code, status,
                  customer_name, customer_phone, customer_email, vat_number, comments, lang,
                  received_at, stage_changed_at)
-             VALUES (:contact_id, :title, :source, :zone, :fair_name, :fair_city, :pipeline_id, :stage, "open",
+             VALUES (:contact_id, :title, :source, :external_id, :source_url, :zone, :fair_name, :fair_city,
+                 :pipeline_id, :stage, "open",
                  :name, :phone, :email, :vat, :comments, :lang, NOW(), NOW())'
         );
         $stmt->execute([
             ':contact_id' => $contactId, ':title' => $title, ':source' => $source,
+            ':external_id' => $externalId ?: null, ':source_url' => $sourceUrl ?: null,
             ':zone' => $zone ?: null,
             ':fair_name' => $fairName ?: null, ':fair_city' => $fairCity ?: null,
             ':pipeline_id' => $pipelineId, ':stage' => $firstStage,
@@ -72,9 +80,11 @@ final class Leads
         Automation::welcome('lead', $leadId, $lang);
         Automation::inactivity('lead', $leadId, $firstStage);
 
-        Activities::add('lead', $leadId, 'system', "Lead created from $source", $actorId);
+        Activities::add('lead', $leadId, 'system',
+            'Lead created from ' . $source . ($sourceUrl !== '' ? " ($sourceUrl)" : ''), $actorId);
         Log::write('crm', 'lead_created', 'lead', $leadId,
-            ['source' => $source, 'name' => $name, 'phone' => $phone, 'email' => $email]);
+            ['source' => $source, 'source_url' => $sourceUrl, 'external_id' => $externalId,
+             'name' => $name, 'phone' => $phone, 'email' => $email]);
 
         self::pushSync($leadId);
         return $leadId;

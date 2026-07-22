@@ -105,6 +105,8 @@ CREATE TABLE IF NOT EXISTS leads (
     contact_id BIGINT UNSIGNED NULL,
     title VARCHAR(190) NULL,
     source VARCHAR(48) NULL,
+    external_id VARCHAR(64) NULL,       -- sender's own id (partner API), makes retries safe
+    source_url VARCHAR(255) NULL,       -- site/page the request came from
     zone VARCHAR(80) NULL,
     fair_name VARCHAR(120) NULL,
     fair_city VARCHAR(120) NULL,
@@ -128,7 +130,8 @@ CREATE TABLE IF NOT EXISTS leads (
     KEY idx_contact (contact_id),
     KEY idx_zone (zone),
     KEY idx_vat (vat_number),
-    KEY idx_fair (fair_name)
+    KEY idx_fair (fair_name),
+    UNIQUE KEY uniq_source_external (source, external_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 -- Public-form view counter (how many times a shareable form was opened).

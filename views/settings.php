@@ -11,6 +11,7 @@ $os = $h($cfg('bitrix.outbound_secret', ''));
 $syncOn = (bool)$cfg('bitrix.sync_enabled', false);
 $urls = [
     'url_request'   => "$base/request.php",
+    'url_lead_api'  => "$base/webhooks/lead.php",
     'url_form'      => "$base/webhooks/form-intake.php?secret=$is",
     'url_appt'      => "$base/webhooks/appointment-intake.php?secret=$is",
     'url_bitrix_ev' => "$base/webhooks/bitrix-event.php?secret=$os",
