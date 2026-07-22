@@ -27,7 +27,6 @@ Server-to-server only: never put the token in browser JavaScript.
 
 ```json
 {
-  "source":      "michaeltech",
   "source_url":  "https://www.michaeltech.it/contatti",
   "external_id": "4711",
   "name":        "Mario Rossi",
@@ -43,12 +42,23 @@ Server-to-server only: never put the token in browser JavaScript.
 
 | Field | Required | Notes |
 |---|---|---|
-| `source` | **yes** | Short name of the sender, the *same string every time* — it's what the monthly per-source report groups on. |
 | `phone` / `email` | **at least one** | `+39…` preferred; `00`-prefixed and spaced numbers are cleaned up. |
-| `source_url` | strongly recommended | The site/page the request was submitted on. Shown on the lead so a seller knows where it came from. |
-| `external_id` | recommended | The sender's own id for the request. See *Retries*. |
+| `source_url` | strongly recommended | The site/page the request was submitted on. Shown on the lead as *Came from*, and it's what tells one sender from another. |
+| `external_id` | recommended | The sender's own id for the request. Only has to be unique within their own system. See *Retries*. |
 | `name` | no | Or `first_name` + `last_name`. Falls back to `company`, then `Unknown`. |
 | `company`, `vat_number`, `zone`, `title`, `message`, `lang` | no | `lang` is `it` (default) or `en` — the language of our messages **to the customer**. |
+| `source` | no | Leave it out. See below. |
+
+### Why `source` is not in the example
+
+Leads sent here are filed under the CRM's existing **`website`** source category,
+so the office finds them with the *Source → website* filter alongside the other
+web requests. `source_url` is what records which site a lead actually came from.
+
+An integrator who omits `source` gets `website` automatically. Sending
+`"source": "website"` explicitly is the same thing. Sending anything else creates
+a **new** category in the filter — only do that for a partner who genuinely needs
+to be reported on separately.
 
 Field names are matched case-insensitively and common aliases are accepted, so a
 form that already posts `nome`, `telefono`, `messaggio`, `azienda`, `sito` works
@@ -73,10 +83,12 @@ Treat any 5xx or a timeout as *unknown* and retry with the same `external_id`.
 Two guards, so a retry never creates a second lead and never double-messages the
 customer:
 
-1. **`external_id`** — the same `source` + `external_id` always maps to the
-   first lead created for it. This is the reliable one; send it.
-2. Without `external_id`, the same `source` posting the same phone or email
-   within **15 minutes** is treated as the same lead (catches double submits).
+1. **`external_id`** — always maps back to the first lead created for it. This is
+   the reliable one; send it. It's namespaced by the host in `source_url`, so it
+   only has to be unique within the sender's own system: two senders both
+   numbering their requests from 1 never collide.
+2. Without `external_id`, the same phone or email arriving again within
+   **15 minutes** is treated as the same lead (catches double submits).
 
 ## Checking the integration
 
@@ -93,11 +105,11 @@ Send one:
 curl -i -X POST "https://crm.upgradesrls.com/webhooks/lead.php" \
   -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
-  -d '{"source":"michaeltech","source_url":"https://www.michaeltech.it/contatti","external_id":"test-1","name":"Mario Rossi","phone":"+393331234567","email":"mario@example.com","message":"Test"}'
+  -d '{"source_url":"https://www.michaeltech.it/contatti","external_id":"test-1","name":"Mario Rossi","phone":"+393331234567","email":"mario@example.com","message":"Test"}'
 ```
 
-The lead appears on the Leads page immediately, with *Came from* linking back to
-`source_url`, and can be filtered by *Source*.
+The lead appears on the Leads page immediately under *Source → website*, with
+*Came from* linking back to `source_url`.
 
 ## PHP example
 
@@ -108,7 +120,6 @@ curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Authorization: Bearer ' . $token],
     CURLOPT_POSTFIELDS     => json_encode([
-        'source'      => 'michaeltech',
         'source_url'  => 'https://www.michaeltech.it/contatti',
         'external_id' => (string)$request->id,
         'name'        => $request->name,

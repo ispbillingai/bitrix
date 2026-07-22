@@ -22,7 +22,6 @@ Solo da server a server: il token non va mai messo nel JavaScript del sito.
 
 ```json
 {
-  "source":      "michaeltech",
   "source_url":  "https://www.michaeltech.it/contatti",
   "external_id": "4711",
   "name":        "Mario Rossi",
@@ -38,12 +37,24 @@ Solo da server a server: il token non va mai messo nel JavaScript del sito.
 
 | Campo | Obbligatorio | Note |
 |---|---|---|
-| `source` | **sì** | Nome breve di chi invia, **sempre lo stesso valore** (es. `michaeltech`): è la chiave con cui raggruppiamo i lead nei report. |
 | `phone` / `email` | **almeno uno dei due** | Meglio in formato internazionale `+39…`; numeri con `00` o con spazi vengono normalizzati. |
-| `source_url` | fortemente consigliato | Il sito/pagina da cui arriva la richiesta. Viene mostrato sul lead, così il commerciale sa da dove proviene. |
-| `external_id` | consigliato | Il vostro identificativo della richiesta. Vedi *Rinvii e duplicati*. |
+| `source_url` | fortemente consigliato | Il sito/pagina da cui arriva la richiesta. Viene mostrato sul lead ed è ciò che distingue un mittente dall'altro. |
+| `external_id` | consigliato | Il vostro identificativo della richiesta: deve essere univoco solo all'interno del vostro sistema. Vedi *Rinvii e duplicati*. |
 | `name` | no | Oppure `first_name` + `last_name`. |
 | `company`, `vat_number`, `zone`, `title`, `message`, `lang` | no | `lang` = `it` (predefinito) o `en`: è la lingua dei messaggi **verso il cliente**. |
+| `source` | no | Non inviatelo. Vedi sotto. |
+
+### Perché `source` non compare nell'esempio
+
+Le richieste inviate qui vengono registrate nella categoria **`website`** già
+esistente nel CRM, così il nostro ufficio le trova con il filtro
+*Origine → website* insieme alle altre richieste dal web. È `source_url` a
+indicare da quale sito arriva ogni lead.
+
+Se omettete `source`, viene impostato `website` in automatico; inviare
+`"source": "website"` è equivalente. Qualsiasi altro valore crea invece una
+**nuova** categoria nel filtro: usatelo solo se vi chiediamo esplicitamente una
+categoria dedicata.
 
 I nomi dei campi non sono case-sensitive e accettiamo gli alias più comuni:
 `nome`/`cognome`, `telefono`, `messaggio`, `azienda`, `partita_iva`, `sito`,
@@ -68,10 +79,12 @@ con lo stesso `external_id`.
 Due protezioni, così un rinvio non crea mai un secondo lead né un secondo
 messaggio al cliente:
 
-1. **`external_id`** — la stessa coppia `source` + `external_id` corrisponde
-   sempre al primo lead creato. È il metodo affidabile: inviatelo.
-2. Senza `external_id`, lo stesso `source` che invia lo stesso telefono o la
-   stessa email entro **15 minuti** viene considerato lo stesso lead.
+1. **`external_id`** — corrisponde sempre al primo lead creato con quel valore.
+   È il metodo affidabile: inviatelo. Lo abbiniamo internamente al dominio di
+   `source_url`, quindi vi basta che sia univoco nel vostro sistema: due
+   mittenti che numerano entrambi le richieste da 1 non entrano in conflitto.
+2. Senza `external_id`, lo stesso telefono o la stessa email che arriva di nuovo
+   entro **15 minuti** viene considerata lo stesso lead.
 
 ## Prova dell'integrazione
 
@@ -88,7 +101,7 @@ Invio di prova:
 curl -i -X POST "https://crm.upgradesrls.com/webhooks/lead.php" \
   -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
-  -d '{"source":"michaeltech","source_url":"https://www.michaeltech.it/contatti","external_id":"test-1","name":"Mario Rossi","phone":"+393331234567","email":"mario@example.com","message":"Prova"}'
+  -d '{"source_url":"https://www.michaeltech.it/contatti","external_id":"test-1","name":"Mario Rossi","phone":"+393331234567","email":"mario@example.com","message":"Prova"}'
 ```
 
 ## Esempio in PHP
@@ -100,7 +113,6 @@ curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Authorization: Bearer ' . $token],
     CURLOPT_POSTFIELDS     => json_encode([
-        'source'      => 'michaeltech',
         'source_url'  => 'https://www.michaeltech.it/contatti',
         'external_id' => (string)$richiesta->id,
         'name'        => $richiesta->nome,

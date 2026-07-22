@@ -11,7 +11,6 @@ declare(strict_types=1);
  *   Content-Type: application/json
  *
  *   {
- *     "source":      "michaeltech",              // required — who is sending
  *     "source_url":  "https://michaeltech.it/…", // the page the request came from
  *     "external_id": "4711",                     // their id — makes retries safe
  *     "name":        "Mario Rossi",
@@ -24,11 +23,15 @@ declare(strict_types=1);
  *   201 {"ok":true,"lead_id":42,"status":"created"}
  *   200 {"ok":true,"lead_id":42,"status":"duplicate"}   already had this one
  *
+ * Leads land in the "website" source category (the office filters on it there);
+ * `source_url` is what says which site they actually came from. A sender may
+ * override `source` to get their own category, but they aren't asked to.
+ *
  * A GET with a valid secret returns the field list, so an integrator can check
  * their credentials and read the contract without asking us.
  *
  * Field names are forgiving (telefono/phone, messaggio/message, …) — see
- * Crm\LeadIntake. The full spec lives in docs/lead-webhook.md.
+ * Crm\LeadIntake. The full spec lives in docs/lead-api.md.
  */
 require __DIR__ . '/../../src/Bootstrap.php';
 
@@ -68,13 +71,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'content_type' => 'application/json',
         'auth'     => 'Authorization: Bearer <token>  (or X-Api-Key, or ?secret=)',
         'required' => [
-            'source' => 'short name of the sender, always the same value (e.g. "michaeltech")',
             'contact' => 'at least one of phone / email',
         ],
         'fields' => [
-            'source'      => 'string, required',
-            'source_url'  => 'string — the website/page the request was submitted on',
+            'source_url'  => 'string — the website/page the request was submitted on; send it always',
             'external_id' => 'string — your own id for this request; resending it returns the same lead',
+            'source'      => 'string, optional — leave it out; requests are filed under "website"',
             'name'        => 'string (or first_name + last_name)',
             'phone'       => 'string, E.164 preferred (+39…)',
             'email'       => 'string',
@@ -108,11 +110,13 @@ if (!$data) {
 
 $lead = LeadIntake::normalize($data);
 
+// Everything arriving through this API is a website request as far as the office
+// is concerned — it lands in the existing "website" source category so the Leads
+// filter finds it there. Which site it actually came from is `source_url`.
+$lead['source'] = $lead['source'] ?: 'website';
+
 // ---- validate ----
 $errors = [];
-if ($lead['source'] === '') {
-    $errors['source'] = 'required — the short name of your system/site, always the same value';
-}
 if ($lead['phone'] === '' && $lead['email'] === '') {
     $errors['phone'] = 'phone or email is required';
     $errors['email'] = 'phone or email is required';
@@ -133,7 +137,9 @@ if ($lead['name'] === '') {
     $lead['name'] = $lead['company'] !== '' ? $lead['company'] : 'Unknown';
 }
 if ($lead['title'] === '') {
-    $lead['title'] = 'Request from ' . $lead['source'];
+    // Name the site rather than the category, or every one of these reads
+    // "Request from website" in the lead list.
+    $lead['title'] = 'Request from ' . (LeadIntake::host($lead['source_url']) ?: $lead['source']);
 }
 
 // ---- create ----

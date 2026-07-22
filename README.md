@@ -35,8 +35,9 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
   POSTs here on submit (same fields) and a lead is created — no rebuild needed.
 - **Lead API** (`public/webhooks/lead.php`): a partner company POSTs leads from
   their own software. Documented contract, Bearer token, retry-safe via their
-  `external_id`. Spec to hand an integrator: [docs/lead-api.md](docs/lead-api.md)
-  ([italiano](docs/lead-api.it.md)).
+  `external_id`. Lands in the `website` source category; `source_url` records
+  which site it came from. Spec to hand an integrator:
+  [docs/lead-api.md](docs/lead-api.md) ([italiano](docs/lead-api.it.md)).
 - **Leads / Pipeline**: kanban boards, drag a card to change stage. Assigning a
   lead to a seller messages the customer that seller's profile. Convert a lead to
   a deal; the deal pipeline runs the signing/closing automations.
@@ -133,7 +134,7 @@ curl -X POST "https://<host>/webhooks/form-intake.php?secret=INTAKE_SECRET" \
 # the partner lead API (docs/lead-api.md)
 curl -X POST "https://<host>/webhooks/lead.php" -H 'Authorization: Bearer INTAKE_SECRET' \
   -H 'Content-Type: application/json' \
-  -d '{"source":"partner","source_url":"https://partner.it/contatti","external_id":"1","name":"Mario Rossi","phone":"+393331234567"}'
+  -d '{"source_url":"https://partner.it/contatti","external_id":"1","name":"Mario Rossi","phone":"+393331234567"}'
 
 # flush the queue (welcome message, etc.)
 php bin/scheduler.php

@@ -87,6 +87,13 @@ final class LeadIntake
         $out['email']  = mb_strtolower($out['email']);
         $out['phone']  = self::phone($out['phone']);
 
+        // A sender's own id is unique only inside their own system, and senders
+        // share a `source` (they all land in 'website'), so the site they posted
+        // from is folded in before it is used as the de-duplication key —
+        // otherwise two partners both numbering from 1 would collide and the
+        // second one's lead would come back as a "duplicate" of the first.
+        $out['external_id'] = self::qualifyExternalId($out['external_id'], $out['source_url']);
+
         return $out;
     }
 
@@ -148,6 +155,37 @@ final class LeadIntake
             return ['lead_id' => $existing, 'duplicate' => true];
         }
         return ['lead_id' => Leads::create($lead), 'duplicate' => false];
+    }
+
+    /**
+     * Namespace the sender's id with the host it came from ("michaeltech.it:4711")
+     * so ids only have to be unique within each sender's own system. Left alone
+     * when we weren't told the site — nothing to namespace it with.
+     */
+    private static function qualifyExternalId(string $externalId, string $sourceUrl): string
+    {
+        if ($externalId === '' || $sourceUrl === '') {
+            return $externalId;
+        }
+        $host = self::host($sourceUrl);
+        if ($host === '' || str_starts_with($externalId, $host . ':')) {
+            return $externalId;
+        }
+        $qualified = $host . ':' . $externalId;
+        // The column holds 64 chars; stay deterministic if a long host + id blows past it.
+        return strlen($qualified) <= 64 ? $qualified : substr($host, 0, 23) . ':' . sha1($qualified);
+    }
+
+    /** Bare hostname of a URL, lowercased and without "www.". '' if unusable. */
+    public static function host(string $url): string
+    {
+        $host = (string)(parse_url($url, PHP_URL_HOST) ?: '');
+        if ($host === '') {
+            // No scheme ("michaeltech.it/contatti") — parse_url calls that a path.
+            $host = (string)strtok(ltrim($url, '/'), '/');
+        }
+        $host = mb_strtolower(trim($host));
+        return str_starts_with($host, 'www.') ? substr($host, 4) : $host;
     }
 
     /** First non-empty value among $names, compared case-insensitively. */
