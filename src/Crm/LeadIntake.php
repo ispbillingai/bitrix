@@ -25,7 +25,9 @@ final class LeadIntake
      * first non-empty match wins).
      */
     private const ALIASES = [
-        'name'        => ['name', 'full_name', 'fullname', 'nome_completo', 'nominativo', 'nome', 'q3_name'],
+        // 'nome' is a FIRST name, not a full one — listing it under 'name' would
+        // make "nome=Luca, cognome=Bianchi" store just "Luca".
+        'name'        => ['name', 'full_name', 'fullname', 'nome_completo', 'nominativo', 'q3_name'],
         'first_name'  => ['first_name', 'firstname', 'nome'],
         'last_name'   => ['last_name', 'lastname', 'surname', 'cognome'],
         'phone'       => ['phone', 'telephone', 'mobile', 'tel', 'telefono', 'cellulare', 'whatsapp'],
