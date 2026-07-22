@@ -23,9 +23,10 @@ declare(strict_types=1);
  *   201 {"ok":true,"lead_id":42,"status":"created"}
  *   200 {"ok":true,"lead_id":42,"status":"duplicate"}   already had this one
  *
- * Leads land in the "website" source category (the office filters on it there);
- * `source_url` is what says which site they actually came from. A sender may
- * override `source` to get their own category, but they aren't asked to.
+ * Leads always land in the "website" source category (the office filters on it
+ * there); `source_url` is what says which site they actually came from. To give
+ * one partner their own category in the filter, set `source` from `source_url`
+ * here rather than reinstating the sender's own value.
  *
  * A GET with a valid secret returns the field list, so an integrator can check
  * their credentials and read the contract without asking us.
@@ -76,7 +77,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
         'fields' => [
             'source_url'  => 'string — the website/page the request was submitted on; send it always',
             'external_id' => 'string — your own id for this request; resending it returns the same lead',
-            'source'      => 'string, optional — leave it out; requests are filed under "website"',
+            'source'      => 'ignored — every request here is filed under "website"',
             'name'        => 'string (or first_name + last_name)',
             'phone'       => 'string, E.164 preferred (+39…)',
             'email'       => 'string',
@@ -111,9 +112,13 @@ if (!$data) {
 $lead = LeadIntake::normalize($data);
 
 // Everything arriving through this API is a website request as far as the office
-// is concerned — it lands in the existing "website" source category so the Leads
-// filter finds it there. Which site it actually came from is `source_url`.
-$lead['source'] = $lead['source'] ?: 'website';
+// is concerned, so it always lands in the existing "website" source category and
+// the Leads filter finds it there — no matter what the sender put in `source`.
+// Ignoring rather than defaulting it is deliberate: an integrator working from an
+// early copy of the spec may still be sending their own name, and a lead quietly
+// filed under a category nobody filters on is a lead nobody works. Which site it
+// actually came from is `source_url`, kept per-lead and shown in the dashboard.
+$lead['source'] = 'website';
 
 // ---- validate ----
 $errors = [];

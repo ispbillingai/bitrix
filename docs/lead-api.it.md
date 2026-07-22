@@ -42,19 +42,18 @@ Solo da server a server: il token non va mai messo nel JavaScript del sito.
 | `external_id` | consigliato | Il vostro identificativo della richiesta: deve essere univoco solo all'interno del vostro sistema. Vedi *Rinvii e duplicati*. |
 | `name` | no | Oppure `first_name` + `last_name`. |
 | `company`, `vat_number`, `zone`, `title`, `message`, `lang` | no | `lang` = `it` (predefinito) o `en`: è la lingua dei messaggi **verso il cliente**. |
-| `source` | no | Non inviatelo. Vedi sotto. |
+| `source` | ignorato | Potete inviarlo, non ha effetto. Vedi sotto. |
 
 ### Perché `source` non compare nell'esempio
 
-Le richieste inviate qui vengono registrate nella categoria **`website`** già
-esistente nel CRM, così il nostro ufficio le trova con il filtro
+Tutte le richieste inviate qui vengono registrate nella categoria **`website`**
+già esistente nel CRM, così il nostro ufficio le trova con il filtro
 *Origine → website* insieme alle altre richieste dal web. È `source_url` a
 indicare da quale sito arriva ogni lead.
 
-Se omettete `source`, viene impostato `website` in automatico; inviare
-`"source": "website"` è equivalente. Qualsiasi altro valore crea invece una
-**nuova** categoria nel filtro: usatelo solo se vi chiediamo esplicitamente una
-categoria dedicata.
+Il campo `source` viene impostato da noi e un eventuale valore inviato da voi
+non viene considerato: non dovete preoccuparvene. Se in futuro servirà una
+categoria dedicata, la configuriamo dalla nostra parte senza chiedervi modifiche.
 
 I nomi dei campi non sono case-sensitive e accettiamo gli alias più comuni:
 `nome`/`cognome`, `telefono`, `messaggio`, `azienda`, `partita_iva`, `sito`,
