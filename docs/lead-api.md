@@ -47,23 +47,14 @@ Server-to-server only: never put the token in browser JavaScript.
 | `external_id` | recommended | The sender's own id for the request. Only has to be unique within their own system. See *Retries*. |
 | `name` | no | Or `first_name` + `last_name`. Falls back to `company`, then `Unknown`. |
 | `company`, `vat_number`, `zone`, `title`, `message`, `lang` | no | `lang` is `it` (default) or `en` — the language of our messages **to the customer**. |
-| `source` | ignored | Safe to send; it has no effect. See below. |
 
-### Why `source` is not in the example
-
-Every lead sent here is filed under the CRM's existing **`website`** source
-category, so the office finds them with the *Source → website* filter alongside
-the other web requests. `source_url` is what records which site a lead actually
-came from, and it is shown on the lead as *Came from*.
-
-The endpoint sets this itself and ignores any `source` in the payload — an
-integrator working from an early draft of this page may still be sending their
-own name, and a lead filed under a category nobody filters on is a lead nobody
-works.
-
-To give one partner their own row in the monthly report, derive `source` from
-`source_url` in [`lead.php`](../public/webhooks/lead.php) — don't reinstate the
-sender's own value, or a typo on their side silently becomes a new category.
+There is no `source` field to send: every lead here is filed under the CRM's
+existing **`website`** category, and `source_url` records which site it came
+from. (Internally the endpoint forces `source = website` and ignores anything
+the sender puts there. To break one partner out into their own row of the
+monthly report, derive `source` from the `source_url` host in
+[`lead.php`](../public/webhooks/lead.php) — never from a sender-supplied value,
+or a typo on their side silently becomes a new category.)
 
 Field names are matched case-insensitively and common aliases are accepted, so a
 form that already posts `nome`, `telefono`, `messaggio`, `azienda`, `sito` works
