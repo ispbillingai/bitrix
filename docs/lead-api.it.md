@@ -20,32 +20,29 @@ Solo da server a server: il token non va mai messo nel JavaScript del sito.
 
 ## Corpo della richiesta
 
+L'unico dato obbligatorio è un contatto: **telefono o email**. Tutto il resto è
+facoltativo.
+
 ```json
 {
-  "source_url":  "https://www.michaeltech.it/contatti",
-  "external_id": "4711",
-  "name":        "Mario Rossi",
-  "phone":       "+393331234567",
-  "email":       "mario.rossi@example.com",
-  "company":     "Rossi SRL",
-  "vat_number":  "01234567890",
-  "zone":        "Lombardia",
-  "message":     "Vorrei informazioni sul modello X",
-  "lang":        "it"
+  "name":    "Mario Rossi",
+  "phone":   "+393331234567",
+  "email":   "mario.rossi@example.com",
+  "message": "Vorrei informazioni sul modello X"
 }
 ```
 
 | Campo | Obbligatorio | Note |
 |---|---|---|
 | `phone` / `email` | **almeno uno dei due** | Meglio in formato internazionale `+39…`; numeri con `00` o con spazi vengono normalizzati. |
-| `source_url` | fortemente consigliato | Il sito/pagina da cui arriva la richiesta. Viene mostrato sul lead ed è ciò che distingue un mittente dall'altro. |
-| `external_id` | consigliato | Il vostro identificativo della richiesta: deve essere univoco solo all'interno del vostro sistema. Vedi *Rinvii e duplicati*. |
 | `name` | no | Oppure `first_name` + `last_name`. |
-| `company`, `vat_number`, `zone`, `title`, `message`, `lang` | no | `lang` = `it` (predefinito) o `en`: è la lingua dei messaggi **verso il cliente**. |
+| `message` | no | Il testo scritto dal cliente. |
+| `external_id` | no | Un vostro identificativo della richiesta; se lo inviate, un rinvio con lo stesso valore non crea un doppione. Vedi *Rinvii e duplicati*. |
+| `company`, `vat_number`, `zone`, `title`, `lang` | no | `lang` = `it` (predefinito) o `en`: è la lingua dei messaggi **verso il cliente**. |
+| `source_url` | no | Se lo inviate, il sito da cui arriva la richiesta viene mostrato sul lead. Non è richiesto. |
 
-Non serve inviare alcun campo `origine`/`source`: la categoria del lead la
-impostiamo noi dalla nostra parte. A voi basta indicare, con `source_url`, il
-sito da cui arriva la richiesta.
+Non serve inviare né `source` né `source_url`: la categoria del lead la
+impostiamo noi. A voi basta il contatto del cliente.
 
 I nomi dei campi non sono case-sensitive e accettiamo gli alias più comuni:
 `nome`/`cognome`, `telefono`, `messaggio`, `azienda`, `partita_iva`, `sito`,
@@ -70,12 +67,10 @@ con lo stesso `external_id`.
 Due protezioni, così un rinvio non crea mai un secondo lead né un secondo
 messaggio al cliente:
 
-1. **`external_id`** — corrisponde sempre al primo lead creato con quel valore.
-   È il metodo affidabile: inviatelo. Lo abbiniamo internamente al dominio di
-   `source_url`, quindi vi basta che sia univoco nel vostro sistema: due
-   mittenti che numerano entrambi le richieste da 1 non entrano in conflitto.
-2. Senza `external_id`, lo stesso telefono o la stessa email che arriva di nuovo
-   entro **15 minuti** viene considerata lo stesso lead.
+1. **`external_id`** (facoltativo) — se lo inviate, corrisponde sempre al primo
+   lead creato con quel valore: un rinvio con lo stesso id non crea un doppione.
+2. Anche senza `external_id`, lo stesso telefono o la stessa email che arriva di
+   nuovo entro **15 minuti** viene considerata lo stesso lead.
 
 ## Prova dell'integrazione
 
@@ -92,7 +87,7 @@ Invio di prova:
 curl -i -X POST "https://crm.upgradesrls.com/webhooks/lead.php" \
   -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
-  -d '{"source_url":"https://www.michaeltech.it/contatti","external_id":"test-1","name":"Mario Rossi","phone":"+393331234567","email":"mario@example.com","message":"Prova"}'
+  -d '{"name":"Mario Rossi","phone":"+393331234567","email":"mario@example.com","message":"Prova"}'
 ```
 
 ## Esempio in PHP
@@ -104,12 +99,11 @@ curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Authorization: Bearer ' . $token],
     CURLOPT_POSTFIELDS     => json_encode([
-        'source_url'  => 'https://www.michaeltech.it/contatti',
-        'external_id' => (string)$richiesta->id,
         'name'        => $richiesta->nome,
         'phone'       => $richiesta->telefono,
         'email'       => $richiesta->email,
         'message'     => $richiesta->messaggio,
+        'external_id' => (string)$richiesta->id,   // facoltativo: sicurezza sui rinvii
     ]),
     CURLOPT_TIMEOUT        => 15,
 ]);

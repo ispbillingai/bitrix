@@ -11,22 +11,22 @@ declare(strict_types=1);
  *   Content-Type: application/json
  *
  *   {
- *     "source_url":  "https://michaeltech.it/…", // the page the request came from
- *     "external_id": "4711",                     // their id — makes retries safe
  *     "name":        "Mario Rossi",
  *     "phone":       "+393331234567",            // phone or email required
  *     "email":       "mario@example.com",
- *     "company": "…", "vat_number": "…", "zone": "…",
- *     "message": "…", "lang": "it"
+ *     "message":     "…",
+ *     "external_id": "4711",                     // optional — makes retries safe
+ *     "company": "…", "vat_number": "…", "zone": "…", "lang": "it"  // all optional
  *   }
  *
  *   201 {"ok":true,"lead_id":42,"status":"created"}
  *   200 {"ok":true,"lead_id":42,"status":"duplicate"}   already had this one
  *
- * Leads always land in the "website" source category (the office filters on it
- * there); `source_url` is what says which site they actually came from. To give
- * one partner their own category in the filter, set `source` from `source_url`
- * here rather than reinstating the sender's own value.
+ * The only hard requirement is a contact: phone or email. Leads always land in
+ * the "website" source category (the office filters on it there). `source_url`
+ * is an optional field recording which site a lead came from; to give one
+ * partner their own category in the filter, set `source` from `source_url` here
+ * rather than reinstating the sender's own value.
  *
  * A GET with a valid secret returns the field list, so an integrator can check
  * their credentials and read the contract without asking us.
@@ -75,18 +75,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
             'contact' => 'at least one of phone / email',
         ],
         'fields' => [
-            'source_url'  => 'string — the website/page the request was submitted on; send it always',
-            'external_id' => 'string — your own id for this request; resending it returns the same lead',
-            'source'      => 'ignored — every request here is filed under "website"',
             'name'        => 'string (or first_name + last_name)',
-            'phone'       => 'string, E.164 preferred (+39…)',
-            'email'       => 'string',
-            'company'     => 'string',
-            'vat_number'  => 'string',
-            'zone'        => 'string — area/region, for routing',
+            'phone'       => 'string, E.164 preferred (+39…) — phone or email required',
+            'email'       => 'string — phone or email required',
             'message'     => 'string — what the customer wrote',
-            'title'       => 'string — subject of the request',
-            'lang'        => '"it" or "en" (default it) — language of our messages to the customer',
+            'external_id' => 'string, optional — your own id; resending it returns the same lead',
+            'company'     => 'string, optional',
+            'vat_number'  => 'string, optional',
+            'zone'        => 'string, optional — area/region, for routing',
+            'title'       => 'string, optional — subject of the request',
+            'lang'        => 'optional "it" or "en" (default it) — language of our messages to the customer',
+            'source_url'  => 'string, optional — the site the request came from; shown on the lead',
+            'source'      => 'ignored — every request here is filed under "website"',
         ],
         'responses' => [
             '201' => '{"ok":true,"lead_id":42,"status":"created"}',
@@ -141,10 +141,12 @@ if ($errors) {
 if ($lead['name'] === '') {
     $lead['name'] = $lead['company'] !== '' ? $lead['company'] : 'Unknown';
 }
-if ($lead['title'] === '') {
-    // Name the site rather than the category, or every one of these reads
-    // "Request from website" in the lead list.
-    $lead['title'] = 'Request from ' . (LeadIntake::host($lead['source_url']) ?: $lead['source']);
+// Title the lead by the site when we were told it, else let Leads::create name
+// it after the customer ("Request: Mario Rossi") — anything but a wall of
+// identical "Request from website" rows.
+$host = LeadIntake::host($lead['source_url']);
+if ($lead['title'] === '' && $host !== '') {
+    $lead['title'] = 'Request from ' . $host;
 }
 
 // ---- create ----

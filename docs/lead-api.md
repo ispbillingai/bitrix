@@ -25,36 +25,34 @@ Server-to-server only: never put the token in browser JavaScript.
 
 ## Body
 
+The only required data is a contact: **phone or email**. Everything else is
+optional.
+
 ```json
 {
-  "source_url":  "https://www.michaeltech.it/contatti",
-  "external_id": "4711",
-  "name":        "Mario Rossi",
-  "phone":       "+393331234567",
-  "email":       "mario.rossi@example.com",
-  "company":     "Rossi SRL",
-  "vat_number":  "01234567890",
-  "zone":        "Lombardia",
-  "message":     "Vorrei informazioni sul modello X",
-  "lang":        "it"
+  "name":    "Mario Rossi",
+  "phone":   "+393331234567",
+  "email":   "mario.rossi@example.com",
+  "message": "Vorrei informazioni sul modello X"
 }
 ```
 
 | Field | Required | Notes |
 |---|---|---|
 | `phone` / `email` | **at least one** | `+39…` preferred; `00`-prefixed and spaced numbers are cleaned up. |
-| `source_url` | strongly recommended | The site/page the request was submitted on. Shown on the lead as *Came from*, and it's what tells one sender from another. |
-| `external_id` | recommended | The sender's own id for the request. Only has to be unique within their own system. See *Retries*. |
 | `name` | no | Or `first_name` + `last_name`. Falls back to `company`, then `Unknown`. |
-| `company`, `vat_number`, `zone`, `title`, `message`, `lang` | no | `lang` is `it` (default) or `en` — the language of our messages **to the customer**. |
+| `message` | no | What the customer wrote. |
+| `external_id` | no | The sender's own id; if sent, resending it returns the same lead instead of a duplicate. See *Retries*. |
+| `company`, `vat_number`, `zone`, `title`, `lang` | no | `lang` is `it` (default) or `en` — the language of our messages **to the customer**. |
+| `source_url` | no | If sent, the site the request came from is shown on the lead as *Came from*. Not required. |
 
 There is no `source` field to send: every lead here is filed under the CRM's
-existing **`website`** category, and `source_url` records which site it came
-from. (Internally the endpoint forces `source = website` and ignores anything
-the sender puts there. To break one partner out into their own row of the
-monthly report, derive `source` from the `source_url` host in
-[`lead.php`](../public/webhooks/lead.php) — never from a sender-supplied value,
-or a typo on their side silently becomes a new category.)
+existing **`website`** category. (Internally the endpoint forces
+`source = website` and ignores anything the sender puts there. To break one
+partner out into their own row of the monthly report, derive `source` from the
+optional `source_url` host in [`lead.php`](../public/webhooks/lead.php) — never
+from a sender-supplied value, or a typo on their side silently becomes a new
+category.)
 
 Field names are matched case-insensitively and common aliases are accepted, so a
 form that already posts `nome`, `telefono`, `messaggio`, `azienda`, `sito` works
@@ -72,18 +70,19 @@ accepted as well as JSON.
 | `422` | `{"ok":false,"error":"validation_failed","fields":{…}}` | `fields` names what's wrong. |
 | `500` | `{"ok":false,"error":"intake_failed"}` | Our side. Safe to retry. |
 
-Treat any 5xx or a timeout as *unknown* and retry with the same `external_id`.
+Treat any 5xx or a timeout as *unknown* and retry (with the same `external_id`
+if you send one).
 
 ## Retries and duplicates
 
 Two guards, so a retry never creates a second lead and never double-messages the
 customer:
 
-1. **`external_id`** — always maps back to the first lead created for it. This is
-   the reliable one; send it. It's namespaced by the host in `source_url`, so it
-   only has to be unique within the sender's own system: two senders both
-   numbering their requests from 1 never collide.
-2. Without `external_id`, the same phone or email arriving again within
+1. **`external_id`** (optional) — if sent, always maps back to the first lead
+   created for that value: a retry with the same id returns it instead of
+   creating a duplicate. It's namespaced internally by the `source_url` host when
+   one is present, so it only has to be unique within the sender's own system.
+2. Even without `external_id`, the same phone or email arriving again within
    **15 minutes** is treated as the same lead (catches double submits).
 
 ## Checking the integration
@@ -101,11 +100,10 @@ Send one:
 curl -i -X POST "https://crm.upgradesrls.com/webhooks/lead.php" \
   -H "Authorization: Bearer <TOKEN>" \
   -H "Content-Type: application/json" \
-  -d '{"source_url":"https://www.michaeltech.it/contatti","external_id":"test-1","name":"Mario Rossi","phone":"+393331234567","email":"mario@example.com","message":"Test"}'
+  -d '{"name":"Mario Rossi","phone":"+393331234567","email":"mario@example.com","message":"Test"}'
 ```
 
-The lead appears on the Leads page immediately under *Source → website*, with
-*Came from* linking back to `source_url`.
+The lead appears on the Leads page immediately under *Source → website*.
 
 ## PHP example
 
@@ -116,12 +114,11 @@ curl_setopt_array($ch, [
     CURLOPT_RETURNTRANSFER => true,
     CURLOPT_HTTPHEADER     => ['Content-Type: application/json', 'Authorization: Bearer ' . $token],
     CURLOPT_POSTFIELDS     => json_encode([
-        'source_url'  => 'https://www.michaeltech.it/contatti',
-        'external_id' => (string)$request->id,
         'name'        => $request->name,
         'phone'       => $request->phone,
         'email'       => $request->email,
         'message'     => $request->message,
+        'external_id' => (string)$request->id,   // optional: retry safety
     ]),
     CURLOPT_TIMEOUT        => 15,
 ]);
