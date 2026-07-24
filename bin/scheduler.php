@@ -15,6 +15,7 @@ use Glue\Bootstrap;
 use Glue\Campaign\Sender;
 use Glue\Event\Log;
 use Glue\Reminder\Scheduler;
+use Glue\Sibill\Invoices;
 
 Bootstrap::init();
 
@@ -38,13 +39,17 @@ try {
 
     $reminders = (new Scheduler())->runDue();
     $campaigns = (new Sender())->runBatch();
+    // Refresh the Sibill invoice mirror on its own slower cadence. Self-throttling
+    // and never throws, so a Sibill outage can't hold up the messages above.
+    $sibill = Invoices::syncIfDue();
 
     Log::write('scheduler', 'tick', null, null, [
         'reminders' => $reminders,
         'campaigns' => $campaigns,
-    ]);
+    ] + ($sibill !== null ? ['sibill' => $sibill] : []));
     fwrite(STDOUT, "[" . date('c') . "] reminders=" . json_encode($reminders)
-        . " campaigns=" . json_encode($campaigns) . "\n");
+        . " campaigns=" . json_encode($campaigns)
+        . ($sibill !== null ? " sibill=" . json_encode($sibill) : "") . "\n");
 } catch (Throwable $e) {
     fwrite(STDERR, "[" . date('c') . "] scheduler error: " . $e->getMessage() . "\n");
     exit(1);

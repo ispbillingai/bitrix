@@ -28,6 +28,8 @@ use Glue\Notify\Notifier;
 use Glue\Notify\TextMeBot;
 use Glue\Reminder\Scheduler;
 use Glue\Settings;
+use Glue\Sibill\Client as SibillClient;
+use Glue\Sibill\Invoices as SibillInvoices;
 use Glue\Sign\Documents as SignDocs;
 
 Bootstrap::init();
@@ -249,6 +251,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'mail.smtp.host', 'mail.smtp.port', 'mail.smtp.user', 'mail.smtp.pass', 'mail.smtp.secure',
                     'logistics.email', 'logistics.phone',
                     'bitrix.sync_enabled', 'bitrix.base_url', 'bitrix.outbound_secret',
+                    'sibill.enabled', 'sibill.api_key', 'sibill.company_id',
+                    'sibill.sync_minutes', 'sibill.sync_months',
                 ];
                 // PHP rewrites dots in POST field names to underscores, so a field
                 // named 'mail.from_email' actually arrives as 'mail_from_email'.
@@ -268,6 +272,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 // checkbox: present only when ticked
                 $pairs['bitrix.sync_enabled'] = $post('bitrix.sync_enabled') !== null ? 'true' : 'false';
+                $pairs['sibill.enabled'] = $post('sibill.enabled') !== null ? 'true' : 'false';
                 // Welcome image (sent with the first-contact lead message on both
                 // channels). Stored under /uploads with a fixed name; the setting
                 // keeps the site-relative path. The clear checkbox removes it.
@@ -687,6 +692,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $flash = $t('test_ok') . ': ' . ($me['NAME'] ?? '') . ' ' . ($me['LAST_NAME'] ?? '') . ' (' . ($me['ID'] ?? '?') . ')';
                 $tab = 'settings';
                 break;
+            case 'test_sibill':
+                // Lists what the token can see. A token is issued per organisation,
+                // so when there is exactly one company we save its id rather than
+                // making someone copy a uuid by hand.
+                $cos = (new SibillClient())->companies();
+                $names = implode(', ', array_map(fn($c) => (string)($c['name'] ?? '?'), $cos));
+                if (count($cos) === 1 && trim((string)Config::get('sibill.company_id', '')) === '') {
+                    Settings::set('sibill.company_id', (string)$cos[0]['id']);
+                    $names .= ' — ' . $t('sib_company_saved');
+                }
+                $flash = $t('test_ok') . ': ' . ($names ?: $t('sib_no_companies'));
+                $tab = 'settings';
+                break;
+            case 'sibill_sync':
+                $s = SibillInvoices::sync();
+                $flash = $t('sib_synced') . ': ' . $s['invoices'] . ' — '
+                    . $t('sib_paid') . ' ' . $s['paid'] . ', ' . $t('sib_partial') . ' ' . $s['partial']
+                    . ', ' . $t('sib_unpaid') . ' ' . $s['unpaid'];
+                $tab = 'invoices';
+                break;
             case 'test_whatsapp':
                 $res = (new Notifier())->whatsappResult((string)$_POST['to'], (string)Config::get('app.company_name', 'CRM') . ' — test ✅');
                 $flash = $res['ok'] ? $t('test_ok') : $t('test_fail') . ': ' . test_reason($res);
@@ -798,8 +823,8 @@ $agents = Auth::agents();
 $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_format((float)$n, 0);
 
 $views = ['overview', 'leads', 'deals', 'contacts', 'appointments', 'tasks', 'tickets', 'documents',
-          'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents', 'partners',
-          'devices', 'network_areas', 'settings', 'instructions'];
+          'invoices', 'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents',
+          'partners', 'devices', 'network_areas', 'settings', 'instructions'];
 $view = in_array($tab, $views, true) ? $tab : 'overview';
 // Agents can't reach admin views, even by typing the URL.
 if ($isAgent && !in_array($view, $agentViews, true)) {
@@ -850,7 +875,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
     $nav = [
         'overview' => 'nav_overview', 'leads' => 'nav_leads', 'deals' => 'nav_deals',
         'contacts' => 'nav_contacts', 'appointments' => 'nav_appointments', 'tasks' => 'nav_tasks',
-        'tickets' => 'nav_tickets', 'documents' => 'nav_documents',
+        'tickets' => 'nav_tickets', 'documents' => 'nav_documents', 'invoices' => 'nav_invoices',
         'campaigns' => 'nav_campaigns', 'messages' => 'nav_messages', 'outbound' => 'nav_outbound',
         'reminders' => 'nav_reminders', 'templates' => 'nav_templates',
         'devices' => 'nav_devices', 'network_areas' => 'nav_network_areas',
@@ -1134,6 +1159,7 @@ function svg(string $name): string {
         'instructions'=> '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
         'settings'    => '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
         'database'    => '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>',
+        'invoices'    => '<path d="M6 2h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M14 2v6h6"/><path d="M12 11v7"/><path d="M14 12.5h-3a1.5 1.5 0 0 0 0 3h2a1.5 1.5 0 0 1 0 3H10"/>',
         'devices'     => '<rect x="4" y="3" width="16" height="12" rx="1"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="15" x2="12" y2="21"/>',
         'partners'    => '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M12 12l2 2 4-4"/>',
         'network_areas' => '<rect x="9" y="2" width="6" height="6" rx="1"/><rect x="3" y="16" width="6" height="6" rx="1"/><rect x="15" y="16" width="6" height="6" rx="1"/><path d="M12 8v4M12 12H6v4M12 12h6v4"/>',

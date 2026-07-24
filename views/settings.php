@@ -9,6 +9,7 @@ $base = \Glue\Config::appBaseUrl() ?: rtrim((string)$cfg('app.base_url', ''), '/
 $is = $h($cfg('app.intake_secret', ''));
 $os = $h($cfg('bitrix.outbound_secret', ''));
 $syncOn = (bool)$cfg('bitrix.sync_enabled', false);
+$sibillOn = (bool)$cfg('sibill.enabled', false);
 $urls = [
     'url_request'   => "$base/request.php",
     'url_lead_api'  => "$base/webhooks/lead.php",
@@ -117,6 +118,25 @@ $pipelines = \Glue\Crm\Pipelines::all();
     ?>
   </div>
 
+  <h3><?= $h($t('sec_sibill')) ?> <span class="pill"><?= $h($t('optional')) ?></span></h3>
+  <p class="muted small"><?= $h($t('sec_sibill_h')) ?></p>
+  <label class="fld" style="display:flex;flex-direction:row;align-items:center;gap:10px">
+    <input type="checkbox" name="sibill.enabled" value="true" style="width:auto" <?= $sibillOn ? 'checked' : '' ?>>
+    <span style="margin:0"><?= $h($t('f_sibill_enable')) ?></span>
+  </label>
+  <div class="row">
+    <?php
+    fld($h, 'sibill.api_key', $t('f_sibill_key'), $cfg('sibill.api_key'), $t('f_sibill_key_h'));
+    fld($h, 'sibill.company_id', $t('f_sibill_company'), $cfg('sibill.company_id'), $t('f_sibill_company_h'));
+    ?>
+  </div>
+  <div class="row">
+    <?php
+    fld($h, 'sibill.sync_minutes', $t('f_sibill_every'), $cfg('sibill.sync_minutes', 30), $t('f_sibill_every_h'));
+    fld($h, 'sibill.sync_months', $t('f_sibill_months'), $cfg('sibill.sync_months', 0), $t('f_sibill_months_h'));
+    ?>
+  </div>
+
   <h3><?= $h($t('sec_bitrix')) ?> <span class="pill"><?= $h($t('optional')) ?></span></h3>
   <p class="muted small"><?= $h($t('sec_bitrix_h')) ?></p>
   <label class="fld" style="display:flex;flex-direction:row;align-items:center;gap:10px">
@@ -176,5 +196,9 @@ $pipelines = \Glue\Crm\Pipelines::all();
   <?php if ($syncOn): ?>
   <form method="post" class="inline"><input type="hidden" name="do" value="test_bitrix">
     <button class="btn ghost"><?= $h($t('test_bitrix')) ?></button></form>
+  <?php endif; ?>
+  <?php if (trim((string)$cfg('sibill.api_key', '')) !== ''): ?>
+  <form method="post" class="inline"><input type="hidden" name="do" value="test_sibill">
+    <button class="btn ghost"><?= $h($t('test_sibill')) ?></button></form>
   <?php endif; ?>
 </div>

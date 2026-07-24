@@ -96,6 +96,21 @@ return [
         'lead_status_new' => 'NEW',
     ],
 
+    // OPTIONAL Sibill sync — OFF by default. Sibill holds the accounting: it
+    // knows which invoices have been paid, and this pulls that in so the CRM can
+    // show it next to the customer. Read-only: the app never issues a document.
+    // Fill these from Settings → Sibill; the connection test lists the companies
+    // your token can see and fills company_id in for you.
+    'sibill' => [
+        'enabled'      => false,
+        'api_key'      => '',   // bearer token issued by Sibill
+        'company_id'   => '',   // uuid of the company whose invoices to mirror
+        'base_url'     => 'https://integration.sibill.com',
+        'sync_minutes' => 30,   // how often the cron refreshes the mirror
+        'sync_months'  => 0,    // 0 = every invoice; N = only the last N months
+        'timeout'      => 30,
+    ],
+
     // Electronic signature (Documents page). Everything stays on this server;
     // only a hash ever leaves it, and only if you switch time stamping on.
     //
