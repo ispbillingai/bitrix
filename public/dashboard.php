@@ -740,6 +740,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $flashType = $rid > 0 ? 'ok' : 'err';
                 $tab = 'invoices';
                 break;
+            case 'sibill_import':
+                // Attach phone/email to customers by VAT. The result (incl. the
+                // unmatched VATs) is handed to the view so it can be shown in full
+                // rather than squeezed into a one-line flash.
+                $sibillImport = SibillCustomers::importContacts((string)($_POST['data'] ?? ''));
+                $flash = str_replace(
+                    ['{m}', '{u}'],
+                    [(string)$sibillImport['matched'], (string)count($sibillImport['unmatched'])],
+                    $t('inv_import_done')
+                );
+                $tab = 'invoices';
+                break;
             case 'test_whatsapp':
                 $res = (new Notifier())->whatsappResult((string)$_POST['to'], (string)Config::get('app.company_name', 'CRM') . ' — test ✅');
                 $flash = $res['ok'] ? $t('test_ok') : $t('test_fail') . ': ' . test_reason($res);

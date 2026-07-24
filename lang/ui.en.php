@@ -796,6 +796,13 @@ return [
     'inv_chase_from'     => 'only invoices due on/after {date}',
     'inv_chase_settings' => 'Chasing settings',
     'inv_cfootnote'      => 'One row per customer, worst debt first. Chasing skips anyone without contact details, paused, or excluded — the "No contact details" tab shows who is unreachable.',
+    'inv_import_title'   => 'Import contact details by VAT',
+    'inv_import_h'       => 'Sibill knows each customer by VAT number but holds no phone or email. Paste a list you already have — one per line, "VAT, phone, email" — and it is matched to these customers by VAT. A pasted value replaces what is there; a blank column is left alone. Order is flexible: the email is found by its @, the VAT by matching your list against the customers above.',
+    'inv_import_ph'      => "IT10125441211, 3391234567, ufficio@cliente.it\n07631861213\tinfo@altrocliente.it",
+    'inv_import_btn'     => 'Import',
+    'inv_import_done'    => 'Import finished — {m} matched, {u} not recognised',
+    'inv_import_result'  => 'Matched {m} customers · {p} phone numbers, {e} emails set',
+    'inv_import_unmatched' => '{n} rows did not match any customer with invoices (no outstanding invoices for that VAT, or a header row):',
 
     // settings — chasing
     'sec_chase'          => 'Payment reminders',

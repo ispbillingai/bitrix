@@ -796,6 +796,13 @@ return [
     'inv_chase_from'     => 'solo fatture con scadenza dal {date}',
     'inv_chase_settings' => 'Impostazioni solleciti',
     'inv_cfootnote'      => 'Una riga per cliente, dal debito più alto. I solleciti saltano chi non ha recapiti, è in pausa o è escluso — la scheda "Senza recapiti" mostra chi non è raggiungibile.',
+    'inv_import_title'   => 'Importa i recapiti per P. IVA',
+    'inv_import_h'       => 'Sibill conosce ogni cliente per P. IVA ma non ne ha telefono o email. Incolla un elenco che hai già — uno per riga, "P.IVA, telefono, email" — e verrà abbinato a questi clienti tramite la P. IVA. Un valore incollato sostituisce quello presente; una colonna vuota viene lasciata invariata. L\'ordine è libero: l\'email si riconosce dalla @, la P. IVA abbinandola ai clienti qui sopra.',
+    'inv_import_ph'      => "IT10125441211, 3391234567, ufficio@cliente.it\n07631861213\tinfo@altrocliente.it",
+    'inv_import_btn'     => 'Importa',
+    'inv_import_done'    => 'Import completato — {m} abbinati, {u} non riconosciuti',
+    'inv_import_result'  => 'Abbinati {m} clienti · impostati {p} telefoni, {e} email',
+    'inv_import_unmatched' => '{n} righe non corrispondono a nessun cliente con fatture (nessuna fattura aperta per quella P. IVA, oppure è una riga di intestazione):',
 
     // impostazioni — solleciti
     'sec_chase'          => 'Solleciti di pagamento',

@@ -200,6 +200,127 @@ final class Customers
 
     // ---- staff edits --------------------------------------------------------
 
+    /**
+     * Bulk-attach contact details to customers by VAT number.
+     *
+     * This is the answer to "Sibill has no phone/email": the invoice already
+     * tells us the VAT, so the customer's identity is never in doubt — only the
+     * way to reach them is missing. Paste a list the client already has (from
+     * the old system, the accountant, a spreadsheet) as one row per line:
+     *
+     *     VAT<TAB>phone<TAB>email        (also accepts ; or , separators)
+     *     IT10125441211  3391234567  ufficio@cliente.it
+     *
+     * Column order is a hint, not a rule: the email is found by its "@", and the
+     * VAT by matching it against the customers we actually hold (which also tells
+     * phone and VAT apart when both are just digits). Phones are normalised to
+     * +39… so they can be messaged as-is.
+     *
+     * Unlike the sync — which only fills blanks — an import is a deliberate human
+     * act, so a provided value overwrites. A blank column is left untouched.
+     *
+     * @return array{matched:int,phone_set:int,email_set:int,lines:int,skipped:int,unmatched:string[]}
+     */
+    public static function importContacts(string $raw): array
+    {
+        $pdo = Db::pdo();
+
+        // Every VAT we hold, and its variants (with/without the IT prefix), mapped
+        // to the customer row — so an input token can be recognised as "a VAT we
+        // know" rather than mistaken for a phone number.
+        $map = [];
+        foreach ($pdo->query('SELECT id, vat_number FROM sibill_customers')->fetchAll() as $r) {
+            foreach (Invoices::vatKeys((string)$r['vat_number']) as $k) {
+                $map[$k] = (int)$r['id'];
+            }
+        }
+
+        $out = ['matched' => 0, 'phone_set' => 0, 'email_set' => 0,
+                'lines' => 0, 'skipped' => 0, 'unmatched' => []];
+
+        $lines = preg_split('/\r\n|\r|\n/', $raw) ?: [];
+        foreach (array_slice($lines, 0, 5000) as $line) {
+            $line = trim($line);
+            if ($line === '') {
+                continue;
+            }
+            $out['lines']++;
+
+            // Spreadsheet paste is tab-separated; fall back to ; then , so a
+            // hand-typed list works too.
+            $sep = str_contains($line, "\t") ? "\t" : (str_contains($line, ';') ? ';' : ',');
+            $fields = array_map('trim', explode($sep, $line));
+
+            $email = ''; $custId = 0; $vatIdx = -1;
+            foreach ($fields as $i => $f) {
+                if ($email === '' && str_contains($f, '@')) {
+                    $email = $f;
+                    continue;
+                }
+                if ($custId === 0) {
+                    foreach (Invoices::vatKeys($f) as $k) {
+                        if (isset($map[$k])) {
+                            $custId = $map[$k];
+                            $vatIdx = $i;
+                            break;
+                        }
+                    }
+                }
+            }
+            // Phone: a leftover field with enough digits (not the VAT, not the email).
+            $phone = '';
+            foreach ($fields as $i => $f) {
+                if ($i === $vatIdx || str_contains($f, '@')) {
+                    continue;
+                }
+                if (strlen(preg_replace('/\D+/', '', $f) ?? '') >= 6) {
+                    $phone = $f;
+                    break;
+                }
+            }
+
+            if ($custId === 0) {
+                // No VAT we recognise. Might be a header row, or a customer with no
+                // outstanding invoices; report it so nothing is silently dropped.
+                if ($email !== '' || $phone !== '') {
+                    $vatShown = $vatIdx >= 0 ? $fields[$vatIdx] : ($fields[0] ?? '');
+                    if (count($out['unmatched']) < 100) {
+                        $out['unmatched'][] = $vatShown !== '' ? $vatShown : $line;
+                    }
+                } else {
+                    $out['skipped']++;
+                }
+                continue;
+            }
+
+            $d = [];
+            if ($phone !== '') {
+                $d['phone'] = \Glue\Notify\Notifier::normalizePhone($phone);
+            }
+            if ($email !== '') {
+                $d['email'] = $email;
+            }
+            if (!$d) {
+                $out['skipped']++;
+                continue;
+            }
+            self::saveDetails($custId, $d);
+            $out['matched']++;
+            if (isset($d['phone']) && $d['phone'] !== '') {
+                $out['phone_set']++;
+            }
+            if (isset($d['email'])) {
+                $out['email_set']++;
+            }
+        }
+
+        Log::write('sibill', 'import_contacts', null, null, [
+            'matched' => $out['matched'], 'phone_set' => $out['phone_set'],
+            'email_set' => $out['email_set'], 'unmatched' => count($out['unmatched']),
+        ]);
+        return $out;
+    }
+
     /** Save the bits Sibill cannot give us. Only the keys present are touched. */
     public static function saveDetails(int $id, array $d): void
     {

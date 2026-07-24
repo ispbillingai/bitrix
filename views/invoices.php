@@ -129,6 +129,33 @@ $here = function (array $over = []) use ($view, $filter, $q): string {
 
 <?php if ($view === 'customers'): /* ---------------- customer list ---------------- */ ?>
 
+  <?php // Import result, shown in full (unmatched VATs included) when a paste just ran. ?>
+  <?php if (!empty($sibillImport)): ?>
+    <div class="card" style="margin-bottom:14px;border-color:var(--green)">
+      <b><?= $h(str_replace(['{m}', '{p}', '{e}'], [
+          (string)$sibillImport['matched'], (string)$sibillImport['phone_set'], (string)$sibillImport['email_set'],
+      ], $t('inv_import_result'))) ?></b>
+      <?php if ($sibillImport['unmatched']): ?>
+        <div class="muted small" style="margin-top:8px">
+          <?= $h(str_replace('{n}', (string)count($sibillImport['unmatched']), $t('inv_import_unmatched'))) ?>
+          <div style="margin-top:4px;font-family:monospace;word-break:break-all"><?= $h(implode('  ·  ', $sibillImport['unmatched'])) ?></div>
+        </div>
+      <?php endif; ?>
+    </div>
+  <?php endif; ?>
+
+  <?php // Bulk-attach contact details by VAT — the missing half Sibill doesn't hold. ?>
+  <details class="card" style="margin-bottom:14px"<?= !empty($sibillImport) ? ' open' : '' ?>>
+    <summary style="cursor:pointer;font-weight:600"><?= $h($t('inv_import_title')) ?></summary>
+    <p class="muted small" style="margin:8px 0"><?= $h($t('inv_import_h')) ?></p>
+    <form method="post">
+      <input type="hidden" name="do" value="sibill_import">
+      <textarea name="data" rows="6" style="width:100%;font-family:monospace;font-size:13px"
+        placeholder="<?= $h($t('inv_import_ph')) ?>"></textarea>
+      <button class="btn" style="margin-top:8px"><?= $h($t('inv_import_btn')) ?></button>
+    </form>
+  </details>
+
   <?php $custs = Customers::search(['state' => $filter, 'q' => $q]); ?>
   <table><thead><tr>
     <th><?= $h($t('inv_th_customer')) ?></th>
