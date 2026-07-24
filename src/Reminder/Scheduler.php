@@ -20,6 +20,23 @@ use Throwable;
  */
 final class Scheduler
 {
+    /**
+     * How many already-due reminders one WEB request will deliver inline before
+     * leaving the rest for the cron. A WhatsApp send blocks: TextMeBot allows one
+     * message every few seconds, so Notify\TextMeBot sleeps out the remainder of
+     * the gap before each call. One send is a tolerable wait; three in a row is
+     * not — creating a lead as an agent fires the welcome AND both
+     * agent-assigned messages in a single request, which sat there for ~25-40s
+     * and looked to the seller like the save had failed (the lead was in fact
+     * created). The first message still goes instantly, so single-message
+     * time-critical flows — the signing OTP, the portal magic link — are
+     * unaffected; anything beyond it waits for the next cron tick (<= 1 min).
+     */
+    private const INLINE_SEND_BUDGET = 1;
+
+    /** Inline sends already made in THIS request (static: survives new Scheduler()). */
+    private static int $inlineSends = 0;
+
     private PDO $db;
     private Notifier $notifier;
 
@@ -27,6 +44,15 @@ final class Scheduler
     {
         $this->db = Db::pdo();
         $this->notifier = new Notifier();
+    }
+
+    /**
+     * May this request still deliver a due reminder inline? The cron runner has
+     * no such limit — it exists to drain the queue and nobody is waiting on it.
+     */
+    private static function maySendInline(): bool
+    {
+        return PHP_SAPI === 'cli' || self::$inlineSends < self::INLINE_SEND_BUDGET;
     }
 
     /**
@@ -79,8 +105,14 @@ final class Scheduler
         // Instant send for already-due reminders. Only a fresh insert sends; a
         // dedupe hit means it was enqueued (and likely already sent) before, so
         // re-sending would double-message on a double-submit / webhook retry.
+        // Past this request's inline budget the row is simply left pending — the
+        // cron picks it up on its next tick, so nothing is lost, the caller just
+        // doesn't wait for it.
         if ($sendIfDue && $freshInsert && strtotime((string)$r['due_at']) <= time()) {
-            $this->sendNow($id);
+            if (self::maySendInline()) {
+                self::$inlineSends++;
+                $this->sendNow($id);
+            }
         }
         return $id;
     }
@@ -183,6 +215,13 @@ final class Scheduler
     public function tickWeb(int $minIntervalSec = 60): array
     {
         $now  = time();
+        // A real cron is the better dispatcher: it drains the queue without a
+        // visitor waiting on the sends. When one is running (heartbeat below),
+        // stand down entirely so no page load ever blocks on WhatsApp. If the
+        // cron stops, the heartbeat goes stale and this takes over again.
+        if ($now - self::lastCronRun() < self::CRON_HEARTBEAT_STALE_SEC) {
+            return ['ran' => false, 'reason' => 'cron_active'];
+        }
         $last = (int)\Glue\Settings::get('scheduler.last_web_tick', 0);
         if ($now - $last < $minIntervalSec) {
             return ['ran' => false, 'reason' => 'throttled'];
@@ -198,6 +237,33 @@ final class Scheduler
             return ['ran' => true, 'due' => 0];
         }
         return ['ran' => true] + $this->runDue();
+    }
+
+    /**
+     * How long after its last run the cron is presumed dead and the web
+     * dispatcher resumes. Three missed minutes — long enough that a slow tick
+     * (a big WhatsApp batch holds the flock) isn't mistaken for an outage.
+     */
+    private const CRON_HEARTBEAT_STALE_SEC = 180;
+
+    /** Unix time of the last bin/scheduler.php run (0 = never). */
+    public static function lastCronRun(): int
+    {
+        try {
+            return (int)\Glue\Settings::get('scheduler.last_cron_run', 0);
+        } catch (Throwable) {
+            return 0; // settings unavailable — treat as "no cron"
+        }
+    }
+
+    /** Stamp a cron tick. Called by bin/scheduler.php at the top of every run. */
+    public static function markCronRun(): void
+    {
+        try {
+            \Glue\Settings::set('scheduler.last_cron_run', (string)time());
+        } catch (Throwable) {
+            // settings unavailable — the web dispatcher just stays active
+        }
     }
 
     /**

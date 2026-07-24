@@ -31,6 +31,11 @@ if (!$lock || !flock($lock, LOCK_EX | LOCK_NB)) {
 }
 
 try {
+    // Heartbeat first: it tells the dashboard's web dispatcher to stand down, so
+    // no page load blocks on a WhatsApp send while this runner is alive. Stamped
+    // before the work, not after, so a long batch never looks like an outage.
+    Scheduler::markCronRun();
+
     $reminders = (new Scheduler())->runDue();
     $campaigns = (new Sender())->runBatch();
 
