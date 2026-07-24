@@ -113,6 +113,7 @@ CREATE TABLE IF NOT EXISTS leads (
     pipeline_id INT UNSIGNED NULL,
     stage_code VARCHAR(48) NOT NULL DEFAULT 'NEW',
     assigned_to INT UNSIGNED NULL,
+    created_by INT UNSIGNED NULL,       -- staff member who typed it in; NULL = inbound (form/API)
     status ENUM('open','converted','junk') NOT NULL DEFAULT 'open',
     customer_name VARCHAR(190) NULL,
     customer_phone VARCHAR(32) NULL,
@@ -131,6 +132,7 @@ CREATE TABLE IF NOT EXISTS leads (
     KEY idx_zone (zone),
     KEY idx_vat (vat_number),
     KEY idx_fair (fair_name),
+    KEY idx_created_by (created_by),
     UNIQUE KEY uniq_source_external (source, external_id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 

@@ -107,13 +107,18 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
         <span class="cnt"><?= count($cards) ?></span>
       </div>
       <div class="kbody" data-stage="<?= $h($s['code']) ?>">
-        <?php foreach ($cards as $c): $nm = $c['customer_name'] ?: ('#' . $c['id']); $ag = $c['agent_name'] ?: $c['agent_username']; ?>
+        <?php foreach ($cards as $c): $nm = $c['customer_name'] ?: ('#' . $c['id']); $ag = $c['agent_name'] ?: $c['agent_username'];
+              $cby = $c['creator_name'] ?: $c['creator_username']; ?>
           <div class="kcard" draggable="true" data-id="<?= $h($c['id']) ?>">
             <b><?= $h($nm) ?></b>
             <div class="meta">
               <span><?= $h($c['source']) ?></span>
               <span title="<?= $h(short_time($c['received_at'])) ?>"><?= $h(time_ago($c['received_at'], $t)) ?></span>
               <?php if ($ag): ?><span><?= avatar($h, $ag) ?> <?= $h($ag) ?></span><?php endif; ?>
+              <?php if ($cby): ?>
+                <span class="byhand" title="<?= $h($t('entered_by_title')) ?>">
+                  <?= svg('pen') ?><?= $h($t('entered_by')) ?> <?= $h($cby) ?></span>
+              <?php endif; ?>
             </div>
             <?php $cmsg = trim((string)($c['comments'] ?? '')); if ($cmsg !== ''): ?>
               <div class="muted small" style="margin-top:7px;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">“<?= $h($cmsg) ?>”</div>
@@ -194,6 +199,10 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
       <span class="pill"><?= $h(stage_label($t, $r['stage_code'], \Glue\Crm\Pipelines::label('lead', $r['stage_code']))) ?></span>
       <?= pill($h, $r['status'], $t) ?>
       <span class="muted small"><?= $ag ? $h($ag) : $h($t('unassigned')) ?></span>
+      <?php $cby = $r['creator_name'] ?: $r['creator_username']; if ($cby): ?>
+        <span class="byhand" title="<?= $h($t('entered_by_title')) ?>">
+          <?= svg('pen') ?><?= $h($t('entered_by')) ?> <?= $h($cby) ?></span>
+      <?php endif; ?>
       <?php $acc = \Glue\Portal\Account::accessStats((int)$r['contact_id']); if ($acc['count'] > 0): ?>
         <span class="pill" title="<?= $h($t('portal_access_title')) ?>" style="background:var(--accent-soft,rgba(91,108,255,.14));color:var(--accent,#5b6cff)">
           <?= svg('users') ?> <?= (int)$acc['count'] ?></span>

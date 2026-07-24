@@ -152,8 +152,11 @@ if (isset($_GET['sdl'])) {
 if (($_GET['export'] ?? '') === 'leads' && !$isAgent) {
     $xm  = preg_match('/^\d{4}-\d{2}$/', (string)($_GET['m'] ?? '')) ? (string)$_GET['m'] : date('Y-m');
     $xsrc = mb_strtolower(trim((string)($_GET['src'] ?? '')));
-    $sql = "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name
-            FROM leads l LEFT JOIN users u ON u.id = l.assigned_to
+    $sql = "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name,
+                   c.username AS creator_username, c.full_name AS creator_name
+            FROM leads l
+            LEFT JOIN users u ON u.id = l.assigned_to
+            LEFT JOIN users c ON c.id = l.created_by
             WHERE l.received_at >= CONCAT(?, '-01')
               AND l.received_at <  CONCAT(?, '-01') + INTERVAL 1 MONTH"
         . ($xsrc !== '' ? ' AND l.source = ?' : '') . ' ORDER BY l.received_at';
@@ -169,7 +172,7 @@ if (($_GET['export'] ?? '') === 'leads' && !$isAgent) {
     $sep = ';';                   // Italian Excel expects semicolons
     fputcsv($out, ['ID', $t('th_created'), $t('f_name'), $t('f_phone'), $t('f_email'), $t('f_vat'),
         $t('f_source'), $t('f_zone'), $t('f_fair'), $t('f_fair_city'),
-        $t('th_stage'), $t('th_status'), $t('th_agent'),
+        $t('th_stage'), $t('th_status'), $t('th_agent'), $t('entered_by'),
         $t('f_message'), $t('exp_processing')], $sep);
     foreach ($xrows as $xr) {
         $trail = [];
@@ -183,6 +186,8 @@ if (($_GET['export'] ?? '') === 'leads' && !$isAgent) {
             (string)($xr['zone'] ?? ''), (string)($xr['fair_name'] ?? ''), (string)($xr['fair_city'] ?? ''),
             stage_label($t, (string)$xr['stage_code'], Pipelines::label('lead', (string)$xr['stage_code'])),
             $xr['status'], $xr['agent_name'] ?: ($xr['agent_username'] ?: ''),
+            // Blank creator = the lead arrived on its own (form/API), not keyed in.
+            $xr['creator_name'] ?: ($xr['creator_username'] ?: $t('entered_inbound')),
             (string)$xr['comments'], implode("\n", $trail),
         ], $sep);
     }
@@ -1144,6 +1149,7 @@ function svg(string $name): string {
         'sign'        => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 16c1.5-2.5 3-2.5 3-1s-1.5 1.5-1 3c2 0 3-1 4-2"/>',
         'trophy'      => '<path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4z"/><path d="M5 4H3v2a3 3 0 0 0 3 3M19 4h2v2a3 3 0 0 1-3 3"/>',
         'phone'       => '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>',
+        'pen'         => '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/>',
     ];
     $body = $p[$name] ?? $p['overview'];
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' . $body . '</svg>';
@@ -1268,6 +1274,11 @@ tbody tr:hover{background:var(--surface2);} tr:last-child td{border-bottom:none;
 .kcard:hover{border-color:var(--line2);} .kcard b{font-size:13.5px;font-weight:600;}
 .kcard .meta{font-size:11.5px;color:var(--muted);margin-top:4px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
 .kcard .amt{color:var(--green);font-weight:600;}
+/* "typed in by hand" marker — tells a lead someone keyed in from a lead that
+   arrived on its own (public form / fair form / partner API). */
+.byhand{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:6px;
+  background:var(--amber-bg);color:var(--amber);font-size:11px;font-weight:600;white-space:nowrap;}
+.byhand svg{width:11px;height:11px;flex:0 0 auto;}
 .avatar{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--accent-soft);color:var(--accent);
   align-items:center;justify-content:center;font-size:11px;font-weight:700;}
 .tl{display:flex;flex-direction:column;gap:0;}

@@ -58,11 +58,11 @@ final class Leads
         $stmt = Db::pdo()->prepare(
             'INSERT INTO leads
                 (contact_id, title, source, external_id, source_url, zone, fair_name, fair_city,
-                 pipeline_id, stage_code, status,
+                 pipeline_id, stage_code, status, created_by,
                  customer_name, customer_phone, customer_email, vat_number, comments, lang,
                  received_at, stage_changed_at)
              VALUES (:contact_id, :title, :source, :external_id, :source_url, :zone, :fair_name, :fair_city,
-                 :pipeline_id, :stage, "open",
+                 :pipeline_id, :stage, "open", :created_by,
                  :name, :phone, :email, :vat, :comments, :lang, NOW(), NOW())'
         );
         $stmt->execute([
@@ -71,6 +71,10 @@ final class Leads
             ':zone' => $zone ?: null,
             ':fair_name' => $fairName ?: null, ':fair_city' => $fairCity ?: null,
             ':pipeline_id' => $pipelineId, ':stage' => $firstStage,
+            // Who typed it in. Null for the public form / fair form / partner API —
+            // those call create() with no actor, and null is what marks a lead as
+            // genuinely inbound rather than hand-entered.
+            ':created_by' => $actorId ?: null,
             ':name' => $name ?: null, ':phone' => $phone ?: null, ':email' => $email ?: null,
             ':vat' => $vat ?: null,
             ':comments' => $d['comments'] ?? null, ':lang' => $lang,
@@ -172,7 +176,7 @@ final class Leads
         return $stmt->fetch() ?: null;
     }
 
-    /** @return array<int,array> recent leads with agent label ($assignedTo scopes to one seller, $source to one origin, $zone to one area) */
+    /** @return array<int,array> recent leads with agent + creator labels ($assignedTo scopes to one seller, $source to one origin, $zone to one area) */
     public static function all(int $limit = 300, ?int $assignedTo = null, ?string $source = null, ?string $zone = null): array
     {
         $limit = max(1, min(1000, $limit));
@@ -188,8 +192,11 @@ final class Leads
         }
         $where = $conds ? ' WHERE ' . implode(' AND ', $conds) : '';
         return Db::pdo()->query(
-            "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name
-             FROM leads l LEFT JOIN users u ON u.id = l.assigned_to
+            "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name,
+                    c.username AS creator_username, c.full_name AS creator_name
+             FROM leads l
+             LEFT JOIN users u ON u.id = l.assigned_to
+             LEFT JOIN users c ON c.id = l.created_by
              $where ORDER BY l.id DESC LIMIT $limit"
         )->fetchAll();
     }
@@ -205,8 +212,11 @@ final class Leads
     {
         $where = "WHERE l.status IN ('open', 'junk')" . ($assignedTo ? ' AND l.assigned_to = ' . (int)$assignedTo : '');
         $rows = Db::pdo()->query(
-            "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name
-             FROM leads l LEFT JOIN users u ON u.id = l.assigned_to
+            "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name,
+                    c.username AS creator_username, c.full_name AS creator_name
+             FROM leads l
+             LEFT JOIN users u ON u.id = l.assigned_to
+             LEFT JOIN users c ON c.id = l.created_by
              $where ORDER BY l.id DESC"
         )->fetchAll();
         $out = [];
