@@ -122,19 +122,87 @@ ask Sibill to rotate it.
 |---|---|
 | `src/Sibill/Client.php` | HTTP: bearer auth, cursor paging, error text |
 | `src/Sibill/Invoices.php` | sync, payment-state derivation, CRM matching, reads |
-| `views/invoices.php` | the staff page — overdue first |
+| `src/Sibill/Customers.php` | debtor roll-up, contact details, the chase pass |
+| `views/invoices.php` | the staff page — customers first, invoices second |
 | `bin/sibill-sync.php` | manual/first import, `--months`, `--relink` |
 | `migrations/027_sibill_invoices.sql` | `sibill_invoices`, `sibill_flows` |
+| `migrations/028_sibill_customers.sql` | `sibill_customers`, plus a collation fix |
+
+---
+
+## Chasing customers for payment
+
+The page is customer-first: one row per counterpart with something outstanding,
+worst debt at the top. `sibill_customers` holds one row per VAT number, rebuilt
+from the invoice mirror at the end of every sync. The money figures are never
+stored — they are a `GROUP BY` over `sibill_invoices`, so they cannot drift out
+of step with the invoices they describe.
+
+### The part Sibill cannot give you
+
+**Sibill holds no phone number and no email for a counterpart.** Not an oversight
+on our side: its own `share-invoice` endpoint asks the caller to supply an
+address. `CounterpartSchema` is name, VAT, address, and the SDI destination code
+— nothing to message.
+
+So a customer can owe €113,000 and be unreachable. Phone, email and language are
+staff-owned columns on `sibill_customers`; the sync fills a *blank* one from a
+matched CRM contact and never overwrites a typed value. The debtor list makes
+this visible rather than quietly skipping people — "No contact details" is a
+filter of its own, and the tile counts how many debtors can actually be reached.
+
+### How a chase is sent
+
+It reuses the existing reminder engine rather than growing a second one. The
+columns are named `name` / `phone` / `email` / `lang` because that is exactly
+what `Crm\EntityResolver` already reads, so adding `'sibill_customer'` to its
+table map was the whole integration — a chase then addresses itself like any
+other customer message and inherits the outbox, the retries and the WhatsApp
+spacing.
+
+```
+scheduler.php ──► Customers::runChaseIfDue()   (hourly at most, working hours only)
+                        │  queues, does not send
+                        ▼
+                  reminders (rule_key = invoice_overdue)
+                        │
+                  Scheduler::runDue()  ──►  WhatsApp / email, spaced by the gateway gap
+```
+
+The chase pass only *queues*; `runDue()` on the next tick delivers. Otherwise a
+run of twenty would sit in a loop sleeping through the rate limit.
+
+### The guard rails
+
+Chasing is **off by default** and stays off until someone ticks the box. Turning
+it on messages real customers about money, and this ledger has invoices overdue
+since 2023 — some of which may well be paid but never reconciled. Bounds:
+
+| setting | default | |
+|---|---|---|
+| `chase_enabled` | `false` | nothing is sent until this is on |
+| `chase_min_days_late` | `7` | grace period after the due date |
+| `chase_min_amount` | `20` | never chase trivial balances |
+| `chase_every_days` | `7` | a customer is never re-chased sooner |
+| `chase_max_per_run` | `15` | queued per hourly pass |
+| `chase_hour_from` / `_to` | `9` / `18` | a 3am debt-collection message is worse than none |
+
+Per customer there is also `chase_enabled` (exclude this account entirely) and
+`snooze_until` (they promised to pay by a date). Automatic chases dedupe to one
+per customer per day; the "Send reminder now" button bypasses that, because a
+human pressing it has decided otherwise.
+
+The copy lives under `invoice_overdue` in `lang/it.php` / `lang/en.php` and is
+editable from Templates like every other rule. Figures sit on labelled lines
+rather than inside a sentence, so "1 invoice" and "5 invoices" don't need two
+versions of the text, and it deliberately says "reply to this message" instead
+of quoting a phone number — `office_phone` falls back to the *company name* when
+`logistics.phone` is unset, which reads badly mid-sentence.
 
 ---
 
 ## What is not built
 
-- **Overdue reminders.** The reminder engine could chase unpaid invoices on a
-  cadence the way it chases unsigned quotes — the data is all here (`due_date`,
-  `open_amount`, the resolved contact). It is a rule and a template away, but no
-  one has asked for it yet, and automatically messaging customers about money is
-  not a thing to switch on unasked.
 - **Issuing invoices.** See the top of this document.
 - **Webhooks.** Sibill mentions document/flow webhooks in its use-case notes but
   the reference publishes no endpoint for registering one. If their consultants

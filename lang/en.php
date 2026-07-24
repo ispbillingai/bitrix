@@ -127,13 +127,21 @@ return [
             . "As per the rules it will become available for processing again after the {lock_days}-day period, "
             . "on {available_date}. — {company}",
 
-        'invoice_overdue' => // to the CUSTOMER: they have unpaid invoices past due
+        // To the CUSTOMER: they have unpaid invoices past due. Figures go on
+        // labelled lines rather than inside the sentence, so one invoice and five
+        // invoices don't need two versions of the copy. No phone number in the
+        // text: not every install has one configured, and replying to the message
+        // always works on both channels.
+        'invoice_overdue' =>
             "Dear {name},\n"
-            . "our records show {count} invoices still unpaid, totalling EUR {total} "
-            . "(no. {invoices}), the oldest due on {oldest_due}.\n"
+            . "our records show amounts still outstanding.\n\n"
+            . "Unpaid invoices: {count}\n"
+            . "Total owed: EUR {total}\n"
+            . "Numbers: {invoices}\n"
+            . "Oldest due date: {oldest_due}\n\n"
             . "If you have already paid, please ignore this message and, if you can, "
             . "send us the payment receipt.\n"
-            . "For anything you need, call us on {office_phone}.\n"
+            . "If you need anything, just reply to this message.\n"
             . "Thank you, {company}",
     ],
 
@@ -291,15 +299,16 @@ return [
                 . '{lock_days}-day period, on <strong>{available_date}</strong>.</p><p>{company}</p>',
         ],
         'invoice_overdue' => [
-            'subject' => 'Payment reminder — {count} unpaid invoices',
+            'subject' => 'Payment reminder — outstanding invoices',
             'html'    => '<p>Dear {name},</p>'
-                . '<p>Our records show <strong>{count}</strong> invoices still unpaid, '
-                . 'totalling <strong>EUR {total}</strong>.</p>'
-                . '<p>Invoices: {invoices}<br>Oldest due date: <strong>{oldest_due}</strong> '
-                . '({days_late} days ago)</p>'
+                . '<p>Our records show amounts still outstanding.</p>'
+                . '<p>Unpaid invoices: <strong>{count}</strong><br>'
+                . 'Total owed: <strong>EUR {total}</strong><br>'
+                . 'Numbers: {invoices}<br>'
+                . 'Oldest due date: <strong>{oldest_due}</strong> ({days_late} days ago)</p>'
                 . '<p>If you have already paid, please ignore this message and, if you can, send us the '
                 . 'payment receipt.</p>'
-                . '<p>For anything you need, call us on {office_phone}.</p>'
+                . '<p>If you need anything, just reply to this email.</p>'
                 . '<p>Kind regards,<br>{company}</p>',
         ],
     ],

@@ -128,13 +128,21 @@ return [
             . "Come da regolamento tornerà disponibile per la lavorazione dopo il periodo di {lock_days} giorni, "
             . "il {available_date}. — {company}",
 
-        'invoice_overdue' => // al CLIENTE: ha fatture scadute non pagate
+        // Al CLIENTE: ha fatture scadute non pagate. I dati stanno su righe
+        // etichettate invece che dentro la frase, così "1 fattura" e "5 fatture"
+        // non richiedono due versioni del testo. Nessun numero di telefono nel
+        // testo: non tutte le installazioni ne hanno uno configurato, e su
+        // WhatsApp/email rispondere al messaggio funziona sempre.
+        'invoice_overdue' =>
             "Gentile {name},\n"
-            . "risultano {count} fatture non ancora saldate per un totale di € {total} "
-            . "(n. {invoices}), la più vecchia scaduta il {oldest_due}.\n"
+            . "dai nostri registri risultano importi non ancora saldati.\n\n"
+            . "Fatture non pagate: {count}\n"
+            . "Totale dovuto: € {total}\n"
+            . "Numeri: {invoices}\n"
+            . "Scadenza più remota: {oldest_due}\n\n"
             . "Se il pagamento è già stato effettuato la preghiamo di ignorare questo messaggio "
             . "e, se possibile, di inviarci la contabile.\n"
-            . "Per qualsiasi chiarimento può contattarci al {office_phone}.\n"
+            . "Per qualsiasi chiarimento può rispondere a questo messaggio.\n"
             . "Grazie, {company}",
     ],
 
@@ -292,15 +300,16 @@ return [
                 . 'periodo di {lock_days} giorni, il <strong>{available_date}</strong>.</p><p>{company}</p>',
         ],
         'invoice_overdue' => [
-            'subject' => 'Sollecito di pagamento — {count} fatture insolute',
+            'subject' => 'Sollecito di pagamento — importi insoluti',
             'html'    => '<p>Gentile {name},</p>'
-                . '<p>dai nostri registri risultano <strong>{count}</strong> fatture non ancora saldate, '
-                . 'per un totale di <strong>&euro; {total}</strong>.</p>'
-                . '<p>Fatture: {invoices}<br>Scadenza più remota: <strong>{oldest_due}</strong> '
-                . '({days_late} giorni fa)</p>'
+                . '<p>dai nostri registri risultano importi non ancora saldati.</p>'
+                . '<p>Fatture non pagate: <strong>{count}</strong><br>'
+                . 'Totale dovuto: <strong>&euro; {total}</strong><br>'
+                . 'Numeri: {invoices}<br>'
+                . 'Scadenza più remota: <strong>{oldest_due}</strong> ({days_late} giorni fa)</p>'
                 . '<p>Se il pagamento è già stato effettuato la preghiamo di ignorare questa comunicazione e, '
                 . 'se possibile, di inviarci la contabile.</p>'
-                . '<p>Per qualsiasi chiarimento può contattarci al {office_phone}.</p>'
+                . '<p>Per qualsiasi chiarimento può rispondere a questa email.</p>'
                 . '<p>Cordiali saluti,<br>{company}</p>',
         ],
     ],
