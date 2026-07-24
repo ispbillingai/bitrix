@@ -126,6 +126,15 @@ return [
             "Hi {enterer_name}, VAT number {vat} has already been entered by another associate. "
             . "As per the rules it will become available for processing again after the {lock_days}-day period, "
             . "on {available_date}. — {company}",
+
+        'invoice_overdue' => // to the CUSTOMER: they have unpaid invoices past due
+            "Dear {name},\n"
+            . "our records show {count} invoices still unpaid, totalling EUR {total} "
+            . "(no. {invoices}), the oldest due on {oldest_due}.\n"
+            . "If you have already paid, please ignore this message and, if you can, "
+            . "send us the payment receipt.\n"
+            . "For anything you need, call us on {office_phone}.\n"
+            . "Thank you, {company}",
     ],
 
     'email' => [
@@ -280,6 +289,18 @@ return [
             'html'    => '<p>Hi {enterer_name},</p><p>VAT number <strong>{vat}</strong> has already been entered '
                 . 'by another associate. As per the rules it will become available for processing again after the '
                 . '{lock_days}-day period, on <strong>{available_date}</strong>.</p><p>{company}</p>',
+        ],
+        'invoice_overdue' => [
+            'subject' => 'Payment reminder — {count} unpaid invoices',
+            'html'    => '<p>Dear {name},</p>'
+                . '<p>Our records show <strong>{count}</strong> invoices still unpaid, '
+                . 'totalling <strong>EUR {total}</strong>.</p>'
+                . '<p>Invoices: {invoices}<br>Oldest due date: <strong>{oldest_due}</strong> '
+                . '({days_late} days ago)</p>'
+                . '<p>If you have already paid, please ignore this message and, if you can, send us the '
+                . 'payment receipt.</p>'
+                . '<p>For anything you need, call us on {office_phone}.</p>'
+                . '<p>Kind regards,<br>{company}</p>',
         ],
     ],
 ];

@@ -109,6 +109,19 @@ return [
         'sync_minutes' => 30,   // how often the cron refreshes the mirror
         'sync_months'  => 0,    // 0 = every invoice; N = only the last N months
         'timeout'      => 30,
+
+        // Automatic payment chasing. OFF by default and deliberately so: turning
+        // it on starts messaging real customers about money. Switch it on only
+        // once the debtor list has been looked over and contact details filled
+        // in — Sibill has no phone/email, so those are typed into the CRM.
+        'chase_enabled'      => false,
+        'chase_every_days'   => 7,    // don't chase the same customer more often
+        'chase_min_days_late'=> 7,    // grace period after the due date
+        'chase_min_amount'   => 20,   // don't chase trivial balances
+        'chase_max_per_run'  => 15,   // queued per hourly pass
+        'chase_channel'      => 'both', // both | whatsapp | email
+        'chase_hour_from'    => 9,    // local time window; nobody wants a 3am
+        'chase_hour_to'      => 18,   // debt-collection message
     ],
 
     // Electronic signature (Documents page). Everything stays on this server;

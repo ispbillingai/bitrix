@@ -10,6 +10,7 @@ $is = $h($cfg('app.intake_secret', ''));
 $os = $h($cfg('bitrix.outbound_secret', ''));
 $syncOn = (bool)$cfg('bitrix.sync_enabled', false);
 $sibillOn = (bool)$cfg('sibill.enabled', false);
+$chaseOn  = (bool)$cfg('sibill.chase_enabled', false);
 $urls = [
     'url_request'   => "$base/request.php",
     'url_lead_api'  => "$base/webhooks/lead.php",
@@ -136,6 +137,36 @@ $pipelines = \Glue\Crm\Pipelines::all();
     fld($h, 'sibill.sync_months', $t('f_sibill_months'), $cfg('sibill.sync_months', 0), $t('f_sibill_months_h'));
     ?>
   </div>
+
+  <h4 style="margin:18px 0 4px"><?= $h($t('sec_chase')) ?></h4>
+  <p class="muted small" style="margin-top:0"><?= $h($t('sec_chase_h')) ?></p>
+  <label class="fld" style="display:flex;flex-direction:row;align-items:center;gap:10px">
+    <input type="checkbox" name="sibill.chase_enabled" value="true" style="width:auto" <?= $chaseOn ? 'checked' : '' ?>>
+    <span style="margin:0"><?= $h($t('f_chase_enable')) ?></span>
+  </label>
+  <div class="row">
+    <?php
+    fld($h, 'sibill.chase_every_days', $t('f_chase_every'), $cfg('sibill.chase_every_days', 7), $t('f_chase_every_h'));
+    fld($h, 'sibill.chase_min_days_late', $t('f_chase_grace'), $cfg('sibill.chase_min_days_late', 7), $t('f_chase_grace_h'));
+    fld($h, 'sibill.chase_min_amount', $t('f_chase_min'), $cfg('sibill.chase_min_amount', 20), $t('f_chase_min_h'));
+    ?>
+  </div>
+  <div class="row">
+    <?php
+    fld($h, 'sibill.chase_max_per_run', $t('f_chase_max'), $cfg('sibill.chase_max_per_run', 15), $t('f_chase_max_h'));
+    fld($h, 'sibill.chase_hour_from', $t('f_chase_from'), $cfg('sibill.chase_hour_from', 9), $t('f_chase_hours_h'));
+    fld($h, 'sibill.chase_hour_to', $t('f_chase_to'), $cfg('sibill.chase_hour_to', 18), $t('f_chase_hours_h'));
+    ?>
+  </div>
+  <label class="fld"><span><?= $h($t('f_chase_channel')) ?></span>
+    <select name="sibill.chase_channel">
+      <?php foreach (['both', 'whatsapp', 'email'] as $ch): ?>
+        <option value="<?= $ch ?>" <?= (string)$cfg('sibill.chase_channel', 'both') === $ch ? 'selected' : '' ?>>
+          <?= $h($t('chan_' . $ch)) ?></option>
+      <?php endforeach; ?>
+    </select>
+    <small class="muted"><?= $h($t('f_chase_channel_h')) ?></small>
+  </label>
 
   <h3><?= $h($t('sec_bitrix')) ?> <span class="pill"><?= $h($t('optional')) ?></span></h3>
   <p class="muted small"><?= $h($t('sec_bitrix_h')) ?></p>

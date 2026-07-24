@@ -127,6 +127,15 @@ return [
             "Ciao {enterer_name}, la partita IVA {vat} risulta già inserita da un altro collaboratore. "
             . "Come da regolamento tornerà disponibile per la lavorazione dopo il periodo di {lock_days} giorni, "
             . "il {available_date}. — {company}",
+
+        'invoice_overdue' => // al CLIENTE: ha fatture scadute non pagate
+            "Gentile {name},\n"
+            . "risultano {count} fatture non ancora saldate per un totale di € {total} "
+            . "(n. {invoices}), la più vecchia scaduta il {oldest_due}.\n"
+            . "Se il pagamento è già stato effettuato la preghiamo di ignorare questo messaggio "
+            . "e, se possibile, di inviarci la contabile.\n"
+            . "Per qualsiasi chiarimento può contattarci al {office_phone}.\n"
+            . "Grazie, {company}",
     ],
 
     'email' => [
@@ -281,6 +290,18 @@ return [
             'html'    => '<p>Ciao {enterer_name},</p><p>la partita IVA <strong>{vat}</strong> risulta già inserita '
                 . 'da un altro collaboratore. Come da regolamento tornerà disponibile per la lavorazione dopo il '
                 . 'periodo di {lock_days} giorni, il <strong>{available_date}</strong>.</p><p>{company}</p>',
+        ],
+        'invoice_overdue' => [
+            'subject' => 'Sollecito di pagamento — {count} fatture insolute',
+            'html'    => '<p>Gentile {name},</p>'
+                . '<p>dai nostri registri risultano <strong>{count}</strong> fatture non ancora saldate, '
+                . 'per un totale di <strong>&euro; {total}</strong>.</p>'
+                . '<p>Fatture: {invoices}<br>Scadenza più remota: <strong>{oldest_due}</strong> '
+                . '({days_late} giorni fa)</p>'
+                . '<p>Se il pagamento è già stato effettuato la preghiamo di ignorare questa comunicazione e, '
+                . 'se possibile, di inviarci la contabile.</p>'
+                . '<p>Per qualsiasi chiarimento può contattarci al {office_phone}.</p>'
+                . '<p>Cordiali saluti,<br>{company}</p>',
         ],
     ],
 ];

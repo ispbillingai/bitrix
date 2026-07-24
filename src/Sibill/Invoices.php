@@ -48,7 +48,8 @@ final class Invoices
         $cutoff  = $months > 0 ? date('Y-m-d', strtotime("-$months months")) : null;
         $startedAt = date('Y-m-d H:i:s');
 
-        $stats = ['invoices' => 0, 'flows' => 0, 'paid' => 0, 'partial' => 0, 'unpaid' => 0, 'pruned' => 0];
+        $stats = ['invoices' => 0, 'flows' => 0, 'paid' => 0, 'partial' => 0, 'unpaid' => 0,
+                  'pruned' => 0, 'customers' => 0];
         $complete = true; // false if the horizon cut the walk short
 
         $client->each('documents', [
@@ -81,6 +82,10 @@ final class Invoices
         if ($complete && $stats['invoices'] > 0) {
             $stats['pruned'] = self::prune($company, $startedAt);
         }
+
+        // Roll the invoices up per customer — that is the view anyone chasing
+        // payment actually works from.
+        $stats['customers'] = Customers::rebuild();
 
         Log::write('sibill', 'sync', null, null, $stats);
         return $stats;

@@ -75,6 +75,10 @@ final class EntityResolver
             'deal'        => 'deals',
             'appointment' => 'appointments',
             'contact'     => 'contacts',
+            // Sibill debtors: name/phone/email/lang are named to match the
+            // fallbacks above, so a payment chase addresses itself like any
+            // other customer message.
+            'sibill_customer' => 'sibill_customers',
             default       => null,
         };
         if ($table === null || $id <= 0) {

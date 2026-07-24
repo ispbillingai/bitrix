@@ -253,6 +253,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'bitrix.sync_enabled', 'bitrix.base_url', 'bitrix.outbound_secret',
                     'sibill.enabled', 'sibill.api_key', 'sibill.company_id',
                     'sibill.sync_minutes', 'sibill.sync_months',
+                    'sibill.chase_enabled', 'sibill.chase_every_days', 'sibill.chase_min_days_late',
+                    'sibill.chase_min_amount', 'sibill.chase_max_per_run', 'sibill.chase_channel',
+                    'sibill.chase_hour_from', 'sibill.chase_hour_to',
                 ];
                 // PHP rewrites dots in POST field names to underscores, so a field
                 // named 'mail.from_email' actually arrives as 'mail_from_email'.
@@ -273,6 +276,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // checkbox: present only when ticked
                 $pairs['bitrix.sync_enabled'] = $post('bitrix.sync_enabled') !== null ? 'true' : 'false';
                 $pairs['sibill.enabled'] = $post('sibill.enabled') !== null ? 'true' : 'false';
+                $pairs['sibill.chase_enabled'] = $post('sibill.chase_enabled') !== null ? 'true' : 'false';
                 // Welcome image (sent with the first-contact lead message on both
                 // channels). Stored under /uploads with a fixed name; the setting
                 // keeps the site-relative path. The clear checkbox removes it.
@@ -710,6 +714,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $flash = $t('sib_synced') . ': ' . $s['invoices'] . ' — '
                     . $t('sib_paid') . ' ' . $s['paid'] . ', ' . $t('sib_partial') . ' ' . $s['partial']
                     . ', ' . $t('sib_unpaid') . ' ' . $s['unpaid'];
+                $tab = 'invoices';
+                break;
+            case 'sibill_customer_save':
+                // The phone/email Sibill cannot give us, plus the per-customer
+                // chase controls. chase_enabled is a checkbox: absent means off.
+                SibillCustomers::saveDetails((int)$_POST['id'], [
+                    'phone'         => (string)($_POST['phone'] ?? ''),
+                    'email'         => (string)($_POST['email'] ?? ''),
+                    'lang'          => (string)($_POST['lang'] ?? 'it'),
+                    'notes'         => (string)($_POST['notes'] ?? ''),
+                    'snooze_until'  => (string)($_POST['snooze_until'] ?? ''),
+                    'chase_enabled' => isset($_POST['chase_enabled']),
+                ]);
+                $flash = $t('saved');
+                $tab = 'invoices';
+                break;
+            case 'sibill_remind':
+                // No redirect: the form posts to the current URL, so $_GET still
+                // holds the open customer and the flash stays visible — which for
+                // "did that message actually go?" is the whole point.
+                $rid = SibillCustomers::remind((int)$_POST['id'], true);
+                $flash = $rid > 0 ? $t('inv_reminded') : $t('inv_remind_failed');
+                $flashType = $rid > 0 ? 'ok' : 'err';
                 $tab = 'invoices';
                 break;
             case 'test_whatsapp':
