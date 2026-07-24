@@ -253,7 +253,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'bitrix.sync_enabled', 'bitrix.base_url', 'bitrix.outbound_secret',
                     'sibill.enabled', 'sibill.api_key', 'sibill.company_id',
                     'sibill.sync_minutes', 'sibill.sync_months',
-                    'sibill.chase_enabled', 'sibill.chase_every_days', 'sibill.chase_min_days_late',
+                    'sibill.chase_enabled', 'sibill.chase_from_date',
+                    'sibill.chase_every_days', 'sibill.chase_min_days_late',
                     'sibill.chase_min_amount', 'sibill.chase_max_per_run', 'sibill.chase_channel',
                     'sibill.chase_hour_from', 'sibill.chase_hour_to',
                 ];

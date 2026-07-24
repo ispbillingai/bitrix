@@ -78,6 +78,9 @@ $here = function (array $over = []) use ($view, $filter, $q): string {
               (string)(int)$cfg('sibill.chase_min_days_late', 7),
               $plain($cfg('sibill.chase_min_amount', 20)),
           ], $t('inv_chase_rule'))) ?>
+          <?php if (($cf = trim((string)$cfg('sibill.chase_from_date', ''))) !== ''): ?>
+            · <?= $h(str_replace('{date}', $cf, $t('inv_chase_from'))) ?>
+          <?php endif; ?>
         <?php else: ?>
           <?= $h($t('inv_chase_off_h')) ?>
         <?php endif; ?>

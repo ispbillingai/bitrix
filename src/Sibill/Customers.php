@@ -230,18 +230,50 @@ final class Customers
     // ---- chasing ------------------------------------------------------------
 
     /**
+     * The "start fresh" line. When set, automatic chasing ignores anything due
+     * before this date — so switching chasing on today does not fire off a
+     * reminder about an invoice that fell due in 2023 and may well have been
+     * paid without ever being reconciled in Sibill. Blank = chase everything.
+     */
+    public static function chaseFromDate(): string
+    {
+        $v = trim((string)Config::get('sibill.chase_from_date', ''));
+        if ($v === '') {
+            return '';
+        }
+        $ts = strtotime($v);
+        return $ts ? date('Y-m-d', $ts) : '';
+    }
+
+    /**
      * Customers due a payment reminder right now.
      *
      * Deliberately narrow: a customer must be overdue by more than a grace
      * period, owe more than a floor amount (nobody should get a WhatsApp about
-     * €3.20), be reachable, not be snoozed or excluded, and not have been
-     * chased within the cadence.
+     * €3.20), be reachable, not be snoozed or excluded, not have been chased
+     * within the cadence, and — if a start date is set — be overdue on an
+     * invoice due on or after it.
      */
     public static function due(int $limit): array
     {
         $everyDays = max(1, (int)Config::get('sibill.chase_every_days', 7));
         $minLate   = max(0, (int)Config::get('sibill.chase_min_days_late', 7));
         $minAmount = (float)Config::get('sibill.chase_min_amount', 20);
+        $fromDate  = self::chaseFromDate();
+
+        // The cutoff lands inside the aggregate: a customer's owed/count/oldest
+        // must be computed from in-window invoices only, or the message would
+        // still quote the old backlog even when it did not trigger the chase.
+        $innerWhere = "pay_state <> 'paid' AND due_date IS NOT NULL
+                       AND due_date < (CURDATE() - INTERVAL ? DAY)
+                       AND counterpart_vat IS NOT NULL AND counterpart_vat <> ''";
+        $params = [$minLate];
+        if ($fromDate !== '') {
+            $innerWhere .= ' AND due_date >= ?';
+            $params[]    = $fromDate;
+        }
+        $params[] = $everyDays;
+        $params[] = $minAmount;
 
         $stmt = Db::pdo()->prepare(
             "SELECT c.*, agg.overdue_count, agg.owed, agg.oldest_due, agg.numbers
@@ -253,8 +285,7 @@ final class Customers
                        MIN(due_date) AS oldest_due,
                        SUBSTRING_INDEX(GROUP_CONCAT(number ORDER BY due_date ASC SEPARATOR ', '), ', ', 5) AS numbers
                 FROM sibill_invoices
-                WHERE pay_state <> 'paid' AND due_date IS NOT NULL AND due_date < (CURDATE() - INTERVAL ? DAY)
-                  AND counterpart_vat IS NOT NULL AND counterpart_vat <> ''
+                WHERE $innerWhere
                 GROUP BY counterpart_vat
              ) agg ON agg.counterpart_vat = c.vat_number
              WHERE c.chase_enabled = 1
@@ -265,7 +296,7 @@ final class Customers
              ORDER BY agg.owed DESC
              LIMIT " . max(1, min(200, $limit))
         );
-        $stmt->execute([$minLate, $everyDays, $minAmount]);
+        $stmt->execute($params);
         return $stmt->fetchAll();
     }
 
@@ -291,6 +322,13 @@ final class Customers
         }
 
         $open = self::invoices($id, true);
+        // An automatic chase only ever talks about invoices inside the start-date
+        // window; a human pressing "remind now" gets the customer's full open
+        // balance, because they can see the invoice list and chose to send it.
+        if (!$sendNow && ($from = self::chaseFromDate()) !== '') {
+            $open = array_values(array_filter($open, static fn($i) =>
+                $i['due_date'] !== null && $i['due_date'] >= $from));
+        }
         if (!$open) {
             return 0;
         }

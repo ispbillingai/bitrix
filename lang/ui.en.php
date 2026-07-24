@@ -793,6 +793,7 @@ return [
     'inv_chase_off'      => 'Automatic chasing OFF',
     'inv_chase_off_h'    => 'Nobody is being messaged. You can still send reminders by hand from a customer.',
     'inv_chase_rule'     => 'every {d} days, once {l} days past due, above EUR {a}',
+    'inv_chase_from'     => 'only invoices due on/after {date}',
     'inv_chase_settings' => 'Chasing settings',
     'inv_cfootnote'      => 'One row per customer, worst debt first. Chasing skips anyone without contact details, paused, or excluded — the "No contact details" tab shows who is unreachable.',
 
@@ -800,6 +801,8 @@ return [
     'sec_chase'          => 'Payment reminders',
     'sec_chase_h'        => 'Chases customers with overdue invoices on a cadence. Off by default: switching it on starts messaging real customers about money, so check the debtor list first.',
     'f_chase_enable'     => 'Chase overdue invoices automatically',
+    'f_chase_from_date'  => 'Only chase invoices due on or after',
+    'f_chase_from_date_h'=> 'Your clean-slate line. Set it to today to start fresh and skip the historical backlog — automatic reminders then ignore anything that fell due earlier. Leave blank to chase everything. The "Send reminder now" button ignores this.',
     'f_chase_every'      => 'Chase the same customer every (days)',
     'f_chase_every_h'    => 'A customer never gets two reminders closer together than this.',
     'f_chase_grace'      => 'Grace period (days past due)',

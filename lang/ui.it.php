@@ -793,6 +793,7 @@ return [
     'inv_chase_off'      => 'Solleciti automatici SPENTI',
     'inv_chase_off_h'    => 'Nessun cliente viene contattato. Puoi comunque inviare solleciti a mano dalla scheda del cliente.',
     'inv_chase_rule'     => 'ogni {d} giorni, dopo {l} giorni dalla scadenza, sopra € {a}',
+    'inv_chase_from'     => 'solo fatture con scadenza dal {date}',
     'inv_chase_settings' => 'Impostazioni solleciti',
     'inv_cfootnote'      => 'Una riga per cliente, dal debito più alto. I solleciti saltano chi non ha recapiti, è in pausa o è escluso — la scheda "Senza recapiti" mostra chi non è raggiungibile.',
 
@@ -800,6 +801,8 @@ return [
     'sec_chase'          => 'Solleciti di pagamento',
     'sec_chase_h'        => 'Sollecita i clienti con fatture scadute a cadenza regolare. Spento di default: attivandolo si inizia a scrivere a clienti veri parlando di soldi, quindi controlla prima l\'elenco degli insoluti.',
     'f_chase_enable'     => 'Sollecita automaticamente le fatture scadute',
+    'f_chase_from_date'  => 'Sollecita solo fatture con scadenza dal',
+    'f_chase_from_date_h'=> 'La tua linea di partenza. Impostala a oggi per ripartire da zero e ignorare lo storico: i solleciti automatici salteranno tutto ciò che è scaduto prima. Lascia vuoto per sollecitare tutto. Il pulsante "Invia sollecito ora" ignora questa impostazione.',
     'f_chase_every'      => 'Risollecita lo stesso cliente ogni (giorni)',
     'f_chase_every_h'    => 'Un cliente non riceve mai due solleciti più ravvicinati di così.',
     'f_chase_grace'      => 'Tolleranza (giorni dalla scadenza)',

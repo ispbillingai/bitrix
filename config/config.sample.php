@@ -115,6 +115,12 @@ return [
         // once the debtor list has been looked over and contact details filled
         // in — Sibill has no phone/email, so those are typed into the CRM.
         'chase_enabled'      => false,
+        // Start-fresh line. Empty = chase every overdue invoice. Set it to the
+        // day you go live (e.g. '2026-07-24') and automatic chasing ignores
+        // anything due before then — so you don't dredge up years-old invoices
+        // that may already be paid but never reconciled. The "remind now" button
+        // is unaffected: a human can still chase anything by hand.
+        'chase_from_date'    => '',
         'chase_every_days'   => 7,    // don't chase the same customer more often
         'chase_min_days_late'=> 7,    // grace period after the due date
         'chase_min_amount'   => 20,   // don't chase trivial balances

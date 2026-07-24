@@ -144,6 +144,10 @@ $pipelines = \Glue\Crm\Pipelines::all();
     <input type="checkbox" name="sibill.chase_enabled" value="true" style="width:auto" <?= $chaseOn ? 'checked' : '' ?>>
     <span style="margin:0"><?= $h($t('f_chase_enable')) ?></span>
   </label>
+  <label class="fld"><span><?= $h($t('f_chase_from_date')) ?></span>
+    <input type="date" name="sibill.chase_from_date" value="<?= $h($cfg('sibill.chase_from_date', '')) ?>">
+    <small class="muted"><?= $h($t('f_chase_from_date_h')) ?></small>
+  </label>
   <div class="row">
     <?php
     fld($h, 'sibill.chase_every_days', $t('f_chase_every'), $cfg('sibill.chase_every_days', 7), $t('f_chase_every_h'));
