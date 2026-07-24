@@ -170,14 +170,14 @@ $today = date('Y-m-d');
           <th><?= $h($t('inv_th_method')) ?></th><th><?= $h($t('inv_th_state')) ?></th>
           <th><?= $h($t('inv_th_settled')) ?></th>
         </tr></thead><tbody>
-        <?php foreach (Invoices::flows((int)$r['id']) as $f): ?>
+        <?php foreach (Invoices::flows((int)$r['id']) as $fl): ?>
           <tr>
-            <td class="small"><?= $h($f['due_date'] ?: '—') ?></td>
-            <td class="small"><?= $eur($f['amount'], $f['currency']) ?></td>
-            <td class="small"><?= $h(code_label($t, 'inv_pm_', $f['payment_method'])) ?></td>
-            <td><span class="pill" style="color:<?= $f['payment_status'] === 'PAID' ? 'var(--green)' : 'var(--muted)' ?>">
-              <?= $h($f['payment_status'] === 'PAID' ? $t('inv_st_paid') : $t('inv_st_unpaid')) ?></span></td>
-            <td class="small"><?= $h($f['settled_date'] ?: '—') ?></td>
+            <td class="small"><?= $h($fl['due_date'] ?: '—') ?></td>
+            <td class="small"><?= $eur($fl['amount'], $fl['currency']) ?></td>
+            <td class="small"><?= $h(code_label($t, 'inv_pm_', $fl['payment_method'])) ?></td>
+            <td><span class="pill" style="color:<?= $fl['payment_status'] === 'PAID' ? 'var(--green)' : 'var(--muted)' ?>">
+              <?= $h($fl['payment_status'] === 'PAID' ? $t('inv_st_paid') : $t('inv_st_unpaid')) ?></span></td>
+            <td class="small"><?= $h($fl['settled_date'] ?: '—') ?></td>
           </tr>
         <?php endforeach; ?>
         </tbody></table>
