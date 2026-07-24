@@ -28,6 +28,7 @@ use Glue\Notify\Notifier;
 use Glue\Notify\TextMeBot;
 use Glue\Reminder\Scheduler;
 use Glue\Settings;
+use Glue\Sign\Documents as SignDocs;
 
 Bootstrap::init();
 Auth::ensureSeed(); // create default admin/admin on first run
@@ -108,13 +109,14 @@ $filterAgentId = (!$isAgent && !empty($_GET['agent'])) ? (int)$_GET['agent'] : n
 if ($filterAgentId !== null) {
     $scopeId = $filterAgentId;
 }
-$agentViews   = ['overview', 'leads', 'deals', 'appointments', 'tasks', 'messages', 'tickets', 'instructions'];
+$agentViews   = ['overview', 'leads', 'deals', 'appointments', 'tasks', 'messages', 'tickets', 'documents', 'instructions'];
 $techViews    = ['devices', 'network_areas'];
 $agentActions = [
     'lead_create', 'lead_move', 'lead_convert', 'lead_note', 'lead_edit',
     'deal_move', 'deal_note', 'deal_invite',
     'appt_create', 'appt_schedule', 'appt_status',
     'task_complete', 'task_status', 'ticket_reply', 'ticket_status', 'ticket_open_staff', 'change_my_password',
+    'doc_create', 'doc_send', 'doc_void',
 ];
 
 // ---- ticket attachment download (?dl=<message_id>) ----
@@ -123,6 +125,22 @@ if (isset($_GET['dl'])) {
     // Admin can fetch anything; an agent only files on tickets assigned to them.
     if ($msg && (!$isAgent || (int)$msg['assigned_agent_id'] === $scopeId)) {
         Tickets::streamAttachment($msg);
+    }
+    http_response_code(404);
+    exit('Not found');
+}
+
+// ---- signed-document download (?sdl=<id>&k=orig|signed) ----
+// Nothing under storage/sign is web-reachable; this is the only way out, and an
+// agent only reaches the documents they raised.
+if (isset($_GET['sdl'])) {
+    $sdoc = SignDocs::find((int)$_GET['sdl']);
+    if ($sdoc && (!$isAgent || (int)$sdoc['created_by'] === $scopeId)) {
+        $wantSigned = ($_GET['k'] ?? 'orig') === 'signed';
+        $path = $wantSigned ? SignDocs::signedPath($sdoc) : SignDocs::originalPath($sdoc);
+        if ($path !== null) {
+            SignDocs::stream($path, $wantSigned ? 'signed-' . $sdoc['uid'] . '.pdf' : (string)$sdoc['orig_name']);
+        }
     }
     http_response_code(404);
     exit('Not found');
@@ -189,7 +207,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $rid = (int)($_POST['id'] ?? 0);
         $ownerCol = ['lead_' => ['leads', 'assigned_to'], 'deal_' => ['deals', 'assigned_to'],
                      'appt_' => ['appointments', 'agent_id'], 'task_' => ['tasks', 'assigned_to'],
-                     'ticket_' => ['tickets', 'assigned_agent_id']];
+                     'ticket_' => ['tickets', 'assigned_agent_id'],
+                     'doc_' => ['sign_documents', 'created_by']];
         $needsOwner = null;
         foreach ($ownerCol as $prefix => $tc) {
             if (str_starts_with($do, $prefix)) { $needsOwner = $tc; break; }
@@ -502,6 +521,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $tab = 'deals';
                 break;
 
+            // ---------- documents (electronic signature) ----------
+            case 'doc_create':
+                $res = SignDocs::create([
+                    'title'      => $_POST['title'] ?? '',
+                    'contact_id' => (int)($_POST['contact_id'] ?? 0),
+                    'name'       => $_POST['name'] ?? '', 'phone' => $_POST['phone'] ?? '',
+                    'email'      => $_POST['email'] ?? '', 'lang' => $_POST['lang'] ?? null,
+                ], $_FILES['document'] ?? null, $uid);
+                if ($res['ok']) {
+                    // Sending is the normal case, so it is one action, not two.
+                    $flash = !empty($_POST['send_now']) && SignDocs::send($res['id'], $uid)
+                        ? $t('dc_sent') : $t('dc_created');
+                } else {
+                    $flash = $t('dc_err_' . $res['error']) !== 'dc_err_' . $res['error']
+                        ? $t('dc_err_' . $res['error']) : $t('dc_err_save_failed');
+                    $flashType = 'err';
+                }
+                $tab = 'documents';
+                break;
+            case 'doc_send':
+                $flash = SignDocs::send((int)$_POST['id'], $uid) ? $t('dc_sent') : $t('not_allowed');
+                $flashType = $flash === $t('not_allowed') ? 'err' : 'ok';
+                $tab = 'documents';
+                break;
+            case 'doc_void':
+                $flash = SignDocs::void((int)$_POST['id'], $uid) ? $t('dc_voided') : $t('not_allowed');
+                $tab = 'documents';
+                break;
+
             // ---------- contacts ----------
             case 'contact_create':
                 Contacts::create([
@@ -744,7 +792,7 @@ $cfg = fn(string $k, $d = '') => Config::get($k, $d);
 $agents = Auth::agents();
 $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_format((float)$n, 0);
 
-$views = ['overview', 'leads', 'deals', 'contacts', 'appointments', 'tasks', 'tickets',
+$views = ['overview', 'leads', 'deals', 'contacts', 'appointments', 'tasks', 'tickets', 'documents',
           'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents', 'partners',
           'devices', 'network_areas', 'settings', 'instructions'];
 $view = in_array($tab, $views, true) ? $tab : 'overview';
@@ -797,14 +845,14 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
     $nav = [
         'overview' => 'nav_overview', 'leads' => 'nav_leads', 'deals' => 'nav_deals',
         'contacts' => 'nav_contacts', 'appointments' => 'nav_appointments', 'tasks' => 'nav_tasks',
-        'tickets' => 'nav_tickets',
+        'tickets' => 'nav_tickets', 'documents' => 'nav_documents',
         'campaigns' => 'nav_campaigns', 'messages' => 'nav_messages', 'outbound' => 'nav_outbound',
         'reminders' => 'nav_reminders', 'templates' => 'nav_templates',
         'devices' => 'nav_devices', 'network_areas' => 'nav_network_areas',
         'events' => 'nav_events', 'agents' => 'nav_agents', 'partners' => 'nav_partners', 'instructions' => 'nav_instr', 'settings' => 'nav_settings',
     ];
     if ($isAgent) { // agents only see their own work
-        $nav = array_intersect_key($nav, array_flip(['overview', 'leads', 'deals', 'appointments', 'tasks', 'messages', 'instructions']));
+        $nav = array_intersect_key($nav, array_flip(['overview', 'leads', 'deals', 'appointments', 'tasks', 'messages', 'documents', 'instructions']));
     } elseif ($isTech) { // technical-area users only see device monitoring
         $nav = array_intersect_key($nav, array_flip(['devices']));
     } ?>
@@ -1092,6 +1140,8 @@ function svg(string $name): string {
         'money'       => '<line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/>',
         'alert'       => '<path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>',
         'check'       => '<path d="M20 6 9 17l-5-5"/>',
+        'documents'   => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 16c1.5-2.5 3-2.5 3-1s-1.5 1.5-1 3c2 0 3-1 4-2"/>',
+        'sign'        => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><path d="M9 16c1.5-2.5 3-2.5 3-1s-1.5 1.5-1 3c2 0 3-1 4-2"/>',
         'trophy'      => '<path d="M8 21h8M12 17v4M7 4h10v4a5 5 0 0 1-10 0V4z"/><path d="M5 4H3v2a3 3 0 0 0 3 3M19 4h2v2a3 3 0 0 1-3 3"/>',
         'phone'       => '<path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92z"/>',
     ];

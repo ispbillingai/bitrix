@@ -189,14 +189,20 @@ if ($cid) {
 $quoteStage = (string)Config::get('crm.deal_quote_stage', 'QUOTE');
 
 // ---- page routing (one section per page, like a normal app) ----
-$pages = ['orders', 'appointments', 'support', 'account'];
+$signDocs = $cid ? \Glue\Sign\Documents::forContact($cid) : [];
+$toSign   = 0;
+foreach ($signDocs as $sd) {
+    $toSign += in_array($sd['status'], ['sent', 'viewed'], true) ? 1 : 0;
+}
+
+$pages = ['orders', 'documents', 'appointments', 'support', 'account'];
 $page = in_array($_GET['page'] ?? '', $pages, true) ? (string)$_GET['page'] : 'orders';
 if ($signFor) {
     $page = 'orders'; // an OTP form mid-flight always renders on the orders page
 }
-$titles = ['orders' => $t('your_orders'), 'appointments' => $t('your_appts'),
+$titles = ['orders' => $t('your_orders'), 'documents' => $t('your_docs'), 'appointments' => $t('your_appts'),
            'support' => $t('support'), 'account' => $t('account')];
-$icons  = ['orders' => '📦', 'appointments' => '📅', 'support' => '💬', 'account' => '🔒'];
+$icons  = ['orders' => '📦', 'documents' => '✍️', 'appointments' => '📅', 'support' => '💬', 'account' => '🔒'];
 
 // selected support conversation (?tk=) — only if it belongs to this customer
 $tkSel = (int)($_GET['tk'] ?? ($_POST['ticket_id'] ?? 0));
@@ -244,7 +250,8 @@ if ($tkCur && $page === 'support') {
   <nav>
     <?php foreach ($pages as $p): ?>
       <a class="<?= $page === $p ? 'active' : '' ?>" href="?page=<?= $h($p) ?>">
-        <span class="nav-ic"><?= $icons[$p] ?></span><?= $h($titles[$p]) ?></a>
+        <span class="nav-ic"><?= $icons[$p] ?></span><?= $h($titles[$p]) ?>
+        <?php if ($p === 'documents' && $toSign > 0): ?><span class="navbadge"><?= (int)$toSign ?></span><?php endif; ?></a>
     <?php endforeach; ?>
   </nav>
   <div class="side-foot">
@@ -314,6 +321,40 @@ if ($tkCur && $page === 'support') {
         <?php endif; ?>
       <?php elseif ($signed): ?>
         <div class="ok-line">✓ <?= $h($t('order_confirmed')) ?></div>
+      <?php endif; ?>
+    </div>
+  <?php endforeach; ?>
+
+<?php elseif ($page === 'documents'): ?>
+  <?php if (!$signDocs): ?><div class="empty"><?= $h($t('no_docs')) ?></div><?php endif; ?>
+  <?php foreach ($signDocs as $sd):
+      $sdStatus = (string)$sd['status'];
+      $pending  = in_array($sdStatus, ['sent', 'viewed'], true) && !empty($sd['access_token']);
+      $sdLink   = !empty($sd['access_token']) ? \Glue\Sign\Documents::signUrl((string)$sd['access_token']) : null;
+      $sdClass  = ['signed' => 'green', 'declined' => 'grey', 'expired' => 'grey'][$sdStatus] ?? 'amber';
+  ?>
+    <div class="card">
+      <div class="order-h">
+        <div>
+          <b><?= $h($sd['title']) ?></b>
+          <div class="muted small"><?= $h($sd['orig_name']) ?>
+            · <?= $h(date('d/m/Y', strtotime((string)$sd['created_at']))) ?></div>
+        </div>
+        <span class="status <?= $sdClass ?>"><?= $h($t('doc_st_' . $sdStatus) !== 'doc_st_' . $sdStatus ? $t('doc_st_' . $sdStatus) : $sdStatus) ?></span>
+      </div>
+      <?php if ($pending): ?>
+        <div class="sign-box">
+          <p><?= $h($t('doc_awaiting')) ?></p>
+          <a class="btn" href="<?= $h($sdLink) ?>"><?= $h($t('doc_sign_now')) ?></a>
+        </div>
+      <?php elseif ($sdStatus === 'signed'): ?>
+        <div class="row-line" style="margin-top:12px">
+          <span class="muted small"><?= $h($t('signed_on')) ?>
+            <b><?= $h(date('d/m/Y H:i', strtotime((string)$sd['signed_at']))) ?></b></span>
+          <?php if ($sdLink !== null): ?>
+            <a class="btn sm" href="<?= $h($sdLink) ?>&amp;dl=signed"><?= $h($t('doc_download')) ?></a>
+          <?php endif; ?>
+        </div>
       <?php endif; ?>
     </div>
   <?php endforeach; ?>
@@ -483,6 +524,11 @@ function portal_strings(string $lang): array
         'login_hint' => 'First time here? Open the link we sent you by WhatsApp or email.',
         'hello' => 'Hello', 'home_sub' => 'Here are your estimates and orders.',
         'your_orders' => 'Your orders', 'no_orders' => 'No orders yet.',
+        'your_docs' => 'Documents', 'no_docs' => 'No documents to sign.',
+        'doc_st_sent' => 'To sign', 'doc_st_viewed' => 'To sign', 'doc_st_signed' => 'Signed',
+        'doc_st_declined' => 'Declined', 'doc_st_expired' => 'Expired',
+        'doc_awaiting' => 'This document is waiting for your signature.',
+        'doc_sign_now' => 'Read and sign', 'doc_download' => 'Download signed copy',
         'updated' => 'updated', 'estimate' => 'Estimate', 'sign_by' => 'Sign by', 'signed_on' => 'Signed on',
         'st_signed' => 'Signed', 'st_closed' => 'Closed', 'st_awaiting' => 'Awaiting your signature', 'st_progress' => 'In progress',
         'sign_now' => 'Sign the contract', 'sign_help' => 'We will send you a one-time code to confirm.',
@@ -520,6 +566,11 @@ function portal_strings(string $lang): array
         'login_hint' => 'Prima volta qui? Apri il link che ti abbiamo inviato via WhatsApp o email.',
         'hello' => 'Ciao', 'home_sub' => 'Ecco i tuoi preventivi e ordini.',
         'your_orders' => 'I tuoi ordini', 'no_orders' => 'Ancora nessun ordine.',
+        'your_docs' => 'Documenti', 'no_docs' => 'Nessun documento da firmare.',
+        'doc_st_sent' => 'Da firmare', 'doc_st_viewed' => 'Da firmare', 'doc_st_signed' => 'Firmato',
+        'doc_st_declined' => 'Rifiutato', 'doc_st_expired' => 'Scaduto',
+        'doc_awaiting' => 'Questo documento attende la tua firma.',
+        'doc_sign_now' => 'Leggi e firma', 'doc_download' => 'Scarica la copia firmata',
         'updated' => 'aggiornato', 'estimate' => 'Preventivo', 'sign_by' => 'Firma entro', 'signed_on' => 'Firmato il',
         'st_signed' => 'Firmato', 'st_closed' => 'Chiuso', 'st_awaiting' => 'In attesa della tua firma', 'st_progress' => 'In lavorazione',
         'sign_now' => 'Firma il contratto', 'sign_help' => 'Ti invieremo un codice monouso per confermare.',
@@ -584,6 +635,8 @@ body{font-family:'Inter',system-ui,Arial,sans-serif;background:var(--bg);color:v
 .side nav a.active{background:var(--accent);color:#fff}
 .side nav a.active .nav-ic{background:rgba(255,255,255,.18)}
 .nav-ic{width:28px;height:28px;border-radius:8px;background:#f1f3fa;display:inline-flex;align-items:center;justify-content:center;font-size:14px;flex-shrink:0}
+.navbadge{margin-left:auto;min-width:21px;height:21px;padding:0 6px;border-radius:11px;background:#e5616e;color:#fff;font-size:11.5px;font-weight:800;display:inline-flex;align-items:center;justify-content:center}
+.side nav a.active .navbadge{background:#fff;color:var(--accent)}
 .side-foot{border-top:1px solid var(--line);padding:14px}
 .side-user{display:flex;align-items:center;gap:11px;margin-bottom:12px}
 .side-user-t{min-width:0;display:flex;flex-direction:column}

@@ -96,6 +96,43 @@ return [
         'lead_status_new' => 'NEW',
     ],
 
+    // Electronic signature (Documents page). Everything stays on this server;
+    // only a hash ever leaves it, and only if you switch time stamping on.
+    //
+    // With nothing set here the app generates its own signing certificate on
+    // first use and keeps it in storage/sign/keys. That is cryptographically
+    // sound — a sealed PDF cannot be altered without breaking — but it is not
+    // accredited by anyone. To get external accreditation, buy a qualified
+    // (eIDAS) certificate and point pkcs12_path at the .p12/.pfx file; nothing
+    // else in the app changes. See docs/signing.md.
+    'sign' => [
+        // A PKCS#12 bundle (certificate + private key + any chain).
+        'pkcs12_path' => null,           // e.g. '/etc/crm/signing.p12'
+        'pkcs12_pass' => '',
+        // ...or separate PEM files, if that is what your CA gave you.
+        'cert_path'   => null,
+        'key_path'    => null,
+        'key_pass'    => '',
+        'chain_path'  => null,           // intermediate certificates, PEM
+        // Country used only when generating the fallback self-signed certificate.
+        'country'     => 'IT',
+        // RFC 3161 time stamp authority. Empty = off; the sealing time is then
+        // this server's own clock. A TSA signs the hash of our signature with
+        // its own key and time, which is the cheapest independence you can buy.
+        // Free option: https://freetsa.org/tsr
+        'tsa_url'     => '',
+        'tsa_user'    => '',
+        'tsa_pass'    => '',
+        'tsa_timeout' => 15,
+        // Originals larger than this are not embedded in the sealed PDF; the
+        // certificate still records their hash, and the file is kept alongside.
+        'embed_max_bytes' => 8388608,    // 8 MB
+        // Where originals, sealed PDFs and the key pair live. Empty = storage/sign
+        // above the web root, falling back to public/uploads/sign (blocked by
+        // .htaccess). Neither is ever served directly.
+        'storage_dir' => null,
+    ],
+
     // Dashboard master/fallback password. Real accounts live in the `users` table
     // (Agents page); this is only a recovery login so you're never locked out.
     'dashboard' => [

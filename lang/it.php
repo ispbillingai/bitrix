@@ -75,6 +75,27 @@ return [
             "{company}: il tuo codice di firma è *{code}*. "
             . "È valido per {minutes} minuti. Non condividerlo con nessuno.",
 
+        'doc_sign_request' => // al cliente: un documento attende la firma
+            "Ciao {name}! ✍️ {company} ti ha inviato \"{title}\" da firmare. "
+            . "Apri il link, leggi il documento e conferma con il codice monouso "
+            . "che ti invieremo: {link}",
+
+        'doc_sign_otp' => // al cliente: il codice per QUESTO documento
+            "{company}: il tuo codice per firmare \"{title}\" è *{code}*. "
+            . "È valido per {minutes} minuti. Non condividerlo con nessuno.",
+
+        'doc_signed_copy' => // al cliente: fatto, ecco la prova
+            "✅ Grazie {name}! \"{title}\" è stato firmato. La tua copia firmata "
+            . "contiene il documento originale e un certificato di firma. "
+            . "Puoi verificarla in qualsiasi momento qui: {link}",
+
+        'doc_signed_staff' => // all'agente che l'ha inviato
+            "✅ {customer_name} ha firmato \"{title}\". La copia sigillata è nella "
+            . "pagina Documenti del CRM.",
+
+        'doc_declined_staff' => // all'agente che l'ha inviato
+            "⚠️ {customer_name} ha rifiutato di firmare \"{title}\". Motivo: {reason}",
+
         'ticket_staff' => // all'agente assegnato
             "💬 Nuovo messaggio dal cliente {customer_name} — \"{subject}\" (ticket #{id}). "
             . "Rispondi dal CRM.",
@@ -189,6 +210,37 @@ return [
             'html'    => '<p>Ciao {name},</p><p>Il tuo codice monouso per firmare il contratto è:</p>'
                 . '<p style="font-size:24px;font-weight:bold;letter-spacing:4px">{code}</p>'
                 . '<p>È valido per {minutes} minuti. Non condividerlo con nessuno.</p>',
+        ],
+        'doc_sign_request' => [
+            'subject' => '{company}: firma "{title}"',
+            'html'    => '<p>Ciao {name},</p><p>{company} ti ha inviato <strong>"{title}"</strong> da firmare.</p>'
+                . '<p>Apri il link qui sotto, leggi il documento e conferma con il codice monouso che ti '
+                . 'invieremo. Bastano meno di due minuti.</p>'
+                . '<p><a href="{link}">Leggi e firma il documento</a></p>'
+                . '<p>Oppure incolla questo link nel browser:<br>{link}</p>',
+        ],
+        'doc_sign_otp' => [
+            'subject' => 'Il tuo codice per firmare "{title}": {code}',
+            'html'    => '<p>Ciao {name},</p><p>Il tuo codice monouso per firmare <strong>"{title}"</strong> è:</p>'
+                . '<p style="font-size:24px;font-weight:bold;letter-spacing:4px">{code}</p>'
+                . '<p>È valido per {minutes} minuti. Non condividerlo con nessuno.</p>',
+        ],
+        'doc_signed_copy' => [
+            'subject' => 'Firmato: "{title}"',
+            'html'    => '<p>Ciao {name},</p><p><strong>"{title}"</strong> è stato firmato. Grazie.</p>'
+                . '<p>La tua copia firmata contiene il documento originale e un certificato di firma che '
+                . 'riporta chi ha firmato, come è stato identificato e quando.</p>'
+                . '<p><a href="{link}">Verifica questa firma</a></p>',
+        ],
+        'doc_signed_staff' => [
+            'subject' => 'Firmato: "{title}" — {customer_name}',
+            'html'    => '<p><strong>{customer_name}</strong> ha firmato "{title}".</p>'
+                . '<p>La copia sigillata e il registro delle operazioni sono nella pagina Documenti del CRM.</p>',
+        ],
+        'doc_declined_staff' => [
+            'subject' => 'Rifiutato: "{title}" — {customer_name}',
+            'html'    => '<p><strong>{customer_name}</strong> ha rifiutato di firmare "{title}".</p>'
+                . '<p>Motivo indicato: {reason}</p>',
         ],
         'ticket_staff' => [
             'subject' => 'Nuovo messaggio dal cliente — {subject} (#{id})',

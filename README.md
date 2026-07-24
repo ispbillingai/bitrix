@@ -44,6 +44,13 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 - **Appointments**: requests come in → staff assign a seller and confirm a time →
   reminders fire to **both** parties before the event.
 - **Tasks + KPI**: assign work to sellers, score on completion, leaderboard.
+- **Documents (electronic signature)**: upload a PDF, send it for signature, the
+  customer confirms with a one-time code, and the CRM seals the result itself —
+  a CAdES-signed PDF holding a signature certificate plus the original document,
+  backed by an append-only, hash-chained operation log. No SaaS, no per-document
+  fee. Runs on a self-issued certificate out of the box; drop in a qualified
+  (eIDAS) one to add external accreditation. Anyone can check a signature at
+  `/verify.php`. Full detail: [docs/signing.md](docs/signing.md).
 - **Campaigns / Messages / Reminders / Activity log**: mass WhatsApp/email, full
   delivery outbox, the reminder queue, and an audit trail.
 
@@ -61,6 +68,7 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 | KPI / score evaluation | `Crm\Tasks` (kpi_score/weight) + leaderboard |
 | Manual interrupt / silence any automation | move the record's stage; pending reminders auto-cancel |
 | Mass WhatsApp/email marketing | `campaign.php` + `Campaign\Sender` (throttled) |
+| Sign a document with an OTP, in-house | `views/documents.php` → `Sign\Documents` → `Sign\Signer` (CAdES) → `public/sign.php` / `public/verify.php` |
 | Bitrix24 sync | **optional** `Sync\BitrixSync`, off by default |
 
 ## Layout
@@ -68,7 +76,9 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 ```
 config/config.sample.php   copy to config.php (gitignored); only `db` is required here
 db/schema.sql              full reference schema (+ seed pipelines)
-migrations/                versioned changes applied by migrate.php (005–011 add the CRM + portal + tickets)
+migrations/                versioned changes applied by migrate.php (005–011 add the CRM + portal + tickets;
+                           025 adds document signing)
+storage/sign/              originals, sealed PDFs and the signing key (gitignored, above the web root)
 migrate.php                migration runner (CLI or ?key=)
 bin/scheduler.php          cron: dispatch due reminders + campaign batches
 lang/  en.php it.php        customer message copy (WhatsApp + email)
@@ -78,6 +88,8 @@ public/
   request.php              public customer request form
   portal.php               customer portal (magic-link/password login; view
                            estimate + order status; sign the contract via OTP)
+  sign.php                 tokenised signing page (read → OTP → sealed PDF)
+  verify.php               public signature check (by reference or by file)
   dashboard.php            CRM control panel (controller; renders /views)
   campaign.php             create a mass campaign
   webhooks/
@@ -91,6 +103,8 @@ src/
   Crm/   Pipelines, Contacts, Leads, LeadIntake, Deals, Appointments, Tasks,
          Tickets, Automation, Activities, EntityResolver   — the CRM domain
   Portal/  Account (customer login + magic link), Otp (signing codes)
+  Sign/    Documents (lifecycle), Audit (hash-chained log), Signer + Pdf (sealed
+           certificate), Cms + Asn1 (CAdES), Certificate, Timestamp, Verify
   Reminder/  Scheduler (queue), Templates (copy)
   Notify/    Notifier, TextMeBot (WhatsApp), Mailer
   Campaign/  Sender (mass send)

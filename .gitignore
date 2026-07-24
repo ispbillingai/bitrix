@@ -9,6 +9,10 @@
 /public/uploads/*
 !/public/uploads/.htaccess
 
+# Signing: customer documents, sealed PDFs and — above all — the private key.
+# Committing storage/sign/keys would make every signature we ever made forgeable.
+/storage/sign/
+
 # Local logs / scratch
 /logs/*.log
 *.log

@@ -74,6 +74,27 @@ return [
             "{company}: your signing code is *{code}*. "
             . "It is valid for {minutes} minutes. Do not share it with anyone.",
 
+        'doc_sign_request' => // to the customer: a document is waiting for signature
+            "Hi {name}! ✍️ {company} has sent you \"{title}\" to sign. "
+            . "Open the link, read the document and confirm with the one-time code "
+            . "we will send you: {link}",
+
+        'doc_sign_otp' => // to the customer: the code for THIS document
+            "{company}: your code to sign \"{title}\" is *{code}*. "
+            . "It is valid for {minutes} minutes. Do not share it with anyone.",
+
+        'doc_signed_copy' => // to the customer: it is done, here is the proof
+            "✅ Thank you {name}! \"{title}\" has been signed. Your signed copy "
+            . "contains the original document and a signature certificate. "
+            . "You can verify it any time here: {link}",
+
+        'doc_signed_staff' => // to the agent who sent it
+            "✅ {customer_name} signed \"{title}\". The sealed copy is on the "
+            . "Documents page in the CRM.",
+
+        'doc_declined_staff' => // to the agent who sent it
+            "⚠️ {customer_name} declined to sign \"{title}\". Reason: {reason}",
+
         'ticket_staff' => // to the assigned agent
             "💬 New customer message from {customer_name} — \"{subject}\" (ticket #{id}). "
             . "Reply from the CRM.",
@@ -188,6 +209,37 @@ return [
             'html'    => '<p>Hello {name},</p><p>Your one-time code to sign your contract is:</p>'
                 . '<p style="font-size:24px;font-weight:bold;letter-spacing:4px">{code}</p>'
                 . '<p>It is valid for {minutes} minutes. Do not share it with anyone.</p>',
+        ],
+        'doc_sign_request' => [
+            'subject' => '{company}: please sign "{title}"',
+            'html'    => '<p>Hello {name},</p><p>{company} has sent you <strong>"{title}"</strong> to sign.</p>'
+                . '<p>Open the link below, read the document, and confirm with the one-time code we will '
+                . 'send you. It takes about a minute.</p>'
+                . '<p><a href="{link}">Read and sign the document</a></p>'
+                . '<p>Or paste this link into your browser:<br>{link}</p>',
+        ],
+        'doc_sign_otp' => [
+            'subject' => 'Your code to sign "{title}": {code}',
+            'html'    => '<p>Hello {name},</p><p>Your one-time code to sign <strong>"{title}"</strong> is:</p>'
+                . '<p style="font-size:24px;font-weight:bold;letter-spacing:4px">{code}</p>'
+                . '<p>It is valid for {minutes} minutes. Do not share it with anyone.</p>',
+        ],
+        'doc_signed_copy' => [
+            'subject' => 'Signed: "{title}"',
+            'html'    => '<p>Hello {name},</p><p><strong>"{title}"</strong> has been signed. Thank you.</p>'
+                . '<p>Your signed copy contains the original document and a signature certificate '
+                . 'recording who signed, how they were identified, and when.</p>'
+                . '<p><a href="{link}">Verify this signature</a></p>',
+        ],
+        'doc_signed_staff' => [
+            'subject' => 'Signed: "{title}" — {customer_name}',
+            'html'    => '<p><strong>{customer_name}</strong> signed "{title}".</p>'
+                . '<p>The sealed copy and its operation log are on the Documents page in the CRM.</p>',
+        ],
+        'doc_declined_staff' => [
+            'subject' => 'Declined: "{title}" — {customer_name}',
+            'html'    => '<p><strong>{customer_name}</strong> declined to sign "{title}".</p>'
+                . '<p>Reason given: {reason}</p>',
         ],
         'ticket_staff' => [
             'subject' => 'New customer message — {subject} (#{id})',
