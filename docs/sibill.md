@@ -151,6 +151,28 @@ matched CRM contact and never overwrites a typed value. The debtor list makes
 this visible rather than quietly skipping people — "No contact details" is a
 filter of its own, and the tile counts how many debtors can actually be reached.
 
+This is worth being clear about, because it looks like it should be solved by
+issuing invoices from our side. It should not. The invoice we already receive
+carries the VAT number (and the counterpart UUID), so *which* customer is never
+in doubt — issuing our own invoices would add a real SDI filing, real risk, and
+no sandbox, to learn something we already know. The only missing fact is the
+contact detail, and the right home for that is a table on our server keyed by
+VAT. Which is what `sibill_customers` is.
+
+Three ways a row gets its phone/email, cheapest first:
+
+1. **Import** — `Customers::importContacts()`, the "Import contact details by VAT"
+   panel on the page. Paste a list the client already has (old system, accountant,
+   spreadsheet): one row per line, VAT + phone + email, any order, any common
+   separator. The email is found by its `@`, the VAT by matching against the
+   customers we hold — which is also how a VAT and a phone are told apart when
+   both are just digits. Phones go through `Notifier::normalizePhone`. An import
+   overwrites; unrecognised VATs (no open invoices, or a header row) are reported.
+2. **From a CRM contact** — the sync auto-fills a blank from a lead/contact whose
+   VAT matches. Enter a customer in the CRM with their VAT and they connect to
+   their invoices on the next sync.
+3. **By hand** — type it on the customer card while chasing.
+
 ### How a chase is sent
 
 It reuses the existing reminder engine rather than growing a second one. The
