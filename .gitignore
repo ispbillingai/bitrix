@@ -12,6 +12,10 @@
 # Signing: customer documents, sealed PDFs and — above all — the private key.
 # Committing storage/sign/keys would make every signature we ever made forgeable.
 /storage/sign/
+# Private keys / cert bundles must never be committed, wherever they are dropped.
+*.key
+*.p12
+*.pfx
 
 # Local logs / scratch
 /logs/*.log
