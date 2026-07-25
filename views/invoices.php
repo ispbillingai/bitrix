@@ -156,6 +156,107 @@ $here = function (array $over = []) use ($view, $filter, $q): string {
     </form>
   </details>
 
+  <?php
+  // The editor for an opened customer is rendered HERE, above the list and
+  // OUTSIDE the table. Forms must never live inside a <table>: the browser
+  // detaches their hidden inputs during parsing, so Save posts an empty id and
+  // silently writes nothing (which is exactly the "I saved but it was blank"
+  // bug). Fetched on its own so it works whatever filter the list is on.
+  $oc = $openCust > 0 ? Customers::get($openCust) : null;
+  ?>
+  <?php if ($oc):
+      $ocReach = trim((string)$oc['phone']) !== '' || trim((string)$oc['email']) !== '';
+  ?>
+    <div class="card" id="cust-open" style="margin-bottom:16px;border-color:var(--accent)">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px">
+        <div>
+          <h3 style="margin:0"><?= $h($oc['name']) ?></h3>
+          <div class="muted small" style="margin-top:2px">
+            <?= $h($t('f_vat')) ?> <?= $h($oc['vat_number']) ?>
+            · <?= $h($t('inv_th_owed')) ?> <b><?= $eur($oc['owed']) ?></b>
+            <?php if ((int)$oc['overdue_count'] > 0): ?>
+              · <span style="color:var(--red)"><?= $h(str_replace('{n}', (string)(int)$oc['overdue_count'], $t('inv_n_overdue'))) ?></span>
+            <?php endif; ?>
+          </div>
+        </div>
+        <a class="btn ghost tiny" href="<?= $h($here(['c' => null])) ?>"><?= $h($t('inv_close')) ?></a>
+      </div>
+
+      <div class="row" style="gap:14px;align-items:flex-start;margin-top:12px">
+        <?php // Contact details — the thing Sibill cannot give us. ?>
+        <form method="post" class="card" style="flex:1;min-width:280px;margin:0">
+          <input type="hidden" name="do" value="sibill_customer_save">
+          <input type="hidden" name="id" value="<?= (int)$oc['id'] ?>">
+          <h3 style="margin-top:0"><?= $h($t('inv_contact_details')) ?></h3>
+          <p class="muted small" style="margin-top:-6px"><?= $h($t('inv_contact_h')) ?></p>
+          <div class="row">
+            <label class="fld"><span><?= $h($t('f_phone')) ?></span>
+              <input name="phone" value="<?= $h($oc['phone'] ?? '') ?>" placeholder="+39…"></label>
+            <label class="fld"><span><?= $h($t('f_email')) ?></span>
+              <input name="email" type="email" value="<?= $h($oc['email'] ?? '') ?>"></label>
+          </div>
+          <div class="row">
+            <label class="fld"><span><?= $h($t('f_default_lang')) ?></span>
+              <select name="lang">
+                <?php foreach (['it', 'en'] as $lc): ?>
+                  <option value="<?= $lc ?>" <?= ($oc['lang'] ?? 'it') === $lc ? 'selected' : '' ?>><?= strtoupper($lc) ?></option>
+                <?php endforeach; ?>
+              </select></label>
+            <label class="fld"><span><?= $h($t('inv_snooze_until')) ?></span>
+              <input name="snooze_until" type="date" value="<?= $h($oc['snooze_until'] ?? '') ?>"></label>
+          </div>
+          <label class="fld" style="display:flex;flex-direction:row;align-items:center;gap:10px">
+            <input type="checkbox" name="chase_enabled" value="1" style="width:auto" <?= (int)$oc['chase_enabled'] ? 'checked' : '' ?>>
+            <span style="margin:0"><?= $h($t('inv_chase_this')) ?></span>
+          </label>
+          <label class="fld"><span><?= $h($t('f_notes')) ?></span>
+            <textarea name="notes" rows="2"><?= $h($oc['notes'] ?? '') ?></textarea></label>
+          <button class="btn"><?= $h($t('save')) ?></button>
+        </form>
+
+        <div class="card" style="flex:1;min-width:260px;margin:0">
+          <h3 style="margin-top:0"><?= $h($t('inv_send_reminder')) ?></h3>
+          <?php if (!$ocReach): ?>
+            <p class="muted small"><?= $h($t('inv_cannot_remind')) ?></p>
+          <?php else: ?>
+            <p class="muted small"><?= $h(str_replace(
+                ['{n}', '{total}'], [(string)(int)$oc['open_count'], $plain($oc['owed'])], $t('inv_remind_h'))) ?></p>
+            <form method="post" onsubmit="return confirm('<?= $h($t('inv_remind_confirm')) ?>')">
+              <input type="hidden" name="do" value="sibill_remind">
+              <input type="hidden" name="id" value="<?= (int)$oc['id'] ?>">
+              <button class="btn"><?= $h($t('inv_remind_now')) ?></button>
+            </form>
+            <?php if ($oc['last_reminded_at'] !== null): ?>
+              <p class="muted small" style="margin-bottom:0">
+                <?= $h($t('inv_last_reminded')) ?>: <?= $h($oc['last_reminded_at']) ?>
+                (<?= $h((string)(int)$oc['reminders_sent']) ?>)</p>
+            <?php endif; ?>
+          <?php endif; ?>
+        </div>
+      </div>
+
+      <table style="margin:14px 0 0"><thead><tr>
+        <th><?= $h($t('inv_th_number')) ?></th><th><?= $h($t('inv_th_total')) ?></th>
+        <th><?= $h($t('inv_th_open')) ?></th><th><?= $h($t('inv_th_due')) ?></th>
+        <th><?= $h($t('inv_th_state')) ?></th>
+      </tr></thead><tbody>
+      <?php foreach (Customers::invoices((int)$oc['id']) as $i):
+          $iLate = $i['pay_state'] !== 'paid' && $i['due_date'] !== null && $i['due_date'] < $today; ?>
+        <tr>
+          <td class="small"><b><?= $h($i['number'] ?: '—') ?></b>
+            <div class="muted"><?= $h($i['creation_date'] ?: '') ?></div></td>
+          <td class="small"><?= $eur($i['gross_amount'], $i['currency']) ?></td>
+          <td class="small"><?= $i['pay_state'] === 'paid' ? '<span class="muted">—</span>' : $eur($i['open_amount'], $i['currency']) ?></td>
+          <td class="small"><span<?= $iLate ? ' style="color:var(--red);font-weight:600"' : '' ?>>
+            <?= $h(($i['pay_state'] === 'paid' ? $i['last_paid_date'] : $i['due_date']) ?: '—') ?></span></td>
+          <td><span class="pill" style="color:<?= $h($stateColor[$i['pay_state']] ?? 'var(--muted)') ?>">
+            <?= $h($t('inv_st_' . $i['pay_state'])) ?></span></td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody></table>
+    </div>
+  <?php endif; ?>
+
   <?php $custs = Customers::search(['state' => $filter, 'q' => $q]); ?>
   <table><thead><tr>
     <th><?= $h($t('inv_th_customer')) ?></th>
@@ -175,7 +276,7 @@ $here = function (array $over = []) use ($view, $filter, $q): string {
       $reach = trim((string)$c['phone']) !== '' || trim((string)$c['email']) !== '';
       $isOpen = $openCust === (int)$c['id'];
   ?>
-    <tr<?= $late > 0 ? ' style="background:rgba(239,68,68,.05)"' : '' ?>>
+    <tr<?= $isOpen ? ' style="background:var(--surface2)"' : ($late > 0 ? ' style="background:rgba(239,68,68,.05)"' : '') ?>>
       <td class="small" style="max-width:300px">
         <b><?= $h($c['name']) ?></b>
         <div class="muted"><?= $h($t('f_vat')) ?> <?= $h($c['vat_number']) ?></div>
@@ -219,87 +320,10 @@ $here = function (array $over = []) use ($view, $filter, $q): string {
         <?php endif; ?>
       </td>
       <td class="small">
-        <a class="btn ghost tiny" href="<?= $h($here(['c' => $isOpen ? null : (int)$c['id']])) ?>#c<?= (int)$c['id'] ?>">
+        <a class="btn ghost tiny" href="<?= $h($here(['c' => $isOpen ? null : (int)$c['id']])) ?>#cust-open">
           <?= $h($isOpen ? $t('inv_close') : $t('inv_open_customer')) ?></a>
       </td>
     </tr>
-
-    <?php if ($isOpen): ?>
-      <tr id="c<?= (int)$c['id'] ?>"><td colspan="7" style="background:var(--surface2)">
-        <div class="row" style="gap:14px;align-items:flex-start">
-          <?php // Contact details — the thing Sibill cannot give us. ?>
-          <form method="post" class="card" style="flex:1;min-width:280px;margin:0">
-            <input type="hidden" name="do" value="sibill_customer_save">
-            <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
-            <h3 style="margin-top:0"><?= $h($t('inv_contact_details')) ?></h3>
-            <p class="muted small" style="margin-top:-6px"><?= $h($t('inv_contact_h')) ?></p>
-            <div class="row">
-              <label class="fld"><span><?= $h($t('f_phone')) ?></span>
-                <input name="phone" value="<?= $h($c['phone'] ?? '') ?>" placeholder="+39…"></label>
-              <label class="fld"><span><?= $h($t('f_email')) ?></span>
-                <input name="email" type="email" value="<?= $h($c['email'] ?? '') ?>"></label>
-            </div>
-            <div class="row">
-              <label class="fld"><span><?= $h($t('f_default_lang')) ?></span>
-                <select name="lang">
-                  <?php foreach (['it', 'en'] as $lc): ?>
-                    <option value="<?= $lc ?>" <?= ($c['lang'] ?? 'it') === $lc ? 'selected' : '' ?>><?= strtoupper($lc) ?></option>
-                  <?php endforeach; ?>
-                </select></label>
-              <label class="fld"><span><?= $h($t('inv_snooze_until')) ?></span>
-                <input name="snooze_until" type="date" value="<?= $h($c['snooze_until'] ?? '') ?>"></label>
-            </div>
-            <label class="fld" style="display:flex;flex-direction:row;align-items:center;gap:10px">
-              <input type="checkbox" name="chase_enabled" value="1" style="width:auto" <?= (int)$c['chase_enabled'] ? 'checked' : '' ?>>
-              <span style="margin:0"><?= $h($t('inv_chase_this')) ?></span>
-            </label>
-            <label class="fld"><span><?= $h($t('f_notes')) ?></span>
-              <textarea name="notes" rows="2"><?= $h($c['notes'] ?? '') ?></textarea></label>
-            <button class="btn"><?= $h($t('save')) ?></button>
-          </form>
-
-          <div class="card" style="flex:1;min-width:260px;margin:0">
-            <h3 style="margin-top:0"><?= $h($t('inv_send_reminder')) ?></h3>
-            <?php if (!$reach): ?>
-              <p class="muted small"><?= $h($t('inv_cannot_remind')) ?></p>
-            <?php else: ?>
-              <p class="muted small"><?= $h(str_replace(
-                  ['{n}', '{total}'], [(string)(int)$c['open_count'], $plain($c['owed'])], $t('inv_remind_h'))) ?></p>
-              <form method="post" onsubmit="return confirm('<?= $h($t('inv_remind_confirm')) ?>')">
-                <input type="hidden" name="do" value="sibill_remind">
-                <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
-                <button class="btn"><?= $h($t('inv_remind_now')) ?></button>
-              </form>
-              <?php if ($c['last_reminded_at'] !== null): ?>
-                <p class="muted small" style="margin-bottom:0">
-                  <?= $h($t('inv_last_reminded')) ?>: <?= $h($c['last_reminded_at']) ?>
-                  (<?= $h((string)(int)$c['reminders_sent']) ?>)</p>
-              <?php endif; ?>
-            <?php endif; ?>
-          </div>
-        </div>
-
-        <table style="margin:14px 0 0"><thead><tr>
-          <th><?= $h($t('inv_th_number')) ?></th><th><?= $h($t('inv_th_total')) ?></th>
-          <th><?= $h($t('inv_th_open')) ?></th><th><?= $h($t('inv_th_due')) ?></th>
-          <th><?= $h($t('inv_th_state')) ?></th>
-        </tr></thead><tbody>
-        <?php foreach (Customers::invoices((int)$c['id']) as $i):
-            $iLate = $i['pay_state'] !== 'paid' && $i['due_date'] !== null && $i['due_date'] < $today; ?>
-          <tr>
-            <td class="small"><b><?= $h($i['number'] ?: '—') ?></b>
-              <div class="muted"><?= $h($i['creation_date'] ?: '') ?></div></td>
-            <td class="small"><?= $eur($i['gross_amount'], $i['currency']) ?></td>
-            <td class="small"><?= $i['pay_state'] === 'paid' ? '<span class="muted">—</span>' : $eur($i['open_amount'], $i['currency']) ?></td>
-            <td class="small"><span<?= $iLate ? ' style="color:var(--red);font-weight:600"' : '' ?>>
-              <?= $h(($i['pay_state'] === 'paid' ? $i['last_paid_date'] : $i['due_date']) ?: '—') ?></span></td>
-            <td><span class="pill" style="color:<?= $h($stateColor[$i['pay_state']] ?? 'var(--muted)') ?>">
-              <?= $h($t('inv_st_' . $i['pay_state'])) ?></span></td>
-          </tr>
-        <?php endforeach; ?>
-        </tbody></table>
-      </td></tr>
-    <?php endif; ?>
   <?php endforeach; ?>
   </tbody></table>
 
