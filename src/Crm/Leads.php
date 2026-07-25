@@ -37,49 +37,71 @@ final class Leads
         $lang   = Templates::lang($d['lang'] ?? null);
         $title  = trim((string)($d['title'] ?? '')) ?: ($name !== '' ? "Request: $name" : 'New request');
 
-        $contactId = Contacts::findOrCreate([
-            'name' => $name ?: 'Unknown', 'phone' => $phone, 'email' => $email,
-            'company' => $d['company'] ?? null, 'lang' => $lang, 'source' => $source,
-        ]);
-
-        $pipelineId = Pipelines::defaultId('lead');
-        $firstStage = Pipelines::firstStageCode('lead');
-
-        $vat = VatLock::normalize((string)($d['vat_number'] ?? ''));
-
-        $fairName = trim((string)($d['fair_name'] ?? ''));
-        $fairCity = trim((string)($d['fair_city'] ?? ''));
-
         // Set only by the API intake (webhooks/lead.php): the sender's own id for
         // this request, and the site it was submitted on.
         $externalId = trim((string)($d['external_id'] ?? ''));
         $sourceUrl  = trim((string)($d['source_url'] ?? ''));
 
-        $stmt = Db::pdo()->prepare(
-            'INSERT INTO leads
-                (contact_id, title, source, external_id, source_url, zone, fair_name, fair_city,
-                 pipeline_id, stage_code, status, created_by,
-                 customer_name, customer_phone, customer_email, vat_number, comments, lang,
-                 received_at, stage_changed_at)
-             VALUES (:contact_id, :title, :source, :external_id, :source_url, :zone, :fair_name, :fair_city,
-                 :pipeline_id, :stage, "open", :created_by,
-                 :name, :phone, :email, :vat, :comments, :lang, NOW(), NOW())'
-        );
-        $stmt->execute([
-            ':contact_id' => $contactId, ':title' => $title, ':source' => $source,
-            ':external_id' => $externalId ?: null, ':source_url' => $sourceUrl ?: null,
-            ':zone' => $zone ?: null,
-            ':fair_name' => $fairName ?: null, ':fair_city' => $fairCity ?: null,
-            ':pipeline_id' => $pipelineId, ':stage' => $firstStage,
-            // Who typed it in. Null for the public form / fair form / partner API —
-            // those call create() with no actor, and null is what marks a lead as
-            // genuinely inbound rather than hand-entered.
-            ':created_by' => $actorId ?: null,
-            ':name' => $name ?: null, ':phone' => $phone ?: null, ':email' => $email ?: null,
-            ':vat' => $vat ?: null,
-            ':comments' => $d['comments'] ?? null, ':lang' => $lang,
-        ]);
-        $leadId = (int)Db::pdo()->lastInsertId();
+        $pdo = Db::pdo();
+
+        // Double-submit guard. An agent clicking Save twice — or a page refresh,
+        // or a network retry — must not create a second identical lead. A named
+        // lock serialises concurrent creates for the same person, so a request
+        // that races in behind the first sees its row and hands it back instead
+        // of inserting a twin.
+        $lockName = 'glue_lead:' . substr(md5(
+            ($actorId ?: 'src:' . $source) . '|' .
+            ($phone !== '' ? $phone : ($email !== '' ? $email : $name))
+        ), 0, 40);
+        $pdo->prepare('SELECT GET_LOCK(?, 5)')->execute([$lockName]);
+
+        try {
+            $dupId = self::recentDuplicateId($name, $phone, $email, $source, $actorId, $externalId);
+            if ($dupId !== null) {
+                return $dupId; // finally still releases the lock
+            }
+
+            $contactId = Contacts::findOrCreate([
+                'name' => $name ?: 'Unknown', 'phone' => $phone, 'email' => $email,
+                'company' => $d['company'] ?? null, 'lang' => $lang, 'source' => $source,
+            ]);
+
+            $pipelineId = Pipelines::defaultId('lead');
+            $firstStage = Pipelines::firstStageCode('lead');
+
+            $vat = VatLock::normalize((string)($d['vat_number'] ?? ''));
+
+            $fairName = trim((string)($d['fair_name'] ?? ''));
+            $fairCity = trim((string)($d['fair_city'] ?? ''));
+
+            $stmt = $pdo->prepare(
+                'INSERT INTO leads
+                    (contact_id, title, source, external_id, source_url, zone, fair_name, fair_city,
+                     pipeline_id, stage_code, status, created_by,
+                     customer_name, customer_phone, customer_email, vat_number, comments, lang,
+                     received_at, stage_changed_at)
+                 VALUES (:contact_id, :title, :source, :external_id, :source_url, :zone, :fair_name, :fair_city,
+                     :pipeline_id, :stage, "open", :created_by,
+                     :name, :phone, :email, :vat, :comments, :lang, NOW(), NOW())'
+            );
+            $stmt->execute([
+                ':contact_id' => $contactId, ':title' => $title, ':source' => $source,
+                ':external_id' => $externalId ?: null, ':source_url' => $sourceUrl ?: null,
+                ':zone' => $zone ?: null,
+                ':fair_name' => $fairName ?: null, ':fair_city' => $fairCity ?: null,
+                ':pipeline_id' => $pipelineId, ':stage' => $firstStage,
+                // Who typed it in. Null for the public form / fair form / partner API —
+                // those call create() with no actor, and null is what marks a lead as
+                // genuinely inbound rather than hand-entered.
+                ':created_by' => $actorId ?: null,
+                ':name' => $name ?: null, ':phone' => $phone ?: null, ':email' => $email ?: null,
+                ':vat' => $vat ?: null,
+                ':comments' => $d['comments'] ?? null, ':lang' => $lang,
+            ]);
+            $leadId = (int)$pdo->lastInsertId();
+        } finally {
+            $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$lockName]);
+        }
 
         Automation::welcome('lead', $leadId, $lang);
         Automation::inactivity('lead', $leadId, $firstStage);
@@ -94,11 +116,66 @@ final class Leads
         return $leadId;
     }
 
+    /**
+     * A lead entered moments ago that this one would merely duplicate, or null.
+     * API intakes dedupe on their own external_id (idempotent however many times
+     * the sender retries); manual and form entries dedupe on the strongest
+     * contact identifier present, within a two-minute window, by the same enterer
+     * (or the same source for actor-less inbound entries).
+     */
+    private static function recentDuplicateId(
+        string $name, string $phone, string $email, string $source, ?int $actorId, string $externalId
+    ): ?int {
+        $pdo = Db::pdo();
+
+        if ($externalId !== '') {
+            $stmt = $pdo->prepare('SELECT id FROM leads WHERE external_id = ? AND source = ? ORDER BY id DESC LIMIT 1');
+            $stmt->execute([$externalId, $source]);
+            $id = $stmt->fetchColumn();
+            return $id !== false ? (int)$id : null;
+        }
+
+        $where = 'created_at > (NOW() - INTERVAL 120 SECOND)';
+        $args  = [];
+        if ($actorId) {
+            $where .= ' AND created_by = ?';
+            $args[] = $actorId;
+        } else {
+            $where .= ' AND created_by IS NULL AND source = ?';
+            $args[] = $source;
+        }
+        if ($phone !== '') {
+            $where .= ' AND customer_phone = ?';
+            $args[] = $phone;
+        } elseif ($email !== '') {
+            $where .= ' AND customer_email = ?';
+            $args[] = $email;
+        } elseif ($name !== '') {
+            $where .= ' AND customer_name = ?';
+            $args[] = $name;
+        } else {
+            return null; // nothing distinctive to match on
+        }
+
+        $stmt = $pdo->prepare("SELECT id FROM leads WHERE $where ORDER BY id DESC LIMIT 1");
+        $stmt->execute($args);
+        $id = $stmt->fetchColumn();
+        return $id !== false ? (int)$id : null;
+    }
+
     /** Assign the lead to a seller and message the customer the seller's profile (#3). */
     public static function assign(int $leadId, int $agentId, ?int $actorId = null): void
     {
         $agent = self::agent($agentId);
         if (!$agent) {
+            return;
+        }
+        // Idempotent: if the lead is already on this agent, do nothing. A
+        // double-submitted create auto-assigns each time, and without this it
+        // would re-send the agent-profile message to the customer on every click.
+        $cur = Db::pdo()->prepare('SELECT assigned_to FROM leads WHERE id = ?');
+        $cur->execute([$leadId]);
+        if ((int)($cur->fetchColumn() ?: 0) === $agentId) {
             return;
         }
         Db::pdo()->prepare('UPDATE leads SET assigned_to = ? WHERE id = ?')->execute([$agentId, $leadId]);

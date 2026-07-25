@@ -971,6 +971,15 @@ function openNav(){document.getElementById('sidebar').classList.add('open');
 function closeNav(){document.getElementById('sidebar').classList.remove('open');
   document.getElementById('navBackdrop').classList.remove('show');}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeNav();});
+// Double-submit guard: once a form is actually submitting, disable its submit
+// button so a second click can't fire the same POST twice (e.g. creating a
+// duplicate lead). The 'submit' event fires only after native validation and any
+// onsubmit confirm() have passed, so a cancelled/invalid submit leaves the button
+// usable. setTimeout keeps the button in the POST body for this submission.
+document.addEventListener('submit',function(e){
+  var b=e.target.querySelector('button[type=submit],button:not([type]),input[type=submit]');
+  if(b){setTimeout(function(){b.disabled=true;b.style.opacity='0.6';},0);}
+});
 // Make every table horizontally scrollable on small screens without editing each
 // view: wrap any unwrapped <table> in a .table-wrap container.
 document.querySelectorAll('main table').forEach(function(tb){
