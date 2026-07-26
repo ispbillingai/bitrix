@@ -161,14 +161,18 @@ final class LeadMailImporter
         $fromAddr = self::addrOf($from);
         $fromName = self::nameOf($from);
 
-        foreach ((array)($cfg['blocked_from'] ?? []) as $bad) {
-            if ($bad !== '' && stripos($fromAddr, (string)$bad) !== false) {
-                return ['skipped', 'blocked_from:' . $bad, null];
-            }
-        }
+        // An explicit allow beats the generic blocks: Cashmatic's lead summaries
+        // come from a noreply@ address, which the block list would otherwise eat.
         $allowed = array_filter((array)($cfg['allowed_from'] ?? []), 'strlen');
-        if ($allowed !== [] && !self::senderAllowed($fromAddr, $allowed)) {
-            return ['skipped', 'sender_not_allowed', null];
+        if (!($allowed !== [] && self::senderAllowed($fromAddr, $allowed))) {
+            foreach ((array)($cfg['blocked_from'] ?? []) as $bad) {
+                if ($bad !== '' && stripos($fromAddr, (string)$bad) !== false) {
+                    return ['skipped', 'blocked_from:' . $bad, null];
+                }
+            }
+            if ($allowed !== []) {
+                return ['skipped', 'sender_not_allowed', null];
+            }
         }
 
         $body = self::bodyText($imap, $seq);
@@ -191,9 +195,14 @@ final class LeadMailImporter
      */
     public static function parse(string $subject, string $body, string $fromAddr, string $fromName, array $cfg = []): array
     {
-        $pairs = self::labelPairs($body);
-        if (!self::hasAny($pairs, ['title', 'subject', 'oggetto', 'titolo']) && trim($subject) !== '') {
-            $pairs['subject'] = trim($subject);
+        // Forwarding prefixes (Gmail "Fwd:", Italian clients "I:"/"R:") are
+        // transport noise, not part of the request's title.
+        $subject = trim((string)preg_replace('/^(\s*(fwd|fw|re|r|i)\s*:\s*)+/i', '', trim($subject)));
+
+        // Template pass wins over the generic one where both find a value.
+        $pairs = array_merge(self::labelPairs($body), self::cashmaticPairs($body));
+        if (!self::hasAny($pairs, ['title', 'subject', 'oggetto', 'titolo']) && $subject !== '') {
+            $pairs['subject'] = $subject;
         }
 
         $lead = LeadIntake::normalize($pairs);
@@ -215,6 +224,65 @@ final class LeadMailImporter
     }
 
     // ---------------------------------------------------------------- parsing
+
+    /**
+     * Cashmatic's "Riepilogo Lead" summary lays its fields out as a table, which
+     * arrives in the text/plain part as "Label value" lines with NO separator —
+     * only knowing the template's label set makes the split unambiguous.
+     * Label => the alias LeadIntake::normalize() already understands; null =
+     * context worth keeping, folded into one note (aliased to comments).
+     */
+    private const CASHMATIC_LABELS = [
+        'nome contatto'                  => 'nominativo',
+        'azienda'                        => 'azienda',
+        'indirizzo'                      => 'zona',
+        'email'                          => 'email',
+        'telefono'                       => 'telefono',
+        'fonte'                          => null,
+        'sistema di cassa'               => null,
+        'fornitore del sistema di cassa' => null,
+        'note'                           => null,
+        'nota di richiesta'              => null,
+    ];
+
+    /** @return array<string,string> [] when the body is not a Cashmatic summary */
+    private static function cashmaticPairs(string $body): array
+    {
+        if (stripos($body, 'Riepilogo Lead') === false) {
+            return [];
+        }
+        // Longest label first, so "nota di richiesta" is never read as "note".
+        $labels = self::CASHMATIC_LABELS;
+        uksort($labels, static fn(string $a, string $b): int => mb_strlen($b) <=> mb_strlen($a));
+
+        $out = [];
+        $ctx = [];
+        foreach (preg_split('/\r\n|\r|\n/', $body) ?: [] as $line) {
+            $line = trim($line);
+            foreach ($labels as $label => $key) {
+                if ($line === '' || stripos($line, (string)$label) !== 0) {
+                    continue;
+                }
+                $rest = mb_substr($line, mb_strlen((string)$label));
+                if ($rest !== '' && !preg_match('/^\s/', $rest)) {
+                    continue; // label is a prefix of a longer word, not this field
+                }
+                $value = trim($rest);
+                if ($value === '-') {
+                    $value = ''; // the template's empty marker
+                }
+                if ($value !== '') {
+                    $key === null ? $ctx[] = ucfirst((string)$label) . ': ' . $value
+                                  : $out[$key] = $value;
+                }
+                continue 2;
+            }
+        }
+        if ($ctx !== []) {
+            $out['note'] = implode("\n", $ctx);
+        }
+        return $out;
+    }
 
     /**
      * "Label: value" lines of a form email as [label => value], labels

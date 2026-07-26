@@ -29,8 +29,18 @@ each message's Message-ID. Nothing is ever deleted or marked in the mailbox.
   found in the body, the sender's own address is used
   (`fallback_sender_email`) — a real person writing in directly *is* the lead.
 - **Filters.** `blocked_from` (substring) drops system/notification senders;
-  `allowed_from` (addresses or domains), once set, drops everything else.
-  A message with no extractable contact is skipped as `no_contact`.
+  `allowed_from` (addresses or domains), once set, drops everything else. An
+  explicit allow beats the blocks — Cashmatic's summaries come from a
+  `noreply@` address that the block list would otherwise eat. A message with
+  no extractable contact is skipped as `no_contact`.
+- **Cashmatic template.** The real leads are Cashmatic CRM "Riepilogo Lead"
+  summaries (usually forwarded by the partner from
+  `berkelincampania@gmail.com`). Their fields arrive as a table — "Label
+  value" with no separator — so a dedicated pass in
+  `LeadMailImporter::cashmaticPairs()` splits on the template's known label
+  set: Nome Contatto → name, Azienda → company, Indirizzo → zone,
+  Email/Telefono → contact; Fonte, Sistema di cassa, Fornitore and Note are
+  kept together in the lead's comments.
 - **Retry safety.** The message hash is the lead's `external_id`
   (`mail:<sha1>`), so re-polls and re-deliveries map back to the lead already
   created instead of duplicating it.
