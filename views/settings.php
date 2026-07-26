@@ -84,6 +84,28 @@ $pipelines = \Glue\Crm\Pipelines::all();
     ?>
   </div>
 
+  <h3><?= $h($t('sec_leadmail')) ?> <span class="pill"><?= $h($t('optional')) ?></span></h3>
+  <p class="muted small"><?= $h($t('sec_leadmail_h')) ?></p>
+  <label class="fld" style="display:flex;flex-direction:row;align-items:center;gap:10px">
+    <input type="checkbox" name="leads_mailbox.enabled" value="true" style="width:auto" <?= (bool)$cfg('leads_mailbox.enabled', false) ? 'checked' : '' ?>>
+    <span style="margin:0"><?= $h($t('f_lm_enable')) ?></span>
+  </label>
+  <div class="row">
+    <?php
+    fld($h, 'leads_mailbox.host', $t('f_lm_host'), $cfg('leads_mailbox.host', 'pop.ionos.it'), $t('f_lm_host_h'));
+    fld($h, 'leads_mailbox.port', $t('f_lm_port'), $cfg('leads_mailbox.port', 995));
+    fld($h, 'leads_mailbox.user', $t('f_lm_user'), $cfg('leads_mailbox.user'));
+    fld($h, 'leads_mailbox.pass', $t('f_lm_pass'), $cfg('leads_mailbox.pass'));
+    ?>
+  </div>
+  <div class="row">
+    <?php
+    fld($h, 'leads_mailbox.poll_minutes', $t('f_lm_poll'), $cfg('leads_mailbox.poll_minutes', 5));
+    fld($h, 'leads_mailbox.allowed_from', $t('f_lm_allowed'),
+        implode(', ', (array)$cfg('leads_mailbox.allowed_from', [])), $t('f_lm_allowed_h'));
+    ?>
+  </div>
+
   <h3><?= $h($t('sec_cadences')) ?></h3>
   <?php
   // Number-list settings (minutes/days) are stored as arrays; show them as a
@@ -235,5 +257,9 @@ $pipelines = \Glue\Crm\Pipelines::all();
   <?php if (trim((string)$cfg('sibill.api_key', '')) !== ''): ?>
   <form method="post" class="inline"><input type="hidden" name="do" value="test_sibill">
     <button class="btn ghost"><?= $h($t('test_sibill')) ?></button></form>
+  <?php endif; ?>
+  <?php if (trim((string)$cfg('leads_mailbox.user', '')) !== ''): ?>
+  <form method="post" class="inline"><input type="hidden" name="do" value="test_mailbox">
+    <button class="btn ghost"><?= $h($t('test_mailbox')) ?></button></form>
   <?php endif; ?>
 </div>

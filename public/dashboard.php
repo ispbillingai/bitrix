@@ -257,6 +257,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'sibill.chase_every_days', 'sibill.chase_min_days_late',
                     'sibill.chase_min_amount', 'sibill.chase_max_per_run', 'sibill.chase_channel',
                     'sibill.chase_hour_from', 'sibill.chase_hour_to',
+                    'leads_mailbox.host', 'leads_mailbox.port', 'leads_mailbox.user',
+                    'leads_mailbox.pass', 'leads_mailbox.poll_minutes',
                 ];
                 // PHP rewrites dots in POST field names to underscores, so a field
                 // named 'mail.from_email' actually arrives as 'mail_from_email'.
@@ -278,6 +280,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pairs['bitrix.sync_enabled'] = $post('bitrix.sync_enabled') !== null ? 'true' : 'false';
                 $pairs['sibill.enabled'] = $post('sibill.enabled') !== null ? 'true' : 'false';
                 $pairs['sibill.chase_enabled'] = $post('sibill.chase_enabled') !== null ? 'true' : 'false';
+                $pairs['leads_mailbox.enabled'] = $post('leads_mailbox.enabled') !== null ? 'true' : 'false';
+                // Sender allow-list: comma-separated in the UI, stored as JSON so
+                // the config overlay yields an array. Emptied = fall back to the
+                // config.php default rather than "accept everyone".
+                if (($af = $post('leads_mailbox.allowed_from')) !== null) {
+                    $senders = array_values(array_filter(array_map('trim', explode(',', (string)$af)), 'strlen'));
+                    $pairs['leads_mailbox.allowed_from'] = $senders === [] ? '' : json_encode($senders);
+                }
                 // Welcome image (sent with the first-contact lead message on both
                 // channels). Stored under /uploads with a fixed name; the setting
                 // keeps the site-relative path. The clear checkbox removes it.
@@ -708,6 +718,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $names .= ' — ' . $t('sib_company_saved');
                 }
                 $flash = $t('test_ok') . ': ' . ($names ?: $t('sib_no_companies'));
+                $tab = 'settings';
+                break;
+            case 'test_mailbox':
+                // Read-only: connects with the SAVED settings (save first, then
+                // test) and counts the inbox. Nothing is imported or marked.
+                if (!function_exists('imap_open')) {
+                    $flash = $t('lm_test_fail') . ': php-imap extension missing';
+                } else {
+                    $mb = Config::section('leads_mailbox');
+                    $conn = sprintf('{%s:%d/pop3/ssl}INBOX',
+                        (string)($mb['host'] ?? ''), (int)($mb['port'] ?? 995));
+                    $im = @imap_open($conn, (string)($mb['user'] ?? ''), (string)($mb['pass'] ?? ''));
+                    if ($im === false) {
+                        $flash = $t('lm_test_fail') . ': ' . (imap_last_error() ?: '?');
+                    } else {
+                        $flash = $t('test_ok') . ': ' . sprintf($t('lm_test_ok'), imap_num_msg($im));
+                        imap_close($im);
+                    }
+                    imap_errors(); // swallow c-client notices so they don't leak to the page
+                }
                 $tab = 'settings';
                 break;
             case 'sibill_sync':

@@ -756,6 +756,22 @@ return [
     'test_sibill'         => 'Test Sibill',
     'sib_company_saved'   => 'company id saved',
     'sib_no_companies'    => 'the token sees no companies',
+
+    // settings — lead mailbox
+    'sec_leadmail'    => 'Lead mailbox',
+    'sec_leadmail_h'  => 'The mailbox where lead emails arrive (e.g. the Cashmatic summaries). The scheduler reads it over POP3 and turns new messages into leads; nothing in the mailbox is ever deleted or marked. Changing the address safely skips that mailbox\'s old mail.',
+    'f_lm_enable'     => 'Import leads from this mailbox',
+    'f_lm_host'       => 'POP3 host',
+    'f_lm_host_h'     => 'e.g. pop.ionos.it (IONOS) or pop3s.aruba.it (Aruba). SSL is always used.',
+    'f_lm_port'       => 'Port',
+    'f_lm_user'       => 'Email address (login)',
+    'f_lm_pass'       => 'Password',
+    'f_lm_poll'       => 'Check every (minutes)',
+    'f_lm_allowed'    => 'Accept leads only from',
+    'f_lm_allowed_h'  => 'Comma-separated addresses or domains (a domain covers its subdomains). Empty = keep the server default.',
+    'test_mailbox'    => 'Test mailbox',
+    'lm_test_ok'      => 'connected — %d messages in the inbox',
+    'lm_test_fail'    => 'Mailbox test failed',
     // invoices — customer view & chasing
     'inv_debtors'        => 'Customers owing',
     'inv_reachable_n'    => '{n} we can contact',
