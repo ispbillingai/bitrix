@@ -14,6 +14,7 @@ require __DIR__ . '/../src/Bootstrap.php';
 use Glue\Bootstrap;
 use Glue\Campaign\Sender;
 use Glue\Event\Log;
+use Glue\Mail\LeadMailImporter;
 use Glue\Reminder\Scheduler;
 use Glue\Sibill\Customers as SibillCustomers;
 use Glue\Sibill\Invoices;
@@ -47,16 +48,21 @@ try {
     // and it only queues — runDue() above delivers them on the next tick, at the
     // WhatsApp gateway's pace rather than in a sleeping loop here.
     $chase = SibillCustomers::runChaseIfDue();
+    // Pull lead emails from the company mailbox (POP3) on its own cadence.
+    // Self-throttling and never throws; a mailbox outage can't stall the rest.
+    $mail = LeadMailImporter::pollIfDue();
 
     Log::write('scheduler', 'tick', null, null, [
         'reminders' => $reminders,
         'campaigns' => $campaigns,
     ] + ($sibill !== null ? ['sibill' => $sibill] : [])
-      + ($chase !== null ? ['chase' => $chase] : []));
+      + ($chase !== null ? ['chase' => $chase] : [])
+      + ($mail !== null ? ['mail' => $mail] : []));
     fwrite(STDOUT, "[" . date('c') . "] reminders=" . json_encode($reminders)
         . " campaigns=" . json_encode($campaigns)
         . ($sibill !== null ? " sibill=" . json_encode($sibill) : "")
-        . ($chase !== null ? " chase=" . json_encode($chase) : "") . "\n");
+        . ($chase !== null ? " chase=" . json_encode($chase) : "")
+        . ($mail !== null ? " mail=" . json_encode($mail) : "") . "\n");
 } catch (Throwable $e) {
     fwrite(STDERR, "[" . date('c') . "] scheduler error: " . $e->getMessage() . "\n");
     exit(1);

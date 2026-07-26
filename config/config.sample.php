@@ -59,6 +59,34 @@ return [
         'smtp'       => null, // or ['host'=>'','port'=>587,'user'=>'','pass'=>'','secure'=>'tls']
     ],
 
+    // OPTIONAL lead mailbox — OFF by default. Polls the company mailbox over
+    // POP3 and turns web-form notification emails into CRM leads via the same
+    // intake (dedup + welcome automations) as the webhooks. Mail is never
+    // deleted or marked: staff keep reading the same inbox in webmail. The
+    // FIRST poll only records what is already in the mailbox and imports
+    // nothing, so old correspondence never becomes leads.
+    // Needs the php-imap extension (apt-get install php-imap).
+    'leads_mailbox' => [
+        'enabled'      => false,
+        'host'         => 'pop3s.aruba.it', // Aruba basic plans are POP3-only (no IMAP)
+        'port'         => 995,              // SSL
+        'user'         => '',               // full address, e.g. Info@michaeltech.it
+        'pass'         => '',
+        'poll_minutes' => 5,
+        // Import only mail from these senders — full addresses or bare domains
+        // (a domain matches its subdomains too). Empty = accept every sender
+        // that isn't blocked. Once the real form's sender is known, list it
+        // here so stray mail can't become leads.
+        'allowed_from' => [],
+        // Senders never imported (substring match on the address).
+        'blocked_from' => ['staff.aruba.it', 'noreply', 'no-reply', 'mailer-daemon', 'postmaster'],
+        // When the body has no phone/email (a person writing directly rather
+        // than a form), use the sender's own address as the lead's email.
+        'fallback_sender_email' => true,
+        // Source label these leads are filed under in reports.
+        'source'       => 'email',
+    ],
+
     // Where won-deal logistics notifications go.
     'logistics' => [
         'email' => 'logistics@yourcompany.com',
