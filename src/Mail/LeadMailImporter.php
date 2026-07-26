@@ -220,7 +220,30 @@ final class LeadMailImporter
         if ($lead['comments'] === '' && trim($body) !== '') {
             $lead['comments'] = mb_substr(trim($body), 0, 2000);
         }
+        $lead['phone'] = self::internationalize($lead['phone']);
         return $lead;
+    }
+
+    /**
+     * Store email-lead phones in full international form: Cashmatic summaries
+     * carry bare local numbers ("3516353750"), and unlike a number an agent
+     * types in, nobody reviews these before the automations dial them.
+     * LeadIntake::normalize() already turned 00-prefixes into +, so what is
+     * left is a national number: prefix app.default_country_code (Italy keeps
+     * the trunk 0 of landlines, so nothing is stripped). A number that already
+     * starts with the country code and is longer than any national number is
+     * taken as one the sender prefixed themselves.
+     */
+    private static function internationalize(string $phone): string
+    {
+        $cc = preg_replace('/\D+/', '', (string)Config::get('app.default_country_code', '39')) ?? '';
+        if ($phone === '' || str_starts_with($phone, '+') || $cc === '') {
+            return $phone;
+        }
+        if (str_starts_with($phone, $cc) && strlen($phone) > 10) {
+            return '+' . $phone;
+        }
+        return '+' . $cc . $phone;
     }
 
     // ---------------------------------------------------------------- parsing
