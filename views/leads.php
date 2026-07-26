@@ -121,7 +121,7 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
               <?php endif; ?>
             </div>
             <?php $cmsg = trim((string)($c['comments'] ?? '')); if ($cmsg !== ''): ?>
-              <div class="muted small" style="margin-top:7px;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">“<?= $h($cmsg) ?>”</div>
+              <div class="muted small note-clip l4" style="margin-top:7px" title="<?= $h($cmsg) ?>">“<?= $h($cmsg) ?>”</div>
             <?php endif; ?>
           </div>
         <?php endforeach; ?>
@@ -195,7 +195,7 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
       <?= avatar($h, $r['customer_name']) ?>
       <span class="dw-info"><b><?= $h($r['customer_name'] ?: ('#' . $r['id'])) ?></b>
         <span class="muted small"> · <?= phone_link($h, $r['customer_phone']) ?> <?= $h($r['customer_email']) ?><?= !empty($r['vat_number']) ? ' · ' . $h($t('f_vat')) . ' ' . $h($r['vat_number']) : '' ?><?= !empty($r['zone']) ? ' · ' . $h($t('f_zone')) . ' ' . $h($r['zone']) : '' ?><?= !empty($r['fair_name']) ? ' · ' . $h($t('f_fair')) . ' ' . $h($r['fair_name']) . (!empty($r['fair_city']) ? ' (' . $h($r['fair_city']) . ')' : '') : '' ?></span>
-        <?php if ($msg !== ''): ?><span class="muted small" style="display:block;font-style:italic;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:2px">“<?= $h($msg) ?>”</span><?php endif; ?></span>
+        <?php if ($msg !== ''): ?><span class="muted small note-clip l2" style="margin-top:2px">“<?= $h($msg) ?>”</span><?php endif; ?></span>
       <span class="pill"><?= $h(stage_label($t, $r['stage_code'], \Glue\Crm\Pipelines::label('lead', $r['stage_code']))) ?></span>
       <?= pill($h, $r['status'], $t) ?>
       <span class="muted small"><?= $ag ? $h($ag) : $h($t('unassigned')) ?></span>

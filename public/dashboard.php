@@ -1379,6 +1379,14 @@ tbody tr:hover{background:var(--surface2);} tr:last-child td{border-bottom:none;
 .kcard:hover{border-color:var(--line2);} .kcard b{font-size:13.5px;font-weight:600;}
 .kcard .meta{font-size:11.5px;color:var(--muted);margin-top:4px;display:flex;gap:8px;flex-wrap:wrap;align-items:center;}
 .kcard .amt{color:var(--green);font-weight:600;}
+/* Note preview under a lead (kanban card + list row). It used to be a single nowrap
+   line cut with an ellipsis: on a long note that showed the first few words and
+   nothing else. Wrap over several lines and clamp instead, so the note is readable
+   while the card keeps a predictable height. pre-line keeps the author's newlines. */
+.note-clip{display:-webkit-box;-webkit-box-orient:vertical;overflow:hidden;
+  white-space:pre-line;overflow-wrap:anywhere;font-style:italic;line-height:1.45;}
+.note-clip.l2{-webkit-line-clamp:2;line-clamp:2;}
+.note-clip.l4{-webkit-line-clamp:4;line-clamp:4;}
 /* "typed in by hand" marker — tells a lead someone keyed in from a lead that
    arrived on its own (public form / fair form / partner API). */
 .byhand{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:6px;
