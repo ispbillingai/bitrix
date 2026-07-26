@@ -91,8 +91,11 @@ final class LeadMailImporter
         try {
             $total = imap_num_msg($imap);
             $known = self::knownKeys();
-            // Empty table = first contact with this mailbox: swallow the backlog.
-            $baseline = $known === [];
+            // First contact with THIS mailbox: swallow the backlog. Keyed on the
+            // configured user, so pointing the config at a different mailbox
+            // re-arms the baseline instead of importing years of its old mail.
+            $baseline = $known === []
+                || (string)Settings::get('leads_mailbox.baseline_user', '') !== (string)$cfg['user'];
 
             $res = ['seen' => $total, 'new' => 0, 'imported' => 0,
                     'skipped' => 0, 'errors' => 0, 'baseline' => $baseline];
@@ -134,6 +137,11 @@ final class LeadMailImporter
                 }
             }
 
+            if ($baseline) {
+                // Only after the walk completed: a baseline that died half-way
+                // re-runs on the next poll and picks up the rest.
+                Settings::set('leads_mailbox.baseline_user', (string)$cfg['user']);
+            }
             // Quiet ticks stay out of the event log; anything that moved is worth a line.
             if ($baseline || $res['new'] > 0) {
                 Log::write('mail_intake', $baseline ? 'baseline' : 'poll', null, null, $res);
