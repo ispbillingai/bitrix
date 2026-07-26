@@ -32,7 +32,7 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
     <input type="hidden" name="do" value="lead_create">
     <div class="row">
       <label class="fld"><span><?= $h($t('f_name')) ?></span><input name="name" required></label>
-      <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone"></label>
+      <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone" placeholder="+39…"></label>
       <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email"></label>
     </div>
     <div class="row">
@@ -78,7 +78,7 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
       </div>
       <div class="row">
         <label class="fld"><span><?= $h($t('f_name')) ?></span><input name="name" required></label>
-        <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone"></label>
+        <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone" placeholder="+39…"></label>
         <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email"></label>
       </div>
       <div class="row">
@@ -231,7 +231,7 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
               <input type="hidden" name="id" value="<?= $h($r['id']) ?>">
               <div class="row">
                 <label class="fld"><span><?= $h($t('f_name')) ?></span><input name="name" value="<?= $h($r['customer_name']) ?>" required></label>
-                <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone" value="<?= $h($r['customer_phone']) ?>"></label>
+                <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone" value="<?= $h($r['customer_phone']) ?>" placeholder="+39…"></label>
               </div>
               <div class="row">
                 <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email" value="<?= $h($r['customer_email']) ?>"></label>

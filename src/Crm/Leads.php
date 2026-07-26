@@ -5,6 +5,7 @@ namespace Glue\Crm;
 
 use Glue\Db;
 use Glue\Event\Log;
+use Glue\Notify\Notifier;
 use Glue\Reminder\Scheduler;
 use Glue\Reminder\Templates;
 use Glue\Sync\BitrixSync;
@@ -29,7 +30,9 @@ final class Leads
     public static function create(array $d, ?int $actorId = null): int
     {
         $name   = trim((string)($d['name'] ?? ''));
-        $phone  = trim((string)($d['phone'] ?? ''));
+        // Stored international from the start (+39...), whatever the agent or
+        // integration typed — not just fixed up later at WhatsApp send time.
+        $phone  = Notifier::normalizePhone((string)($d['phone'] ?? ''));
         $email  = trim((string)($d['email'] ?? ''));
         // Lowercase so "Cashmatic" and "cashmatic" count as one source in reports.
         $source = mb_strtolower(trim((string)($d['source'] ?? 'website'))) ?: 'website';
@@ -352,7 +355,7 @@ final class Leads
         // is synced to the contact only (below), like on create.
         $map = [
             'name'       => ['customer_name',  fn($v) => trim((string)$v) ?: null],
-            'phone'      => ['customer_phone', fn($v) => trim((string)$v) ?: null],
+            'phone'      => ['customer_phone', fn($v) => Notifier::normalizePhone((string)$v) ?: null],
             'email'      => ['customer_email', fn($v) => trim((string)$v) ?: null],
             'vat_number' => ['vat_number',     fn($v) => VatLock::normalize((string)$v) ?: null],
             'source'     => ['source',         fn($v) => mb_strtolower(trim((string)$v)) ?: null],
@@ -385,7 +388,9 @@ final class Leads
             $cSets = [];
             $cArgs = [];
             foreach (['name' => 'name', 'phone' => 'phone', 'email' => 'email', 'company' => 'company'] as $in => $ccol) {
-                if (array_key_exists($in, $d)) { $cSets[] = "$ccol = ?"; $cArgs[] = trim((string)$d[$in]); }
+                if (!array_key_exists($in, $d)) { continue; }
+                $cSets[] = "$ccol = ?";
+                $cArgs[] = $in === 'phone' ? Notifier::normalizePhone((string)$d[$in]) : trim((string)$d[$in]);
             }
             if ($cSets) {
                 $cArgs[] = $cid;
