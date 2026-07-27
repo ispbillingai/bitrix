@@ -29,6 +29,7 @@ use Glue\Notify\TextMeBot;
 use Glue\Reminder\Scheduler;
 use Glue\Settings;
 use Glue\Sibill\Client as SibillClient;
+use Glue\Sibill\Customers as SibillCustomers;
 use Glue\Sibill\Invoices as SibillInvoices;
 use Glue\Sign\Documents as SignDocs;
 
