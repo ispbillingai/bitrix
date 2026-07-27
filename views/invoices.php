@@ -235,25 +235,53 @@ $here = function (array $over = []) use ($view, $filter, $q): string {
         </div>
       </div>
 
-      <table style="margin:14px 0 0"><thead><tr>
-        <th><?= $h($t('inv_th_number')) ?></th><th><?= $h($t('inv_th_total')) ?></th>
-        <th><?= $h($t('inv_th_open')) ?></th><th><?= $h($t('inv_th_due')) ?></th>
-        <th><?= $h($t('inv_th_state')) ?></th>
-      </tr></thead><tbody>
-      <?php foreach (Customers::invoices((int)$oc['id']) as $i):
-          $iLate = $i['pay_state'] !== 'paid' && $i['due_date'] !== null && $i['due_date'] < $today; ?>
-        <tr>
-          <td class="small"><b><?= $h($i['number'] ?: '—') ?></b>
-            <div class="muted"><?= $h($i['creation_date'] ?: '') ?></div></td>
-          <td class="small"><?= $eur($i['gross_amount'], $i['currency']) ?></td>
-          <td class="small"><?= $i['pay_state'] === 'paid' ? '<span class="muted">—</span>' : $eur($i['open_amount'], $i['currency']) ?></td>
-          <td class="small"><span<?= $iLate ? ' style="color:var(--red);font-weight:600"' : '' ?>>
-            <?= $h(($i['pay_state'] === 'paid' ? $i['last_paid_date'] : $i['due_date']) ?: '—') ?></span></td>
-          <td><span class="pill" style="color:<?= $h($stateColor[$i['pay_state']] ?? 'var(--muted)') ?>">
-            <?= $h($t('inv_st_' . $i['pay_state'])) ?></span></td>
-        </tr>
-      <?php endforeach; ?>
-      </tbody></table>
+      <?php // A div list, not a <table>: each unpaid invoice carries its own
+            // action forms (remind just this one, exclude it from chasing), and
+            // forms inside a table get torn apart by the browser. ?>
+      <div style="margin-top:14px">
+        <div class="muted small" style="display:flex;gap:12px;padding:0 0 6px;font-weight:600">
+          <span style="flex:1;min-width:120px"><?= $h($t('inv_th_number')) ?></span>
+          <span style="width:110px"><?= $h($t('inv_th_total')) ?></span>
+          <span style="width:110px"><?= $h($t('inv_th_open')) ?></span>
+          <span style="width:120px"><?= $h($t('inv_th_due')) ?></span>
+          <span style="width:90px"><?= $h($t('inv_th_state')) ?></span>
+          <span style="flex:1;min-width:180px"></span>
+        </div>
+        <?php foreach (Customers::invoices((int)$oc['id']) as $i):
+            $iLate = $i['pay_state'] !== 'paid' && $i['due_date'] !== null && $i['due_date'] < $today;
+            $iExcl = (int)($i['chase_excluded'] ?? 0) === 1;
+            $iOpen = $i['pay_state'] !== 'paid'; ?>
+          <div style="display:flex;gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--line);flex-wrap:wrap<?= $iExcl ? ';opacity:.6' : '' ?>">
+            <span class="small" style="flex:1;min-width:120px">
+              <b><?= $h($i['number'] ?: '—') ?></b>
+              <span class="muted"><?= $h($i['creation_date'] ?: '') ?></span>
+              <?php if ($iExcl): ?><span class="pill"><?= $h($t('inv_excluded')) ?></span><?php endif; ?>
+            </span>
+            <span class="small" style="width:110px"><?= $eur($i['gross_amount'], $i['currency']) ?></span>
+            <span class="small" style="width:110px"><?= $i['pay_state'] === 'paid' ? '<span class="muted">—</span>' : $eur($i['open_amount'], $i['currency']) ?></span>
+            <span class="small" style="width:120px<?= $iLate ? ';color:var(--red);font-weight:600' : '' ?>">
+              <?= $h(($i['pay_state'] === 'paid' ? $i['last_paid_date'] : $i['due_date']) ?: '—') ?></span>
+            <span style="width:90px"><span class="pill" style="color:<?= $h($stateColor[$i['pay_state']] ?? 'var(--muted)') ?>">
+              <?= $h($t('inv_st_' . $i['pay_state'])) ?></span></span>
+            <span style="flex:1;min-width:180px;display:flex;gap:6px;justify-content:flex-end;flex-wrap:wrap">
+              <?php if ($iOpen): ?>
+                <form method="post" style="margin:0" onsubmit="return confirm('<?= $h($t('inv_remind_one_confirm')) ?>')">
+                  <input type="hidden" name="do" value="sibill_remind">
+                  <input type="hidden" name="id" value="<?= (int)$oc['id'] ?>">
+                  <input type="hidden" name="invoice_id" value="<?= (int)$i['id'] ?>">
+                  <button class="btn ghost tiny" <?= $ocReach ? '' : 'disabled title="' . $h($t('inv_unreachable')) . '"' ?>><?= $h($t('inv_remind_one')) ?></button>
+                </form>
+                <form method="post" style="margin:0">
+                  <input type="hidden" name="do" value="sibill_invoice_chase">
+                  <input type="hidden" name="invoice_id" value="<?= (int)$i['id'] ?>">
+                  <input type="hidden" name="excluded" value="<?= $iExcl ? '0' : '1' ?>">
+                  <button class="btn ghost tiny"><?= $h($iExcl ? $t('inv_chase_include') : $t('inv_chase_exclude')) ?></button>
+                </form>
+              <?php endif; ?>
+            </span>
+          </div>
+        <?php endforeach; ?>
+      </div>
     </div>
   <?php endif; ?>
 

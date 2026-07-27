@@ -765,10 +765,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'sibill_remind':
                 // No redirect: the form posts to the current URL, so $_GET still
                 // holds the open customer and the flash stays visible — which for
-                // "did that message actually go?" is the whole point.
-                $rid = SibillCustomers::remind((int)$_POST['id'], true);
+                // "did that message actually go?" is the whole point. An invoice_id
+                // narrows the reminder to that single invoice.
+                $invId = (int)($_POST['invoice_id'] ?? 0);
+                $rid = SibillCustomers::remind((int)$_POST['id'], true, $invId > 0 ? [$invId] : null);
                 $flash = $rid > 0 ? $t('inv_reminded') : $t('inv_remind_failed');
                 $flashType = $rid > 0 ? 'ok' : 'err';
+                $tab = 'invoices';
+                break;
+            case 'sibill_invoice_chase':
+                // Toggle whether one invoice is chased automatically.
+                SibillCustomers::setInvoiceChase((int)$_POST['invoice_id'], !empty($_POST['excluded']));
+                $flash = $t('saved');
                 $tab = 'invoices';
                 break;
             case 'sibill_import':

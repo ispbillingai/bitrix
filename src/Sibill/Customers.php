@@ -348,6 +348,13 @@ final class Customers
         Db::pdo()->prepare('UPDATE sibill_customers SET ' . implode(', ', $cols) . ' WHERE id = ?')->execute($args);
     }
 
+    /** Keep one invoice out of automatic + whole-customer reminders (or put it back). */
+    public static function setInvoiceChase(int $invoiceId, bool $excluded): void
+    {
+        Db::pdo()->prepare('UPDATE sibill_invoices SET chase_excluded = ? WHERE id = ?')
+            ->execute([$excluded ? 1 : 0, $invoiceId]);
+    }
+
     // ---- chasing ------------------------------------------------------------
 
     /**
@@ -385,7 +392,7 @@ final class Customers
         // The cutoff lands inside the aggregate: a customer's owed/count/oldest
         // must be computed from in-window invoices only, or the message would
         // still quote the old backlog even when it did not trigger the chase.
-        $innerWhere = "pay_state <> 'paid' AND due_date IS NOT NULL
+        $innerWhere = "pay_state <> 'paid' AND chase_excluded = 0 AND due_date IS NOT NULL
                        AND due_date < (CURDATE() - INTERVAL ? DAY)
                        AND counterpart_vat IS NOT NULL AND counterpart_vat <> ''";
         $params = [$minLate];
@@ -429,8 +436,13 @@ final class Customers
      * the WhatsApp spacing, the outbox record and the retry, and a chase run of
      * twenty would otherwise sit in a loop sleeping through the rate limit.
      * $sendNow forces immediate delivery for the "remind now" button.
+     *
+     * $invoiceIds targets specific invoices — the per-invoice "remind this one"
+     * button. A human picked them, so exclusions and the start-date line don't
+     * apply. With null (the default) the message covers the customer's whole open
+     * balance minus any invoices marked excluded from chasing.
      */
-    public static function remind(int $id, bool $sendNow = false): int
+    public static function remind(int $id, bool $sendNow = false, ?array $invoiceIds = null): int
     {
         $c = self::get($id);
         if ($c === null) {
@@ -443,12 +455,19 @@ final class Customers
         }
 
         $open = self::invoices($id, true);
-        // An automatic chase only ever talks about invoices inside the start-date
-        // window; a human pressing "remind now" gets the customer's full open
-        // balance, because they can see the invoice list and chose to send it.
-        if (!$sendNow && ($from = self::chaseFromDate()) !== '') {
-            $open = array_values(array_filter($open, static fn($i) =>
-                $i['due_date'] !== null && $i['due_date'] >= $from));
+        if ($invoiceIds !== null) {
+            // Targeted send: exactly the chosen invoice(s), whatever their state.
+            $want = array_map('intval', $invoiceIds);
+            $open = array_values(array_filter($open, static fn($i) => in_array((int)$i['id'], $want, true)));
+        } else {
+            // Whole customer: never chase an invoice the operator has excluded.
+            $open = array_values(array_filter($open, static fn($i) => (int)($i['chase_excluded'] ?? 0) === 0));
+            // Automatic passes also stay within the start-date window; a manual
+            // "remind now" covers the full (non-excluded) open balance.
+            if (!$sendNow && ($from = self::chaseFromDate()) !== '') {
+                $open = array_values(array_filter($open, static fn($i) =>
+                    $i['due_date'] !== null && $i['due_date'] >= $from));
+            }
         }
         if (!$open) {
             return 0;
@@ -476,8 +495,11 @@ final class Customers
         // The automatic pass dedupes to one chase per customer per day. A human
         // pressing "remind now" has decided otherwise, so their send gets a key
         // of its own rather than being swallowed by that day's entry.
+        // Targeted sends key on the invoice(s) too, so chasing two invoices of the
+        // same customer within the same second doesn't collide into one.
+        $suffix = $invoiceIds !== null ? ':inv' . implode('-', array_map('intval', $invoiceIds)) : '';
         $dedupe = $sendNow
-            ? 'chase:' . $id . ':' . date('Y-m-d H:i:s')
+            ? 'chase:' . $id . $suffix . ':' . date('Y-m-d H:i:s')
             : 'chase:' . $id . ':' . date('Y-m-d');
         if (!$sendNow) {
             $seen = Db::pdo()->prepare('SELECT 1 FROM reminders WHERE dedupe_key = ? LIMIT 1');
