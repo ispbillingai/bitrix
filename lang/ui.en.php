@@ -448,7 +448,7 @@ return [
     'dev_edit_title'   => 'Edit device',
     'dev_name_ph'      => 'e.g. Cashier PC',
     'dev_req_err'      => 'Name and IP are required.',
-    'dev_dup_err'      => 'A device with that IP already exists.',
+    'dev_dup_err'      => 'This router already has a device with that IP.',
     'dev_bad_ip'       => 'That IP address is not valid.',
     'dev_delete_confirm' => 'Delete this device and its history?',
     'dev_router'       => 'Customer / Router',

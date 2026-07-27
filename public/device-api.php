@@ -44,7 +44,7 @@ $pdo = Db::pdo();
  */
 $statusRows = static function () use ($pdo): array {
     return $pdo->query(
-        "SELECT d.name, d.ip, d.status, d.latency_ms, d.last_seen_at, d.last_checked_at, a.name AS area_name,
+        "SELECT d.id, d.name, d.ip, d.status, d.latency_ms, d.last_seen_at, d.last_checked_at, a.name AS area_name,
                 TIMESTAMPDIFF(SECOND, d.last_checked_at, NOW()) AS checked_age_sec,
                 TIMESTAMPDIFF(SECOND, d.last_seen_at,    NOW()) AS seen_age_sec
            FROM devices d LEFT JOIN network_areas a ON a.id = d.area_id
@@ -194,6 +194,18 @@ if ($action === 'save_device') {
         }
     }
 
+    // The same IP legitimately exists behind different routers — every shop has
+    // its own 192.168.100.x LAN — so only a repeat within the SAME router is a
+    // duplicate. (Matches the UNIQUE(area_id, ip) key from migration 030.)
+    $dupSql = "SELECT COUNT(*) FROM devices WHERE ip = ? AND "
+            . ($areaId ? "area_id = ?" : "area_id IS NULL") . " AND id <> ?";
+    $stmt = $pdo->prepare($dupSql);
+    $stmt->execute($areaId ? [$ip, $areaId, $id] : [$ip, $id]);
+    if ((int)$stmt->fetchColumn() > 0) {
+        echo json_encode(['ok' => false, 'error' => 'duplicate_ip']);
+        exit;
+    }
+
     try {
         if ($id > 0) {
             $pdo->prepare("UPDATE devices SET name=?, ip=?, area_id=?, sort_order=?, active=? WHERE id=?")
@@ -204,7 +216,8 @@ if ($action === 'save_device') {
             $id = (int)$pdo->lastInsertId();
         }
     } catch (Throwable $e) {
-        // Most likely the UNIQUE(ip) constraint — surface a clear message.
+        // Race with a concurrent save, or a pre-030 database still carrying the
+        // old global UNIQUE(ip) — surface a clear message either way.
         $dup = stripos($e->getMessage(), 'Duplicate') !== false || stripos($e->getMessage(), '1062') !== false;
         echo json_encode(['ok' => false, 'error' => $dup ? 'duplicate_ip' : $e->getMessage()]);
         exit;

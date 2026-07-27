@@ -68,7 +68,7 @@ $ago = function (?string $ts) use ($t): string {
     $st = $stale ? 'unknown' : $r['status'];
     [$cls, $label] = $st === 'up' ? ['ok', $t('dev_up')] : ($st === 'down' ? ['down', $t('dev_down')] : ['unk', $t('dev_unknown')]);
 ?>
-  <tr data-ip="<?= $h($r['ip']) ?>" data-area="<?= (int)($r['area_id'] ?? 0) ?>">
+  <tr data-id="<?= (int)$r['id'] ?>" data-ip="<?= $h($r['ip']) ?>" data-area="<?= (int)($r['area_id'] ?? 0) ?>">
     <td><strong><?= $h($r['name']) ?></strong></td>
     <td class="mono small"><?= $h($r['ip']) ?></td>
     <td class="small muted"><?= $h($r['area_name'] ?? '—') ?></td>
@@ -168,7 +168,8 @@ $ago = function (?string $ts) use ($t): string {
   function agoSec(s){ if(s===null||s===undefined){return L.never;} s=parseInt(s,10); if(isNaN(s)){return L.never;}
     if(s<0){s=0;} if(s<60){return s+'s';} if(s<3600){return Math.floor(s/60)+'m';} if(s<86400){return Math.floor(s/3600)+'h';} return Math.floor(s/86400)+'d'; }
   function paint(d){
-    var row=document.querySelector('#devTable tr[data-ip="'+d.ip+'"]'); if(!row){return;}
+    // Key on the device id: the same IP can now exist behind several routers.
+    var row=document.querySelector('#devTable tr[data-id="'+d.id+'"]'); if(!row){return;}
     // Staleness uses the SERVER-computed age, so the viewer's timezone can't skew it.
     var age=(d.checked_age_sec===null||d.checked_age_sec===undefined)?null:parseInt(d.checked_age_sec,10);
     var stale=(age===null)||(age>STALE);

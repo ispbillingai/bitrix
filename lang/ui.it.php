@@ -448,7 +448,7 @@ return [
     'dev_edit_title'   => 'Modifica dispositivo',
     'dev_name_ph'      => 'es. Cassa PC',
     'dev_req_err'      => 'Nome e IP sono obbligatori.',
-    'dev_dup_err'      => 'Esiste già un dispositivo con questo IP.',
+    'dev_dup_err'      => 'Questo router ha già un dispositivo con questo IP.',
     'dev_bad_ip'       => 'Indirizzo IP non valido.',
     'dev_delete_confirm' => 'Eliminare questo dispositivo e la sua cronologia?',
     'dev_router'       => 'Cliente / Router',
