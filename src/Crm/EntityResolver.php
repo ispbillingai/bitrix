@@ -78,8 +78,8 @@ final class EntityResolver
      * first stage and goes on chasing the customer twice a day. The customer
      * sees none of our bookkeeping: they were contacted, so the messages should
      * have stopped. (Seen in the wild: a lead moved to "In Contact" whose
-     * 24-seconds-later duplicate sent 11 more "we haven't heard from you"
-     * messages over the following five days.)
+     * 24-seconds-later duplicate went on to send nine more "we haven't heard
+     * from you" rounds, on both channels, over the following five days.)
      *
      * True when a sibling lead on the same contact, created within $windowH of
      * this one, has since left the first stage. The window is what keeps a
