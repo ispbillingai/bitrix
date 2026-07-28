@@ -301,6 +301,16 @@ final class Scheduler
                     ['reminder_id' => $reminderId, 'rule' => $ruleKey]);
                 return 'skipped';
             }
+            // Same guard, one record over: a duplicate lead for this same person
+            // has been worked. The stage guard above only ever looked at THIS row,
+            // so the untouched twin of a double-submitted form kept nudging a
+            // customer who had already been contacted. Ends the chain too.
+            if (EntityResolver::twinWorked($r['entity_type'], $entityId)) {
+                $this->mark($reminderId, 'skipped');
+                Log::write('scheduler', 'reminder_skipped_twin_worked', $r['entity_type'], $entityId,
+                    ['reminder_id' => $reminderId, 'rule' => $ruleKey]);
+                return 'skipped';
+            }
         }
 
         $vars = $this->buildVars($r, is_array($payload) ? $payload : []);

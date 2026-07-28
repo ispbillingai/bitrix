@@ -68,6 +68,42 @@ final class EntityResolver
         return $row['stage_code'] ?? null;
     }
 
+    /**
+     * Is this lead a twin of another lead for the same person that has already
+     * been worked?
+     *
+     * A double-submitted website form — or a seller re-typing a request the form
+     * had already delivered — leaves two lead rows for one contact. Working one
+     * of them silences that row's nudges, but the twin sits untouched in the
+     * first stage and goes on chasing the customer twice a day. The customer
+     * sees none of our bookkeeping: they were contacted, so the messages should
+     * have stopped. (Seen in the wild: a lead moved to "In Contact" whose
+     * 24-seconds-later duplicate sent 11 more "we haven't heard from you"
+     * messages over the following five days.)
+     *
+     * True when a sibling lead on the same contact, created within $windowH of
+     * this one, has since left the first stage. The window is what keeps a
+     * genuinely new request weeks later on its own cadence.
+     */
+    public static function twinWorked(string $entityType, int $id, int $windowH = 72): bool
+    {
+        if ($entityType !== 'lead' || $id <= 0) {
+            return false;
+        }
+        $stmt = Db::pdo()->prepare(
+            'SELECT 1
+               FROM leads a
+               JOIN leads b ON b.contact_id = a.contact_id AND b.id <> a.id
+              WHERE a.id = ?
+                AND a.contact_id IS NOT NULL
+                AND b.stage_code <> ?
+                AND ABS(TIMESTAMPDIFF(HOUR, b.created_at, a.created_at)) <= ?
+              LIMIT 1'
+        );
+        $stmt->execute([$id, Pipelines::firstStageCode('lead'), max(1, $windowH)]);
+        return (bool)$stmt->fetchColumn();
+    }
+
     private static function row(string $entityType, int $id): ?array
     {
         $table = match ($entityType) {

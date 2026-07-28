@@ -52,14 +52,16 @@ final class Leads
         // lock serialises concurrent creates for the same person, so a request
         // that races in behind the first sees its row and hands it back instead
         // of inserting a twin.
+        // Keyed on the person alone (not on who is entering them), so a website
+        // form and a seller typing the same request in both queue behind the
+        // same lock and the second one sees the first one's row.
         $lockName = 'glue_lead:' . substr(md5(
-            ($actorId ?: 'src:' . $source) . '|' .
-            ($phone !== '' ? $phone : ($email !== '' ? $email : $name))
+            $phone !== '' ? $phone : ($email !== '' ? $email : $name)
         ), 0, 40);
         $pdo->prepare('SELECT GET_LOCK(?, 5)')->execute([$lockName]);
 
         try {
-            $dupId = self::recentDuplicateId($name, $phone, $email, $source, $actorId, $externalId);
+            $dupId = self::recentDuplicateId($name, $phone, $email, $source, $externalId);
             if ($dupId !== null) {
                 return $dupId; // finally still releases the lock
             }
@@ -122,12 +124,18 @@ final class Leads
     /**
      * A lead entered moments ago that this one would merely duplicate, or null.
      * API intakes dedupe on their own external_id (idempotent however many times
-     * the sender retries); manual and form entries dedupe on the strongest
-     * contact identifier present, within a two-minute window, by the same enterer
-     * (or the same source for actor-less inbound entries).
+     * the sender retries); manual and form entries dedupe on any matching contact
+     * identifier within a two-minute window.
+     *
+     * Neither the enterer nor the source narrows that window. Inside two minutes
+     * the same phone or email is the same person however it reached us, and the
+     * expensive miss is exactly the cross-door one: the website form files the
+     * request (created_by NULL) while the seller, not seeing it land, types it in
+     * too (created_by set). That produced two leads, hence two welcome messages
+     * and two independent nudge cadences aimed at one customer.
      */
     private static function recentDuplicateId(
-        string $name, string $phone, string $email, string $source, ?int $actorId, string $externalId
+        string $name, string $phone, string $email, string $source, string $externalId
     ): ?int {
         $pdo = Db::pdo();
 
@@ -138,29 +146,33 @@ final class Leads
             return $id !== false ? (int)$id : null;
         }
 
-        $where = 'created_at > (NOW() - INTERVAL 120 SECOND)';
-        $args  = [];
-        if ($actorId) {
-            $where .= ' AND created_by = ?';
-            $args[] = $actorId;
-        } else {
-            $where .= ' AND created_by IS NULL AND source = ?';
-            $args[] = $source;
-        }
+        // EITHER identifier matching is enough. Preferring phone and consulting
+        // email only when no phone was given meant a re-entry with the mobile
+        // mistyped by one digit read as a brand-new person, identical email and all.
+        $args = [];
+        $ors  = [];
         if ($phone !== '') {
-            $where .= ' AND customer_phone = ?';
+            $ors[]  = 'customer_phone = ?';
             $args[] = $phone;
-        } elseif ($email !== '') {
-            $where .= ' AND customer_email = ?';
+        }
+        if ($email !== '') {
+            $ors[]  = 'customer_email = ?';
             $args[] = $email;
-        } elseif ($name !== '') {
-            $where .= ' AND customer_name = ?';
+        }
+        if (!$ors && $name !== '') {
+            $ors[]  = 'customer_name = ?';
             $args[] = $name;
-        } else {
+        }
+        if (!$ors) {
             return null; // nothing distinctive to match on
         }
 
-        $stmt = $pdo->prepare("SELECT id FROM leads WHERE $where ORDER BY id DESC LIMIT 1");
+        $stmt = $pdo->prepare(
+            'SELECT id FROM leads
+              WHERE created_at > (NOW() - INTERVAL 120 SECOND)
+                AND (' . implode(' OR ', $ors) . ')
+              ORDER BY id DESC LIMIT 1'
+        );
         $stmt->execute($args);
         $id = $stmt->fetchColumn();
         return $id !== false ? (int)$id : null;
@@ -190,7 +202,7 @@ final class Leads
         self::pushSync($leadId);
     }
 
-    /** Move the lead to a new stage; silences the inactivity timer once it leaves NEW. */
+    /** Move the lead to a new stage; silences both nudge cadences once it leaves NEW. */
     public static function moveStage(int $leadId, string $stageCode, ?int $actorId = null): void
     {
         $lead = self::find($leadId);
@@ -212,7 +224,14 @@ final class Leads
         )->execute([$stageCode, $status, $leadId]);
 
         if ($oldStage === $firstStage && $stageCode !== $firstStage) {
-            (new Scheduler())->cancelForEntity('lead', $leadId, ['lead_inactivity']);
+            // Both cadences Automation::inactivity started, not just the agent's:
+            // cancelling 'lead_inactivity' alone left the customer-facing
+            // 'lead_uncontacted_customer' row sitting pending in the queue. It was
+            // skipped at dispatch by the stage guard, so nothing went out, but a
+            // worked lead has no business still holding a slot in the queue.
+            (new Scheduler())->cancelForEntity(
+                'lead', $leadId, ['lead_inactivity', 'lead_uncontacted_customer']
+            );
         }
 
         Activities::add('lead', $leadId, 'stage',
