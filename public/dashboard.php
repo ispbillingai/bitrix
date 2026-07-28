@@ -395,6 +395,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Source comes from the dropdown; picking "+ new source…" (empty
                 // value) uses the free-text field instead.
                 $src = trim((string)($_POST['source'] ?? '')) ?: trim((string)($_POST['source_new'] ?? ''));
+                // create() folds a duplicate into the lead that already exists and
+                // hands that one back. Ask first, so the seller is told what
+                // happened instead of reading "Saved" and expecting a new record.
+                $dupLeadId = Leads::duplicateId([
+                    'name' => $_POST['name'] ?? '', 'phone' => $_POST['phone'] ?? '',
+                    'email' => $_POST['email'] ?? '', 'vat_number' => $vat,
+                    'source' => $src ?: 'manual',
+                ]);
                 $newLeadId = Leads::create([
                     'name' => $_POST['name'] ?? '', 'phone' => $_POST['phone'] ?? '', 'email' => $_POST['email'] ?? '',
                     'company' => $_POST['company'] ?? '', 'comments' => $_POST['comments'] ?? '',
@@ -411,7 +419,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     \Glue\Crm\VatLock::attachLead($vat, $newLeadId);
                     \Glue\Crm\VatLock::notifyThanks('agent', (int)$uid, $vat, trim((string)($_POST['name'] ?? '')));
                 }
-                $flash = $t('saved');
+                if ($dupLeadId !== null) {
+                    $flash = sprintf($t('lead_dup_flash'), $dupLeadId);
+                    $flashType = 'err';
+                } else {
+                    $flash = $t('saved');
+                }
                 $tab = 'leads';
                 break;
             case 'lead_assign':

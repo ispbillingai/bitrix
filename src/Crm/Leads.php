@@ -39,6 +39,9 @@ final class Leads
         $zone   = trim((string)($d['zone'] ?? ''));
         $lang   = Templates::lang($d['lang'] ?? null);
         $title  = trim((string)($d['title'] ?? '')) ?: ($name !== '' ? "Request: $name" : 'New request');
+        // Normalised up here, not just before the INSERT: it is one of the
+        // identifiers the duplicate check below matches on.
+        $vat    = VatLock::normalize((string)($d['vat_number'] ?? ''));
 
         // Set only by the API intake (webhooks/lead.php): the sender's own id for
         // this request, and the site it was submitted on.
@@ -47,22 +50,30 @@ final class Leads
 
         $pdo = Db::pdo();
 
-        // Double-submit guard. An agent clicking Save twice — or a page refresh,
-        // or a network retry — must not create a second identical lead. A named
-        // lock serialises concurrent creates for the same person, so a request
-        // that races in behind the first sees its row and hands it back instead
-        // of inserting a twin.
-        // Keyed on the person alone (not on who is entering them), so a website
-        // form and a seller typing the same request in both queue behind the
+        // A named lock serialises concurrent creates for the same person, so two
+        // requests racing in together (Save clicked twice, a page refresh, a
+        // webhook retry) can't both pass the duplicate check below and insert a
+        // twin. Keyed on the person alone — not on who is entering them — so the
+        // website form and a seller typing the same request in queue behind the
         // same lock and the second one sees the first one's row.
         $lockName = 'glue_lead:' . substr(md5(
-            $phone !== '' ? $phone : ($email !== '' ? $email : $name)
+            $vat !== '' ? $vat : ($phone !== '' ? $phone : ($email !== '' ? $email : $name))
         ), 0, 40);
         $pdo->prepare('SELECT GET_LOCK(?, 5)')->execute([$lockName]);
 
         try {
-            $dupId = self::recentDuplicateId($name, $phone, $email, $source, $externalId);
+            $dupId = self::duplicateId([
+                'name' => $name, 'phone' => $phone, 'email' => $email,
+                'vat_number' => $vat, 'source' => $source, 'external_id' => $externalId,
+            ]);
             if ($dupId !== null) {
+                // Leave a trail on the surviving lead: the enterer is handed this
+                // record back and needs to see that their entry landed here.
+                Activities::add('lead', $dupId, 'system',
+                    'Duplicate entry from ' . $source . ' merged into this lead', $actorId);
+                Log::write('crm', 'lead_duplicate_suppressed', 'lead', $dupId,
+                    ['source' => $source, 'name' => $name, 'phone' => $phone,
+                     'email' => $email, 'vat' => $vat]);
                 return $dupId; // finally still releases the lock
             }
 
@@ -122,23 +133,39 @@ final class Leads
     }
 
     /**
-     * A lead entered moments ago that this one would merely duplicate, or null.
-     * API intakes dedupe on their own external_id (idempotent however many times
-     * the sender retries); manual and form entries dedupe on any matching contact
-     * identifier within a two-minute window.
+     * The existing lead a new entry would merely duplicate, or null.
      *
-     * Neither the enterer nor the source narrows that window. Inside two minutes
-     * the same phone or email is the same person however it reached us, and the
-     * expensive miss is exactly the cross-door one: the website form files the
-     * request (created_by NULL) while the seller, not seeing it land, types it in
-     * too (created_by set). That produced two leads, hence two welcome messages
-     * and two independent nudge cadences aimed at one customer.
+     * ONE definition of "duplicate", shared by every door into the CRM: the
+     * dashboard form, the public request page, the fair form, the partner API,
+     * the website webhook and the mailbox importer all reach it through
+     * create(). Accepts raw field values and normalises them itself, so callers
+     * can ask before they tidy anything up.
+     *
+     * An entry matches an existing lead when it shares ANY strong identifier:
+     *   - external_id — the sender's own reference, so an API push stays
+     *     idempotent however many times it is retried, at any age;
+     *   - vat_number  — a partita IVA is one business, and the surest signal of
+     *     all that we are looking at a company already in the pipeline;
+     *   - phone, or email — either one on its own. Requiring both, or checking
+     *     email only when no phone was given, let one mistyped digit file a
+     *     second lead for someone whose email matched exactly.
+     * Name alone is consulted only when nothing else was supplied — far too
+     * many people share one for it to be evidence by itself.
+     *
+     * A match counts while the existing lead is still OPEN, or was filed within
+     * the last two minutes. That is the whole rule: an open lead IS the customer's
+     * live request, so anything arriving for them belongs on it rather than on a
+     * second record that messages them in parallel. Once their lead has been
+     * converted or discarded the next request is genuinely new and opens its own,
+     * and the two-minute floor still absorbs a double-submit whose first lead was
+     * closed immediately.
      */
-    private static function recentDuplicateId(
-        string $name, string $phone, string $email, string $source, string $externalId
-    ): ?int {
+    public static function duplicateId(array $d): ?int
+    {
         $pdo = Db::pdo();
 
+        $source     = mb_strtolower(trim((string)($d['source'] ?? ''))) ?: 'website';
+        $externalId = trim((string)($d['external_id'] ?? ''));
         if ($externalId !== '') {
             $stmt = $pdo->prepare('SELECT id FROM leads WHERE external_id = ? AND source = ? ORDER BY id DESC LIMIT 1');
             $stmt->execute([$externalId, $source]);
@@ -146,11 +173,16 @@ final class Leads
             return $id !== false ? (int)$id : null;
         }
 
-        // EITHER identifier matching is enough. Preferring phone and consulting
-        // email only when no phone was given meant a re-entry with the mobile
-        // mistyped by one digit read as a brand-new person, identical email and all.
-        $args = [];
-        $ors  = [];
+        $vat   = VatLock::normalize((string)($d['vat_number'] ?? ''));
+        $phone = Notifier::normalizePhone((string)($d['phone'] ?? ''));
+        $email = trim((string)($d['email'] ?? ''));
+        $name  = trim((string)($d['name'] ?? ''));
+
+        $ors = $args = [];
+        if ($vat !== '') {
+            $ors[]  = 'vat_number = ?';
+            $args[] = $vat;
+        }
         if ($phone !== '') {
             $ors[]  = 'customer_phone = ?';
             $args[] = $phone;
@@ -159,9 +191,15 @@ final class Leads
             $ors[]  = 'customer_email = ?';
             $args[] = $email;
         }
+
+        // Nothing but a name to go on: two walk-ins at a fair can genuinely both
+        // be "Mario Rossi", so a name is never treated as identity. It only ever
+        // catches the same entry arriving twice, inside the double-submit window.
+        $age = $ors ? "status = 'open' OR created_at > (NOW() - INTERVAL 120 SECOND)" : '';
         if (!$ors && $name !== '') {
             $ors[]  = 'customer_name = ?';
             $args[] = $name;
+            $age    = 'created_at > (NOW() - INTERVAL 120 SECOND)';
         }
         if (!$ors) {
             return null; // nothing distinctive to match on
@@ -169,9 +207,9 @@ final class Leads
 
         $stmt = $pdo->prepare(
             'SELECT id FROM leads
-              WHERE created_at > (NOW() - INTERVAL 120 SECOND)
-                AND (' . implode(' OR ', $ors) . ')
-              ORDER BY id DESC LIMIT 1'
+              WHERE (' . implode(' OR ', $ors) . ")
+                AND ($age)
+              ORDER BY id DESC LIMIT 1"
         );
         $stmt->execute($args);
         $id = $stmt->fetchColumn();

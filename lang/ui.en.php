@@ -97,6 +97,7 @@ return [
     'f_vat'          => 'VAT number',
     'f_vat_ph'       => 'e.g. 01234567890',
     'vat_taken_flash' => 'Lead NOT saved: VAT number %s was already entered by another associate. It becomes available again on %s.',
+    'lead_dup_flash' => 'This customer already has an open lead (#%d) — opened it instead of creating a duplicate.',
     'rk_vat_thanks'  => 'VAT lead entered (thank you)',
     'rk_vat_taken'   => 'VAT already taken (blocked)',
     'timeline'       => 'Timeline',

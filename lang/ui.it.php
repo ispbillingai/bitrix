@@ -97,6 +97,7 @@ return [
     'f_vat'          => 'Partita IVA',
     'f_vat_ph'       => 'es. 01234567890',
     'vat_taken_flash' => 'Lead NON salvato: la partita IVA %s è già stata inserita da un altro collaboratore. Tornerà disponibile il %s.',
+    'lead_dup_flash' => 'Questo cliente ha già un lead aperto (#%d): è stato aperto quello invece di crearne un doppione.',
     'rk_vat_thanks'  => 'Lead con P.IVA inserito (ringraziamento)',
     'rk_vat_taken'   => 'P.IVA già inserita (bloccato)',
     'timeline'       => 'Cronologia',

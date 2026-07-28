@@ -3,8 +3,6 @@ declare(strict_types=1);
 
 namespace Glue\Crm;
 
-use Glue\Db;
-
 /**
  * Turns whatever an outside system POSTs at us into a lead.
  *
@@ -101,56 +99,24 @@ final class LeadIntake
      * The lead this payload was already turned into, if any — so a retried or
      * double-fired webhook doesn't produce two leads (and two welcome messages).
      *
-     * Matched on the sender's own id when they send one; otherwise on the same
-     * source reaching us with the same phone/email inside $windowMinutes, which
-     * is what a double-submitted form looks like.
+     * Defers to Leads::duplicateId so a webhook, the dashboard form and the
+     * mailbox importer all agree on what a duplicate is. This used to keep its
+     * own narrower rule — same source, 15-minute window, no VAT — which meant a
+     * request the website posted and the same request a seller typed in an hour
+     * later were two leads chasing one customer.
      */
-    public static function findDuplicate(array $lead, int $windowMinutes = 15): ?int
+    public static function findDuplicate(array $lead): ?int
     {
-        $source     = (string)($lead['source'] ?? '');
-        $externalId = (string)($lead['external_id'] ?? '');
-
-        if ($source !== '' && $externalId !== '') {
-            $stmt = Db::pdo()->prepare(
-                'SELECT id FROM leads WHERE source = ? AND external_id = ? ORDER BY id ASC LIMIT 1'
-            );
-            $stmt->execute([$source, $externalId]);
-            return (int)($stmt->fetchColumn() ?: 0) ?: null;
-        }
-
-        $phone = (string)($lead['phone'] ?? '');
-        $email = (string)($lead['email'] ?? '');
-        if ($windowMinutes < 1 || ($phone === '' && $email === '')) {
-            return null;
-        }
-        // Prepares are not emulated (see Db), so every placeholder appears once
-        // and the already-validated window is inlined.
-        $mins = (int)$windowMinutes;
-        $stmt = Db::pdo()->prepare(
-            "SELECT id FROM leads
-              WHERE source = :source
-                AND created_at > NOW() - INTERVAL $mins MINUTE
-                AND ((:has_phone = 1 AND customer_phone = :phone)
-                  OR (:has_email = 1 AND customer_email = :email))
-              ORDER BY id DESC LIMIT 1"
-        );
-        $stmt->execute([
-            ':source'    => $source,
-            ':has_phone' => $phone !== '' ? 1 : 0,
-            ':phone'     => $phone,
-            ':has_email' => $email !== '' ? 1 : 0,
-            ':email'     => $email,
-        ]);
-        return (int)($stmt->fetchColumn() ?: 0) ?: null;
+        return Leads::duplicateId($lead);
     }
 
     /**
      * Create the lead unless this payload was already delivered.
      * @return array{lead_id:int,duplicate:bool}
      */
-    public static function submit(array $lead, int $windowMinutes = 15): array
+    public static function submit(array $lead): array
     {
-        $existing = self::findDuplicate($lead, $windowMinutes);
+        $existing = self::findDuplicate($lead);
         if ($existing !== null) {
             return ['lead_id' => $existing, 'duplicate' => true];
         }
