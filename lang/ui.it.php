@@ -491,6 +491,7 @@ return [
     'u_title_ph'     => 'es. Consulente vendite',
     'u_create'       => 'Crea agente',
     'u_added'        => 'Agente aggiunto.',
+    'u_username_taken' => 'Il nome utente "{u}" è già in uso. Scegline un altro (es. "{u}.rossi").',
     'u_creds_sent'   => 'credenziali di accesso inviate.',
     'u_creds_none'   => 'aggiungi email o telefono per inviare automaticamente le credenziali.',
     'rk_agent_welcome' => 'Credenziali nuovo utente',

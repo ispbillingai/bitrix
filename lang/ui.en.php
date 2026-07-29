@@ -491,6 +491,7 @@ return [
     'u_title_ph'     => 'e.g. Sales consultant',
     'u_create'       => 'Create agent',
     'u_added'        => 'Agent added.',
+    'u_username_taken' => 'The username "{u}" is already taken. Pick another one (e.g. "{u}.rossi").',
     'u_creds_sent'   => 'login details sent to them.',
     'u_creds_none'   => 'add an email or phone to send them the login automatically.',
     'rk_agent_welcome' => 'New user login details',

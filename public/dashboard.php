@@ -819,7 +819,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // ---------- users / agents ----------
             case 'create_user':
-                $newId = Auth::create((string)$_POST['username'], (string)$_POST['password'], (string)($_POST['role'] ?? 'agent'));
+                try {
+                    $newId = Auth::create((string)$_POST['username'], (string)$_POST['password'], (string)($_POST['role'] ?? 'agent'));
+                } catch (\RuntimeException $e) {
+                    if ($e->getMessage() !== 'username_taken') { throw $e; }
+                    // Two agents can share a first name — say so in plain language
+                    // instead of leaking the SQL constraint at them.
+                    $flash = str_replace('{u}', trim((string)$_POST['username']), $t('u_username_taken'));
+                    $flashType = 'err';
+                    $tab = 'agents';
+                    break;
+                }
                 Auth::updateProfile($newId, [
                     'full_name' => $_POST['full_name'] ?? '', 'email' => $_POST['email'] ?? '',
                     'phone' => $_POST['phone'] ?? '', 'title' => $_POST['title'] ?? '',

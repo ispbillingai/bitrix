@@ -86,6 +86,10 @@ final class Auth
         Db::pdo()->prepare('UPDATE users SET ' . implode(', ', $set) . ' WHERE id = ?')->execute($args);
     }
 
+    /**
+     * @throws \RuntimeException 'username_taken' if the username is already used —
+     *         the unique index is the judge, so a concurrent create can't slip past.
+     */
     public static function create(string $username, string $password, string $role = 'admin'): int
     {
         $username = trim($username);
@@ -95,7 +99,14 @@ final class Auth
         $stmt = Db::pdo()->prepare(
             'INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)'
         );
-        $stmt->execute([$username, password_hash($password, PASSWORD_BCRYPT), $role ?: 'admin']);
+        try {
+            $stmt->execute([$username, password_hash($password, PASSWORD_BCRYPT), $role ?: 'admin']);
+        } catch (\PDOException $e) {
+            if ((int)($e->errorInfo[1] ?? 0) === 1062) {
+                throw new \RuntimeException('username_taken');
+            }
+            throw $e;
+        }
         return (int)Db::pdo()->lastInsertId();
     }
 
