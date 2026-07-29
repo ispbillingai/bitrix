@@ -249,9 +249,9 @@ final class LeadMailImporter
     // ---------------------------------------------------------------- parsing
 
     /**
-     * Cashmatic's "Riepilogo Lead" summary lays its fields out as a table, which
-     * arrives in the text/plain part as "Label value" lines with NO separator —
-     * only knowing the template's label set makes the split unambiguous.
+     * Cashmatic's "Riepilogo Lead" summary lays its fields out as a table, and
+     * no mail client agrees on how to flatten one into text — only knowing the
+     * template's label set makes the fields recoverable either way.
      * Label => the alias LeadIntake::normalize() already understands; null =
      * context worth keeping, folded into one note (aliased to comments).
      */
@@ -274,37 +274,99 @@ final class LeadMailImporter
         if (stripos($body, 'Riepilogo Lead') === false) {
             return [];
         }
-        // Longest label first, so "nota di richiesta" is never read as "note".
-        $labels = self::CASHMATIC_LABELS;
-        uksort($labels, static fn(string $a, string $b): int => mb_strlen($b) <=> mb_strlen($a));
+        // The same template reaches us in two shapes. A copy the partner forwards
+        // arrives with every row flattened onto one line ("Nome Contatto Mario
+        // Rossi"); the mail Cashmatic sends us directly keeps the table, so its
+        // text/plain part is a pipe grid in which the label is a cell of its own,
+        // separated from its value. Read the grid first — a flattened body has no
+        // cells to find, so the line pass answers there.
+        $found = self::cashmaticCells($body) + self::cashmaticLines($body);
 
+        // Walked in template order, so the folded note reads like the email.
         $out = [];
         $ctx = [];
-        foreach (preg_split('/\r\n|\r|\n/', $body) ?: [] as $line) {
-            $line = trim($line);
-            foreach ($labels as $label => $key) {
-                if ($line === '' || stripos($line, (string)$label) !== 0) {
-                    continue;
-                }
-                $rest = mb_substr($line, mb_strlen((string)$label));
-                if ($rest !== '' && !preg_match('/^\s/', $rest)) {
-                    continue; // label is a prefix of a longer word, not this field
-                }
-                $value = trim($rest);
-                if ($value === '-') {
-                    $value = ''; // the template's empty marker
-                }
-                if ($value !== '') {
-                    $key === null ? $ctx[] = ucfirst((string)$label) . ': ' . $value
-                                  : $out[$key] = $value;
-                }
-                continue 2;
+        foreach (self::CASHMATIC_LABELS as $label => $key) {
+            $value = $found[$label] ?? '';
+            if ($value === '') {
+                continue;
             }
+            $key === null ? $ctx[] = ucfirst($label) . ': ' . $value : $out[$key] = $value;
         }
         if ($ctx !== []) {
             $out['note'] = implode("\n", $ctx);
         }
         return $out;
+    }
+
+    /**
+     * Grid layout — `| Telefono | 3371194993 |`, each cell usually wrapped over
+     * lines of its own. The first cell after a label cell is that field's value;
+     * a label arriving where a value was due means the field was left blank.
+     * @return array<string,string> label => value
+     */
+    private static function cashmaticCells(string $body): array
+    {
+        $out   = [];
+        $label = null;
+        foreach (explode('|', $body) as $cell) {
+            $cell = trim($cell);
+            if ($cell === '') {
+                continue; // padding, or a row's leading/trailing pipe
+            }
+            // Whitespace inside a cell is the renderer wrapping it, not the label.
+            $key = mb_strtolower((string)preg_replace('/\s+/u', ' ', $cell));
+            if (array_key_exists($key, self::CASHMATIC_LABELS)) {
+                $label = $key;
+                continue;
+            }
+            if ($label !== null) {
+                $value = self::cashmaticValue($cell);
+                if ($value !== '') {
+                    $out[$label] = $value;
+                }
+                $label = null;
+            }
+        }
+        return $out;
+    }
+
+    /**
+     * Flattened layout — "Label value" with NO separator, which only the known
+     * label set can split unambiguously.
+     * @return array<string,string> label => value
+     */
+    private static function cashmaticLines(string $body): array
+    {
+        // Longest label first, so "nota di richiesta" is never read as "note".
+        $labels = array_keys(self::CASHMATIC_LABELS);
+        usort($labels, static fn(string $a, string $b): int => mb_strlen($b) <=> mb_strlen($a));
+
+        $out = [];
+        foreach (preg_split('/\r\n|\r|\n/', $body) ?: [] as $line) {
+            $line = trim($line);
+            foreach ($labels as $label) {
+                if ($line === '' || stripos($line, $label) !== 0) {
+                    continue;
+                }
+                $rest = mb_substr($line, mb_strlen($label));
+                if ($rest !== '' && !preg_match('/^\s/', $rest)) {
+                    continue; // label is a prefix of a longer word, not this field
+                }
+                $value = self::cashmaticValue($rest);
+                if ($value !== '') {
+                    $out[$label] = $value;
+                }
+                continue 2;
+            }
+        }
+        return $out;
+    }
+
+    /** The template writes an unfilled field as "-"; a grid's rule row is all dashes. */
+    private static function cashmaticValue(string $raw): string
+    {
+        $value = trim($raw);
+        return preg_match('/^-+$/', $value) === 1 ? '' : $value;
     }
 
     /**

@@ -34,13 +34,17 @@ each message's Message-ID. Nothing is ever deleted or marked in the mailbox.
   `noreply@` address that the block list would otherwise eat. A message with
   no extractable contact is skipped as `no_contact`.
 - **Cashmatic template.** The real leads are Cashmatic CRM "Riepilogo Lead"
-  summaries (usually forwarded by the partner from
-  `berkelincampania@gmail.com`). Their fields arrive as a table — "Label
-  value" with no separator — so a dedicated pass in
-  `LeadMailImporter::cashmaticPairs()` splits on the template's known label
-  set: Nome Contatto → name, Azienda → company, Indirizzo → zone,
-  Email/Telefono → contact; Fonte, Sistema di cassa, Fornitore and Note are
-  kept together in the lead's comments.
+  summaries, sent directly by `noreply@cashmatic.eu` or forwarded by the
+  partner. Their fields arrive as a table, and the text/plain part flattens it
+  differently depending on who sent it, so `LeadMailImporter::cashmaticPairs()`
+  reads both shapes off the template's known label set:
+  `cashmaticCells()` for the pipe grid Cashmatic sends
+  (`| Telefono | 3371194993 |`, label and value in separate cells) and
+  `cashmaticLines()` for the forwarded copies, where each row is one
+  separator-less line (`Telefono 3371194993`). Either way: Nome Contatto →
+  name, Azienda → company, Indirizzo → zone, Email/Telefono → contact; Fonte,
+  Sistema di cassa, Fornitore and Note are kept together in the lead's
+  comments. A field the template left as `-` counts as empty.
 - **Retry safety.** The message hash is the lead's `external_id`
   (`mail:<sha1>`), so re-polls and re-deliveries map back to the lead already
   created instead of duplicating it.
