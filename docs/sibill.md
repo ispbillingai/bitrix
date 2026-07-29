@@ -29,6 +29,30 @@ So payment state is derived:
 *Overdue* is not a Sibill state. It is the earliest unpaid instalment being in the
 past, computed locally so it stays true as days go by without a re-sync.
 
+### Credit notes are not debts
+
+A *nota di credito* is an invoice pointing the other way: it refunds, or cancels,
+something already invoiced. It is money owed **to** the customer. The mirror
+holds them — they are part of the ledger and an operator about to chase someone
+needs to see them — but every figure that answers "how much is still owed"
+excludes them, and they are never chased.
+
+One condition, `Invoices::debtOnly()`, expresses that. It is in the debtor
+roll-up, the summary tiles, the state filters, the chase-selection query and the
+set a reminder is built from, so a credit note cannot reach a customer's message
+by any route, including the per-invoice "remind this one" button. The flat list
+has a **Credit notes** tab of its own and the customer card shows how much is
+held in them.
+
+What we deliberately do **not** do is net a credit note off the debt. Nothing in
+the mirror says which invoice a given credit note cancels — Sibill's document
+payload carries no link — so subtracting it would be a guess, and guessing
+downwards means a real debt silently stops being chased. Note the flip side,
+which is the same missing link seen from the other end: if a credit note fully
+cancels an invoice and Sibill still shows that invoice as unpaid, we will keep
+chasing it. Watch for it; if it turns out Sibill *does* expose the link, netting
+becomes a small change here rather than a redesign.
+
 One wrinkle worth knowing, because the field names invite the opposite reading:
 
 ```

@@ -109,7 +109,8 @@ $here = function (array $over = []) use ($view, $filter, $q): string {
       ? ['overdue' => 'inv_cf_overdue', 'owing' => 'inv_cf_owing', 'unreachable' => 'inv_cf_unreachable',
          'reachable' => 'inv_cf_reachable', 'all' => 'inv_cf_all']
       : ['overdue' => 'inv_f_overdue', 'open' => 'inv_f_open', 'partial' => 'inv_f_partial',
-         'paid' => 'inv_f_paid', 'unknown' => 'inv_f_unknown', '' => 'inv_f_all'];
+         'paid' => 'inv_f_paid', 'unknown' => 'inv_f_unknown', 'credit' => 'inv_f_credit',
+         '' => 'inv_f_all'];
     foreach ($tabs as $key => $label): ?>
       <a class="<?= $filter === $key ? 'on' : '' ?>"
          href="?tab=invoices&v=<?= $h($view) ?>&f=<?= $h($key) ?><?= $q !== '' ? '&q=' . urlencode($q) : '' ?>"><?= $h($t($label)) ?></a>
@@ -178,6 +179,14 @@ $here = function (array $over = []) use ($view, $filter, $q): string {
               · <span style="color:var(--red)"><?= $h(str_replace('{n}', (string)(int)$oc['overdue_count'], $t('inv_n_overdue'))) ?></span>
             <?php endif; ?>
           </div>
+          <?php // Credit notes are not netted off the debt — nothing tells us which
+                // invoice one cancels — but whoever is about to chase should see them. ?>
+          <?php if ((int)$oc['credit_count'] > 0): ?>
+            <div class="muted small" style="margin-top:2px">
+              <?= $h(str_replace(['{n}', '{total}'],
+                  [(string)(int)$oc['credit_count'], $plain($oc['credit_total'])], $t('inv_credit_held'))) ?>
+            </div>
+          <?php endif; ?>
         </div>
         <a class="btn ghost tiny" href="<?= $h($here(['c' => null])) ?>"><?= $h($t('inv_close')) ?></a>
       </div>
@@ -248,17 +257,21 @@ $here = function (array $over = []) use ($view, $filter, $q): string {
           <span style="flex:1;min-width:180px"></span>
         </div>
         <?php foreach (Customers::invoices((int)$oc['id']) as $i):
-            $iLate = $i['pay_state'] !== 'paid' && $i['due_date'] !== null && $i['due_date'] < $today;
+            // A credit note is a refund, never a debt: no amount owed, no
+            // chasing, and no red "late" — the reminders leave it alone.
+            $iCredit = $i['doc_type'] === 'CREDIT_NOTE';
+            $iLate = !$iCredit && $i['pay_state'] !== 'paid' && $i['due_date'] !== null && $i['due_date'] < $today;
             $iExcl = (int)($i['chase_excluded'] ?? 0) === 1;
-            $iOpen = $i['pay_state'] !== 'paid'; ?>
-          <div style="display:flex;gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--line);flex-wrap:wrap<?= $iExcl ? ';opacity:.6' : '' ?>">
+            $iOpen = !$iCredit && $i['pay_state'] !== 'paid'; ?>
+          <div style="display:flex;gap:12px;align-items:center;padding:8px 0;border-top:1px solid var(--line);flex-wrap:wrap<?= $iExcl || $iCredit ? ';opacity:.6' : '' ?>">
             <span class="small" style="flex:1;min-width:120px">
               <b><?= $h($i['number'] ?: '—') ?></b>
               <span class="muted"><?= $h($i['creation_date'] ?: '') ?></span>
+              <?php if ($iCredit): ?><span class="pill"><?= $h($t('inv_credit_note')) ?></span><?php endif; ?>
               <?php if ($iExcl): ?><span class="pill"><?= $h($t('inv_excluded')) ?></span><?php endif; ?>
             </span>
             <span class="small" style="width:110px"><?= $eur($i['gross_amount'], $i['currency']) ?></span>
-            <span class="small" style="width:110px"><?= $i['pay_state'] === 'paid' ? '<span class="muted">—</span>' : $eur($i['open_amount'], $i['currency']) ?></span>
+            <span class="small" style="width:110px"><?= $iCredit || $i['pay_state'] === 'paid' ? '<span class="muted">—</span>' : $eur($i['open_amount'], $i['currency']) ?></span>
             <span class="small" style="width:120px<?= $iLate ? ';color:var(--red);font-weight:600' : '' ?>">
               <?= $h(($i['pay_state'] === 'paid' ? $i['last_paid_date'] : $i['due_date']) ?: '—') ?></span>
             <span style="width:90px"><span class="pill" style="color:<?= $h($stateColor[$i['pay_state']] ?? 'var(--muted)') ?>">
@@ -374,7 +387,10 @@ $here = function (array $over = []) use ($view, $filter, $q): string {
   <?php endif; ?>
   <?php foreach ($rows as $r):
       $state   = (string)$r['pay_state'];
-      $overdue = $state !== 'paid' && $r['due_date'] !== null && $r['due_date'] < $today;
+      // A credit note is never overdue TO US — it refunds an invoice — so it is
+      // never flagged red and never counted as still owed.
+      $credit  = $r['doc_type'] === 'CREDIT_NOTE';
+      $overdue = !$credit && $state !== 'paid' && $r['due_date'] !== null && $r['due_date'] < $today;
       $isOpen  = $openInv === (int)$r['id'];
   ?>
     <tr<?= $overdue ? ' style="background:rgba(239,68,68,.05)"' : '' ?>>
@@ -395,7 +411,7 @@ $here = function (array $over = []) use ($view, $filter, $q): string {
         <?php endif; ?>
       </td>
       <td class="small"><?= $eur($r['gross_amount'], $r['currency']) ?></td>
-      <td class="small"><?= $state === 'paid' ? '<span class="muted">—</span>' : $eur($r['open_amount'], $r['currency']) ?></td>
+      <td class="small"><?= $credit || $state === 'paid' ? '<span class="muted">—</span>' : $eur($r['open_amount'], $r['currency']) ?></td>
       <td class="small">
         <?php if ($state === 'paid'): ?>
           <span class="muted"><?= $h($r['last_paid_date'] ?: '') ?></span>

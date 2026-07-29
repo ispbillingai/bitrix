@@ -125,6 +125,7 @@ final class Customers
                            MIN(CASE WHEN pay_state <> 'paid' THEN due_date END)        AS oldest_due
                     FROM sibill_invoices
                     WHERE counterpart_vat IS NOT NULL AND counterpart_vat <> ''
+                      AND " . Invoices::debtOnly() . "
                     GROUP BY counterpart_vat
                 ) agg ON agg.counterpart_vat = c.vat_number"
             . ($where ? ' WHERE ' . implode(' AND ', $where) : '')
@@ -137,16 +138,26 @@ final class Customers
         return $stmt->fetchAll();
     }
 
-    /** One customer with the same aggregates the list shows. */
+    /**
+     * One customer with the same aggregates the list shows, plus what we hold in
+     * credit notes for them — not netted off the debt (nothing in the mirror
+     * says which invoice a credit note cancels), but shown on the card so
+     * whoever is about to chase can see it.
+     */
     public static function get(int $id): ?array
     {
+        $debt = Invoices::debtOnly('i.');
         $stmt = Db::pdo()->prepare(
             "SELECT c.*, ct.name AS contact_name,
-                    COALESCE(SUM(i.pay_state <> 'paid'), 0)                            AS open_count,
-                    COALESCE(SUM(i.pay_state <> 'paid' AND i.due_date IS NOT NULL
+                    COALESCE(SUM($debt AND i.pay_state <> 'paid'), 0)                  AS open_count,
+                    COALESCE(SUM($debt AND i.pay_state <> 'paid' AND i.due_date IS NOT NULL
                                  AND i.due_date < CURDATE()), 0)                       AS overdue_count,
-                    COALESCE(SUM(CASE WHEN i.pay_state <> 'paid' THEN i.open_amount ELSE 0 END), 0) AS owed,
-                    MIN(CASE WHEN i.pay_state <> 'paid' THEN i.due_date END)            AS oldest_due
+                    COALESCE(SUM(CASE WHEN $debt AND i.pay_state <> 'paid'
+                                      THEN i.open_amount ELSE 0 END), 0)               AS owed,
+                    MIN(CASE WHEN $debt AND i.pay_state <> 'paid' THEN i.due_date END)  AS oldest_due,
+                    COALESCE(SUM(i.doc_type = 'CREDIT_NOTE'), 0)                       AS credit_count,
+                    COALESCE(SUM(CASE WHEN i.doc_type = 'CREDIT_NOTE'
+                                      THEN i.gross_amount ELSE 0 END), 0)              AS credit_total
              FROM sibill_customers c
              LEFT JOIN contacts ct        ON ct.id = c.contact_id
              LEFT JOIN sibill_invoices i  ON i.counterpart_vat = c.vat_number
@@ -157,7 +168,14 @@ final class Customers
         return $stmt->fetch() ?: null;
     }
 
-    /** A customer's invoices, unpaid first, each with its instalment counts. */
+    /**
+     * A customer's documents, unpaid first, each with its instalment counts.
+     *
+     * $openOnly means "still owed to us", which is what a chase is built from —
+     * so it drops credit notes as well as settled invoices. The full list keeps
+     * them (sorted to the bottom) because they are part of the picture when
+     * someone is deciding what to chase for.
+     */
     public static function invoices(int $id, bool $openOnly = false): array
     {
         $c = self::get($id);
@@ -165,8 +183,9 @@ final class Customers
             return [];
         }
         $sql = 'SELECT * FROM sibill_invoices WHERE counterpart_vat = ?'
-            . ($openOnly ? " AND pay_state <> 'paid'" : '')
-            . " ORDER BY (pay_state <> 'paid') DESC, due_date IS NULL, due_date ASC, creation_date DESC";
+            . ($openOnly ? " AND pay_state <> 'paid' AND " . Invoices::debtOnly() : '')
+            . " ORDER BY (doc_type = 'CREDIT_NOTE') ASC, (pay_state <> 'paid') DESC,
+                        due_date IS NULL, due_date ASC, creation_date DESC";
         $stmt = Db::pdo()->prepare($sql);
         $stmt->execute([$c['vat_number']]);
         return $stmt->fetchAll();
@@ -187,6 +206,7 @@ final class Customers
                        SUM(i.pay_state <> 'paid' AND i.due_date < CURDATE()) AS overdue_count
                 FROM sibill_customers c
                 JOIN sibill_invoices i ON i.counterpart_vat = c.vat_number
+                                      AND " . Invoices::debtOnly('i.') . "
                 GROUP BY c.id
                 HAVING overdue_count > 0
              ) d"
@@ -380,7 +400,8 @@ final class Customers
      * period, owe more than a floor amount (nobody should get a WhatsApp about
      * €3.20), be reachable, not be snoozed or excluded, not have been chased
      * within the cadence, and — if a start date is set — be overdue on an
-     * invoice due on or after it.
+     * invoice due on or after it. Credit notes are not a debt and never enter
+     * the aggregate; see Invoices::debtOnly().
      */
     public static function due(int $limit): array
     {
@@ -393,6 +414,7 @@ final class Customers
         // must be computed from in-window invoices only, or the message would
         // still quote the old backlog even when it did not trigger the chase.
         $innerWhere = "pay_state <> 'paid' AND chase_excluded = 0 AND due_date IS NOT NULL
+                       AND " . Invoices::debtOnly() . "
                        AND due_date < (CURDATE() - INTERVAL ? DAY)
                        AND counterpart_vat IS NOT NULL AND counterpart_vat <> ''";
         $params = [$minLate];
@@ -441,6 +463,10 @@ final class Customers
      * button. A human picked them, so exclusions and the start-date line don't
      * apply. With null (the default) the message covers the customer's whole open
      * balance minus any invoices marked excluded from chasing.
+     *
+     * Either way the set comes from invoices($id, true), which holds unpaid
+     * invoices only — a credit note is a refund and can never be chased, not
+     * even by pressing the button.
      */
     public static function remind(int $id, bool $sendNow = false, ?array $invoiceIds = null): int
     {
@@ -456,7 +482,8 @@ final class Customers
 
         $open = self::invoices($id, true);
         if ($invoiceIds !== null) {
-            // Targeted send: exactly the chosen invoice(s), whatever their state.
+            // Targeted send: exactly the chosen invoice(s), whether or not they
+            // are overdue yet — but still only ones that are actually owed.
             $want = array_map('intval', $invoiceIds);
             $open = array_values(array_filter($open, static fn($i) => in_array((int)$i['id'], $want, true)));
         } else {

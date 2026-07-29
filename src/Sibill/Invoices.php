@@ -31,6 +31,23 @@ final class Invoices
     /** Document types worth mirroring; anything else upstream is ignored. */
     private const TYPES = ['INVOICE', 'CREDIT_NOTE'];
 
+    /**
+     * The condition that separates a debt from everything else in the mirror.
+     *
+     * A credit note (nota di credito) is an invoice pointing the other way: it
+     * refunds, or cancels, something already invoiced. It is money we owe the
+     * customer, never money they owe us — so it is never counted as outstanding
+     * and never chased. Every aggregate that answers "how much is still owed"
+     * goes through here; the lists still SHOW credit notes, labelled, because
+     * someone deciding whether to chase needs to see one.
+     *
+     * @param string $alias table alias with its dot, e.g. 'i.'
+     */
+    public static function debtOnly(string $alias = ''): string
+    {
+        return $alias . "doc_type = 'INVOICE'";
+    }
+
     // ---- sync ---------------------------------------------------------------
 
     /**
@@ -352,20 +369,29 @@ final class Invoices
 
     // ---- reads --------------------------------------------------------------
 
-    /** Headline numbers for the invoices page. Amounts are floats for display. */
+    /**
+     * Headline numbers for the invoices page. Amounts are floats for display.
+     *
+     * Every figure here is about money owed to us, so credit notes are counted
+     * separately rather than folded in — see debtOnly().
+     */
     public static function summary(): array
     {
+        $debt = self::debtOnly();
         $row = Db::pdo()->query(
             "SELECT
-                COUNT(*)                                                   AS total,
-                SUM(pay_state = 'paid')                                    AS paid,
-                SUM(pay_state = 'partial')                                 AS partial,
-                SUM(pay_state = 'unpaid')                                  AS unpaid,
-                SUM(pay_state = 'unknown')                                 AS unknown,
-                SUM(pay_state <> 'paid' AND due_date IS NOT NULL AND due_date < CURDATE()) AS overdue,
-                COALESCE(SUM(open_amount), 0)                              AS open_total,
-                COALESCE(SUM(CASE WHEN pay_state <> 'paid' AND due_date IS NOT NULL
-                                  AND due_date < CURDATE() THEN open_amount ELSE 0 END), 0) AS overdue_total
+                SUM($debt)                                                 AS total,
+                SUM($debt AND pay_state = 'paid')                          AS paid,
+                SUM($debt AND pay_state = 'partial')                       AS partial,
+                SUM($debt AND pay_state = 'unpaid')                        AS unpaid,
+                SUM($debt AND pay_state = 'unknown')                       AS unknown,
+                SUM($debt AND pay_state <> 'paid' AND due_date IS NOT NULL
+                    AND due_date < CURDATE())                              AS overdue,
+                COALESCE(SUM(CASE WHEN $debt THEN open_amount ELSE 0 END), 0) AS open_total,
+                COALESCE(SUM(CASE WHEN $debt AND pay_state <> 'paid' AND due_date IS NOT NULL
+                                  AND due_date < CURDATE() THEN open_amount ELSE 0 END), 0) AS overdue_total,
+                SUM(doc_type = 'CREDIT_NOTE')                              AS credit_notes,
+                COALESCE(SUM(CASE WHEN doc_type = 'CREDIT_NOTE' THEN gross_amount ELSE 0 END), 0) AS credit_total
              FROM sibill_invoices"
         )->fetch() ?: [];
         return array_map(static fn($v) => $v === null ? 0 : (0 + $v), $row);
@@ -373,20 +399,28 @@ final class Invoices
 
     /**
      * Invoice list for the page.
-     * @param array $f state:paid|partial|unpaid|unknown|overdue|open, q:string, linked:bool
+     *
+     * Payment-state filters are about collecting money, so they cover invoices
+     * only. Credit notes have their own tab and are still in "all" — hidden
+     * documents would be worse than mislabelled ones.
+     *
+     * @param array $f state:paid|partial|unpaid|unknown|overdue|open|credit, q:string, linked:bool
      */
     public static function search(array $f = [], int $limit = 300): array
     {
         $where = [];
         $args  = [];
+        $debt  = self::debtOnly('i.');
 
         $state = (string)($f['state'] ?? '');
-        if ($state === 'overdue') {
-            $where[] = "i.pay_state <> 'paid' AND i.due_date IS NOT NULL AND i.due_date < CURDATE()";
+        if ($state === 'credit') {
+            $where[] = "i.doc_type = 'CREDIT_NOTE'";
+        } elseif ($state === 'overdue') {
+            $where[] = "$debt AND i.pay_state <> 'paid' AND i.due_date IS NOT NULL AND i.due_date < CURDATE()";
         } elseif ($state === 'open') {
-            $where[] = "i.pay_state <> 'paid'";
+            $where[] = "$debt AND i.pay_state <> 'paid'";
         } elseif (in_array($state, ['paid', 'partial', 'unpaid', 'unknown'], true)) {
-            $where[] = 'i.pay_state = ?';
+            $where[] = "$debt AND i.pay_state = ?";
             $args[]  = $state;
         }
         if (trim((string)($f['q'] ?? '')) !== '') {
@@ -402,7 +436,8 @@ final class Invoices
                 LEFT JOIN contacts c ON c.id = i.contact_id
                 LEFT JOIN deals d    ON d.id = i.deal_id'
             . ($where ? ' WHERE ' . implode(' AND ', $where) : '')
-            . " ORDER BY (i.pay_state <> 'paid' AND i.due_date IS NOT NULL AND i.due_date < CURDATE()) DESC,
+            . " ORDER BY (i.doc_type = 'CREDIT_NOTE') ASC,
+                        (i.pay_state <> 'paid' AND i.due_date IS NOT NULL AND i.due_date < CURDATE()) DESC,
                         i.due_date IS NULL, i.due_date ASC, i.creation_date DESC
                LIMIT " . max(1, min(2000, $limit));
 
