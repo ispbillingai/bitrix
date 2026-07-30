@@ -103,6 +103,13 @@ $pipelines = \Glue\Crm\Pipelines::all();
     fld($h, 'leads_mailbox.poll_minutes', $t('f_lm_poll'), $cfg('leads_mailbox.poll_minutes', 5));
     fld($h, 'leads_mailbox.allowed_from', $t('f_lm_allowed'),
         implode(', ', (array)$cfg('leads_mailbox.allowed_from', [])), $t('f_lm_allowed_h'));
+    // sender => source, shown as "address = label" pairs.
+    $srcMap = (array)$cfg('leads_mailbox.source_by_sender', []);
+    fld($h, 'leads_mailbox.source_by_sender', $t('f_lm_srcmap'),
+        implode(', ', array_map(
+            static fn($sender, $source): string => $sender . ' = ' . $source,
+            array_keys($srcMap), $srcMap
+        )), $t('f_lm_srcmap_h'));
     ?>
   </div>
 

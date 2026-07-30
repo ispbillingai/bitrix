@@ -45,6 +45,18 @@ each message's Message-ID. Nothing is ever deleted or marked in the mailbox.
   name, Azienda → company, Indirizzo → zone, Email/Telefono → contact; Fonte,
   Sistema di cassa, Fornitore and Note are kept together in the lead's
   comments. A field the template left as `-` counts as empty.
+- **Source per partner.** `source_by_sender` maps a sender to the source the
+  lead is filed under (`noreply@cashmatic.eu` → `cashmatic`,
+  `GBoccia@berkelinternational.com` → `berkel`), matched exactly like
+  `allowed_from`: a full address, or a bare domain covering its subdomains.
+  First match wins; an unmapped sender keeps the generic `source` (`email`).
+  A Cashmatic summary a partner forwards from their own address is recognised
+  by its template and filed wherever `noreply@cashmatic.eu` is mapped. Sources
+  are stored lowercase (`Leads::create`), so this is what the monthly
+  per-source report on the Leads tab counts and exports. Edit the map from
+  **Settings → Import leads from this mailbox → File leads by sender** (pairs
+  as `sender = source`, comma-separated); leave `source_by_sender` empty in
+  `config.php`, since entries kept there can't be removed from the UI.
 - **Retry safety.** The message hash is the lead's `external_id`
   (`mail:<sha1>`), so re-polls and re-deliveries map back to the lead already
   created instead of duplicating it.

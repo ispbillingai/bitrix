@@ -31,7 +31,8 @@ use Throwable;
  * not by touching the pipeline around it.
  *
  * Config: the 'leads_mailbox' block (config.sample.php) — host/user/pass,
- * poll cadence, sender allow/block lists. Needs the php-imap extension.
+ * poll cadence, sender allow/block lists and the sender => source map that files
+ * each partner's leads under their own label. Needs the php-imap extension.
  */
 final class LeadMailImporter
 {
@@ -200,13 +201,21 @@ final class LeadMailImporter
         $subject = trim((string)preg_replace('/^(\s*(fwd|fw|re|r|i)\s*:\s*)+/i', '', trim($subject)));
 
         // Template pass wins over the generic one where both find a value.
-        $pairs = array_merge(self::labelPairs($body), self::cashmaticPairs($body));
+        $cashmatic = self::cashmaticPairs($body);
+        $pairs     = array_merge(self::labelPairs($body), $cashmatic);
         if (!self::hasAny($pairs, ['title', 'subject', 'oggetto', 'titolo']) && $subject !== '') {
             $pairs['subject'] = $subject;
         }
 
         $lead = LeadIntake::normalize($pairs);
-        $lead['source'] = (string)($cfg['source'] ?? '') !== '' ? (string)$cfg['source'] : 'email';
+        // Who sent the mail decides which partner the lead is filed under, so the
+        // monthly per-source report separates Cashmatic's leads from Berkel's
+        // instead of piling every email lead under one label. A summary the
+        // partner forwards from their own address is still a Cashmatic lead — it
+        // is filed wherever mail from Cashmatic itself is filed.
+        $lead['source'] = self::sourceForSender($fromAddr, $cfg)
+            ?? ($cashmatic !== [] ? self::sourceForSender(self::CASHMATIC_SENDER, $cfg) : null)
+            ?? ((string)($cfg['source'] ?? '') !== '' ? (string)$cfg['source'] : 'email');
 
         // Forms mail their fields; humans just write. When no contact was found in
         // the body, the sender IS the customer — take the From address/name.
@@ -222,6 +231,26 @@ final class LeadMailImporter
         }
         $lead['phone'] = self::internationalize($lead['phone']);
         return $lead;
+    }
+
+    /**
+     * The partner a sender's mail is filed under: the first `source_by_sender`
+     * entry whose pattern matches the address — a full address, or a bare domain
+     * covering its subdomains, exactly as in `allowed_from`. null when no entry
+     * matches, so the caller can fall back to the generic label.
+     */
+    private static function sourceForSender(string $addr, array $cfg): ?string
+    {
+        if ($addr === '') {
+            return null;
+        }
+        foreach ((array)($cfg['source_by_sender'] ?? []) as $pattern => $source) {
+            $source = trim((string)$source);
+            if ($source !== '' && self::senderAllowed($addr, [(string)$pattern])) {
+                return $source;
+            }
+        }
+        return null;
     }
 
     /**
@@ -247,6 +276,9 @@ final class LeadMailImporter
     }
 
     // ---------------------------------------------------------------- parsing
+
+    /** Cashmatic's own sender — the map entry a forwarded summary is filed under. */
+    private const CASHMATIC_SENDER = 'noreply@cashmatic.eu';
 
     /**
      * Cashmatic's "Riepilogo Lead" summary lays its fields out as a table, and

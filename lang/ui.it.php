@@ -769,6 +769,8 @@ return [
     'f_lm_poll'       => 'Controlla ogni (minuti)',
     'f_lm_allowed'    => 'Accetta lead solo da',
     'f_lm_allowed_h'  => 'Indirizzi o domini separati da virgola (un dominio copre i sottodomini). Vuoto = default del server.',
+    'f_lm_srcmap'     => 'File i lead per mittente',
+    'f_lm_srcmap_h'   => 'Coppie "mittente = provenienza" separate da virgola, es. noreply@cashmatic.eu = cashmatic, gboccia@berkelinternational.com = berkel. Gli altri mittenti restano su "email".',
     'test_mailbox'    => 'Prova casella',
     'lm_test_ok'      => 'connessa — %d messaggi nella casella',
     'lm_test_fail'    => 'Prova casella fallita',

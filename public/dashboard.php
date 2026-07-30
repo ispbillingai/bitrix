@@ -289,6 +289,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $senders = array_values(array_filter(array_map('trim', explode(',', (string)$af)), 'strlen'));
                     $pairs['leads_mailbox.allowed_from'] = $senders === [] ? '' : json_encode($senders);
                 }
+                // Sender => source ("noreply@cashmatic.eu = cashmatic, ..."), so
+                // each partner's email leads are counted under their own label.
+                // Stored as a JSON object; emptied = back to the config.php map.
+                if (($sm = $post('leads_mailbox.source_by_sender')) !== null) {
+                    $map = [];
+                    foreach (explode(',', (string)$sm) as $entry) {
+                        [$sender, $source] = array_pad(explode('=', $entry, 2), 2, '');
+                        if (trim($sender) !== '' && trim($source) !== '') {
+                            $map[mb_strtolower(trim($sender))] = mb_strtolower(trim($source));
+                        }
+                    }
+                    $pairs['leads_mailbox.source_by_sender'] = $map === [] ? '' : json_encode($map);
+                }
                 // Welcome image (sent with the first-contact lead message on both
                 // channels). Stored under /uploads with a fixed name; the setting
                 // keeps the site-relative path. The clear checkbox removes it.

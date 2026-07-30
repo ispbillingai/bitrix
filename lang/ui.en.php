@@ -773,6 +773,8 @@ return [
     'f_lm_poll'       => 'Check every (minutes)',
     'f_lm_allowed'    => 'Accept leads only from',
     'f_lm_allowed_h'  => 'Comma-separated addresses or domains (a domain covers its subdomains). Empty = keep the server default.',
+    'f_lm_srcmap'     => 'File leads by sender',
+    'f_lm_srcmap_h'   => 'Comma-separated "sender = source" pairs, e.g. noreply@cashmatic.eu = cashmatic, gboccia@berkelinternational.com = berkel. Other senders stay on "email".',
     'test_mailbox'    => 'Test mailbox',
     'lm_test_ok'      => 'connected — %d messages in the inbox',
     'lm_test_fail'    => 'Mailbox test failed',

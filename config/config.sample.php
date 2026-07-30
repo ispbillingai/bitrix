@@ -85,6 +85,14 @@ return [
         'fallback_sender_email' => true,
         // Source label these leads are filed under in reports.
         'source'       => 'email',
+        // Per-partner source: sender => label, matched like allowed_from (full
+        // address, or a bare domain covering its subdomains), first match wins.
+        // A sender listed here files its leads under that partner instead of the
+        // generic 'source' above, so the monthly report counts them separately:
+        //   'noreply@cashmatic.eu' => 'cashmatic', 'gboccia@berkel...' => 'berkel'
+        // Normally edited from Settings ("File i lead per mittente"), not here —
+        // entries kept in this file cannot be removed from the UI.
+        'source_by_sender' => [],
     ],
 
     // Where won-deal logistics notifications go.
