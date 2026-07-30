@@ -82,8 +82,12 @@ customer:
    created for that value: a retry with the same id returns it instead of
    creating a duplicate. It's namespaced internally by the `source_url` host when
    one is present, so it only has to be unique within the sender's own system.
-2. Even without `external_id`, the same phone or email arriving again within
-   **15 minutes** is treated as the same lead (catches double submits).
+2. With or without `external_id`, a request that shares a **VAT number, phone or
+   email** with a lead that is still **open** lands on that lead instead of
+   opening a second one — an open lead is the customer's live request. Once the
+   lead is converted or discarded, the next request opens a fresh one. (A new
+   `external_id` does not bypass this: it identifies the *message*, not the
+   *customer*.)
 
 ## Checking the integration
 

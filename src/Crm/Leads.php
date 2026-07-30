@@ -170,7 +170,15 @@ final class Leads
             $stmt = $pdo->prepare('SELECT id FROM leads WHERE external_id = ? AND source = ? ORDER BY id DESC LIMIT 1');
             $stmt->execute([$externalId, $source]);
             $id = $stmt->fetchColumn();
-            return $id !== false ? (int)$id : null;
+            if ($id !== false) {
+                return (int)$id;
+            }
+            // A fresh external_id is not proof of a fresh customer. Retry-safe
+            // senders mint one id per MESSAGE — the mailbox importer stamps
+            // every mail, partners number every request — so the same person
+            // writing in twice arrives under two different ids. Returning null
+            // here was how a second email from a customer with an open lead
+            // opened a second lead: fall through to the identity match instead.
         }
 
         $vat   = VatLock::normalize((string)($d['vat_number'] ?? ''));

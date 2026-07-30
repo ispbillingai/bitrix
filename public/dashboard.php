@@ -411,8 +411,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     // set by the trade-fair form (#16); blank on the standard form
                     'fair_name' => $_POST['fair_name'] ?? '', 'fair_city' => $_POST['fair_city'] ?? '',
                 ], $uid);
-                // An agent's own entry is theirs: auto-assign so it shows in their scope.
-                if ($isAgent && $scopeId) {
+                // An agent's own entry is theirs: auto-assign so it shows in their
+                // scope. Only when it really is a NEW lead — when the entry merged
+                // into an existing one, create() handed back somebody's live lead,
+                // and auto-assigning would hand it to whoever re-typed it (and
+                // message the customer this seller's profile over the first one's).
+                if ($isAgent && $scopeId && $dupLeadId === null) {
                     Leads::assign($newLeadId, $scopeId, $uid);
                 }
                 if ($vat !== '' && !empty($vc['fresh'])) {
