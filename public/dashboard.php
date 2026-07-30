@@ -445,7 +445,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     \Glue\Crm\VatLock::notifyThanks('agent', (int)$uid, $vat, trim((string)($_POST['name'] ?? '')));
                 }
                 if ($dupLeadId !== null) {
-                    $flash = sprintf($t('lead_dup_flash'), $dupLeadId);
+                    // Two different stories for the seller: an OPEN twin means
+                    // "someone is on this", a CONVERTED one means "this is
+                    // already our customer" — the request was grouped either way.
+                    $dupRow = Leads::find($dupLeadId);
+                    $key = ($dupRow && (string)$dupRow['status'] === 'converted')
+                        ? 'lead_dup_customer_flash' : 'lead_dup_flash';
+                    $flash = sprintf($t($key), $dupLeadId);
                     $flashType = 'err';
                 } else {
                     $flash = $t('saved');

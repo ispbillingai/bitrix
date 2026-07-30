@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace Glue\Crm;
 
+use Glue\Db;
+
 /**
  * Turns whatever an outside system POSTs at us into a lead.
  *
@@ -118,9 +120,34 @@ final class LeadIntake
     {
         $existing = self::findDuplicate($lead);
         if ($existing !== null) {
+            // A retried delivery of the SAME message (same external_id already on
+            // the matched lead) has nothing new to say. Anything else is a fresh
+            // request from a customer we already know — accepted, but grouped
+            // onto their lead's timeline instead of opening a twin.
+            if (!self::isRedelivery($existing, $lead)) {
+                Leads::groupRequest($existing, [
+                    'source' => $lead['source'] ?? '', 'name' => $lead['name'] ?? '',
+                    'phone' => $lead['phone'] ?? '', 'email' => $lead['email'] ?? '',
+                    'vat' => $lead['vat_number'] ?? '', 'comments' => $lead['comments'] ?? '',
+                ]);
+            }
             return ['lead_id' => $existing, 'duplicate' => true];
         }
         return ['lead_id' => Leads::create($lead), 'duplicate' => false];
+    }
+
+    /** Whether this payload is the matched lead's own message arriving again. */
+    private static function isRedelivery(int $leadId, array $lead): bool
+    {
+        $externalId = trim((string)($lead['external_id'] ?? ''));
+        if ($externalId === '') {
+            return false;
+        }
+        $stmt = Db::pdo()->prepare('SELECT external_id, source FROM leads WHERE id = ?');
+        $stmt->execute([$leadId]);
+        $row = $stmt->fetch(\PDO::FETCH_ASSOC) ?: [];
+        return (string)($row['external_id'] ?? '') === $externalId
+            && (string)($row['source'] ?? '') === (mb_strtolower(trim((string)($lead['source'] ?? ''))) ?: 'website');
     }
 
     /**

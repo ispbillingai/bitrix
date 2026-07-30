@@ -83,11 +83,12 @@ customer:
    creating a duplicate. It's namespaced internally by the `source_url` host when
    one is present, so it only has to be unique within the sender's own system.
 2. With or without `external_id`, a request that shares a **VAT number, phone or
-   email** with a lead that is still **open** lands on that lead instead of
-   opening a second one — an open lead is the customer's live request. Once the
-   lead is converted or discarded, the next request opens a fresh one. (A new
-   `external_id` does not bypass this: it identifies the *message*, not the
-   *customer*.)
+   email** with an **open or converted** lead lands on that lead instead of
+   opening a second one — an open lead is the customer's live request, and a
+   converted lead means they are already a customer. The new request is not
+   lost: it is recorded on that lead's timeline. Only a discarded lead lets the
+   next request open a fresh one. (A new `external_id` does not bypass this: it
+   identifies the *message*, not the *customer*.)
 
 ## Checking the integration
 

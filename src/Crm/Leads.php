@@ -67,13 +67,11 @@ final class Leads
                 'vat_number' => $vat, 'source' => $source, 'external_id' => $externalId,
             ]);
             if ($dupId !== null) {
-                // Leave a trail on the surviving lead: the enterer is handed this
-                // record back and needs to see that their entry landed here.
-                Activities::add('lead', $dupId, 'system',
-                    'Duplicate entry from ' . $source . ' merged into this lead', $actorId);
-                Log::write('crm', 'lead_duplicate_suppressed', 'lead', $dupId,
-                    ['source' => $source, 'name' => $name, 'phone' => $phone,
-                     'email' => $email, 'vat' => $vat]);
+                self::groupRequest($dupId, [
+                    'source' => $source, 'name' => $name, 'phone' => $phone,
+                    'email' => $email, 'vat' => $vat,
+                    'comments' => (string)($d['comments'] ?? ''),
+                ], $actorId);
                 return $dupId; // finally still releases the lock
             }
 
@@ -152,13 +150,15 @@ final class Leads
      * Name alone is consulted only when nothing else was supplied — far too
      * many people share one for it to be evidence by itself.
      *
-     * A match counts while the existing lead is still OPEN, or was filed within
-     * the last two minutes. That is the whole rule: an open lead IS the customer's
-     * live request, so anything arriving for them belongs on it rather than on a
-     * second record that messages them in parallel. Once their lead has been
-     * converted or discarded the next request is genuinely new and opens its own,
-     * and the two-minute floor still absorbs a double-submit whose first lead was
-     * closed immediately.
+     * A match counts while the existing lead is OPEN or CONVERTED, or was filed
+     * within the last two minutes. An open lead IS the customer's live request,
+     * so anything arriving for them belongs on it rather than on a second record
+     * that messages them in parallel. A converted lead means they are already a
+     * customer: a new request from them is accepted but grouped onto their lead
+     * (groupRequest) instead of re-entering the pipeline as if they were unknown.
+     * Only a DISCARDED lead lets the next request open a fresh record — junking
+     * one enquiry must not gag the customer forever. The two-minute floor still
+     * absorbs a double-submit whose first lead was closed immediately.
      */
     public static function duplicateId(array $d, ?int $excludeId = null): ?int
     {
@@ -211,7 +211,7 @@ final class Leads
         // Nothing but a name to go on: two walk-ins at a fair can genuinely both
         // be "Mario Rossi", so a name is never treated as identity. It only ever
         // catches the same entry arriving twice, inside the double-submit window.
-        $age = $ors ? "status = 'open' OR created_at > (NOW() - INTERVAL 120 SECOND)" : '';
+        $age = $ors ? "status IN ('open','converted') OR created_at > (NOW() - INTERVAL 120 SECOND)" : '';
         if (!$ors && $name !== '') {
             $ors[]  = 'customer_name = ?';
             $args[] = $name;
@@ -231,6 +231,28 @@ final class Leads
         $stmt->execute($args);
         $id = $stmt->fetchColumn();
         return $id !== false ? (int)$id : null;
+    }
+
+    /**
+     * Record a request that arrived for a customer who already has a lead:
+     * accepted, but grouped onto that lead's timeline instead of opening a twin.
+     * The request text rides along in the note, so what the customer wrote the
+     * second time is preserved — suppressing the twin must not discard the ask.
+     * Deliberately no welcome/automation: they are not a new lead.
+     */
+    public static function groupRequest(int $leadId, array $d, ?int $actorId = null): void
+    {
+        $source = mb_strtolower(trim((string)($d['source'] ?? ''))) ?: 'website';
+        $note   = 'New request from ' . $source . ' grouped onto this lead';
+        $text   = trim((string)($d['comments'] ?? ''));
+        if ($text !== '') {
+            $note .= ":\n" . $text;
+        }
+        Activities::add('lead', $leadId, 'system', $note, $actorId);
+        Log::write('crm', 'lead_duplicate_suppressed', 'lead', $leadId,
+            ['source' => $source, 'name' => (string)($d['name'] ?? ''),
+             'phone' => (string)($d['phone'] ?? ''), 'email' => (string)($d['email'] ?? ''),
+             'vat' => (string)($d['vat'] ?? '')]);
     }
 
     /** Assign the lead to a seller and message the customer the seller's profile (#3). */

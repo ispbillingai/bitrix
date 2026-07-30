@@ -70,9 +70,11 @@ messaggio al cliente:
 1. **`external_id`** (facoltativo) — se lo inviate, corrisponde sempre al primo
    lead creato con quel valore: un rinvio con lo stesso id non crea un doppione.
 2. Con o senza `external_id`, una richiesta che condivide **partita IVA,
-   telefono o email** con un lead ancora **aperto** finisce su quel lead invece
-   di aprirne un secondo: un lead aperto È la richiesta viva del cliente. Una
-   volta convertito o scartato, la richiesta successiva apre un lead nuovo. (Un
+   telefono o email** con un lead **aperto o convertito** finisce su quel lead
+   invece di aprirne un secondo: un lead aperto È la richiesta viva del
+   cliente, e un lead convertito significa che è già nostro cliente. La nuova
+   richiesta non va persa: viene registrata nella cronologia di quel lead. Solo
+   un lead scartato lascia che la richiesta successiva ne apra uno nuovo. (Un
    `external_id` nuovo non aggira il controllo: identifica il *messaggio*, non
    il *cliente*.)
 
