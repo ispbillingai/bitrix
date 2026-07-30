@@ -166,6 +166,49 @@ return [
         'chase_hour_to'      => 18,   // debt-collection message
     ],
 
+    // OPTIONAL SmallPay (Lynx) card payments — OFF by default, and deliberately
+    // so: switching it on is what lets the CRM put real charges on a customer's
+    // card. Fill these from Settings → SmallPay; the connection test calls
+    // checkSellConfigs, which validates the setup without creating anything.
+    //
+    // The four identifiers all come from the SmallPay Market portal:
+    //   id_merchant / unique_id  -> Anagrafica
+    //   service_id               -> Servizi, column "Id Servizio crm"
+    //   domain                   -> your container for paymentIds; agree it with
+    //                               SmallPay and never change it afterwards,
+    //                               because existing positions live under it.
+    // unique_id is a shared secret: it is never sent, only hashed, and it is
+    // what proves an inbound status callback really came from SmallPay.
+    'smallpay' => [
+        'enabled'     => false,
+        'env'         => 'staging',   // staging | production
+        'base_url'    => '',          // override the environment's base path; normally empty
+        'id_merchant' => 0,
+        'unique_id'   => '',
+        'service_id'  => '',
+        'domain'      => '',
+        'timeout'     => 30,
+
+        // Let SmallPay re-plan the rates when a card expires before the last one.
+        // With this off, such a sale is simply refused at the cashier.
+        'modify_installments' => true,
+        // Prefix of the paymentId we file positions under (reference_prefix +
+        // row id + random). Keep it short and stable; it is how a position in
+        // SmallPay's portal is traced back to a contract here.
+        'reference_prefix'    => 'CRM',
+
+        // How often the cron re-reads live contracts from SmallPay. The status
+        // callback is what makes the CRM current; this is the safety net for a
+        // callback that never arrived, so it can be slow.
+        'sync_minutes'     => 60,
+        'sync_max_per_run' => 25,
+
+        // When a monthly rate comes back unpaid, message the customer about it.
+        // The assigned seller is always told either way — that is the signal the
+        // business acts on (a customer who stopped paying loses the service).
+        'notify_customer_on_failure' => true,
+    ],
+
     // Electronic signature (Documents page). Everything stays on this server;
     // only a hash ever leaves it, and only if you switch time stamping on.
     //

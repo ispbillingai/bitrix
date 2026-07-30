@@ -115,6 +115,10 @@ final class EntityResolver
             // fallbacks above, so a payment chase addresses itself like any
             // other customer message.
             'sibill_customer' => 'sibill_customers',
+            // SmallPay contracts carry customer_* and assigned_to for exactly
+            // this reason: "your payment failed" reaches the customer and "his
+            // payment failed" reaches the seller, with no special case here.
+            'payment_contract' => 'payment_contracts',
             default       => null,
         };
         if ($table === null || $id <= 0) {

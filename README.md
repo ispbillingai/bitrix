@@ -51,6 +51,12 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
   fee. Runs on a self-issued certificate out of the box; drop in a qualified
   (eIDAS) one to add external accreditation. Anyone can check a signature at
   `/verify.php`. Full detail: [docs/signing.md](docs/signing.md).
+- **Payments (SmallPay)**: charge a customer's card from the CRM — once, in
+  instalments, or every month for a support contract. SmallPay holds the mandate
+  and does the collecting on its own cashier page (card, PayPal, …), so card
+  details never touch this server; the CRM keeps the answer to *"is this customer
+  still paying?"* and says so the moment a charge is refused. Off until
+  configured. Full detail: [docs/smallpay.md](docs/smallpay.md).
 - **Campaigns / Messages / Reminders / Activity log**: mass WhatsApp/email, full
   delivery outbox, the reminder queue, and an audit trail.
 
@@ -69,6 +75,7 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 | Manual interrupt / silence any automation | move the record's stage; pending reminders auto-cancel |
 | Mass WhatsApp/email marketing | `campaign.php` + `Campaign\Sender` (throttled) |
 | Sign a document with an OTP, in-house | `views/documents.php` → `Sign\Documents` → `Sign\Signer` (CAdES) → `public/sign.php` / `public/verify.php` |
+| Charge a card / monthly support contract | `views/payments.php` → `Pay\Contracts` → `Pay\SmallPay` → `webhooks/smallpay-status.php` |
 | Bitrix24 sync | **optional** `Sync\BitrixSync`, off by default |
 
 ## Layout
@@ -81,6 +88,7 @@ migrations/                versioned changes applied by migrate.php (005–011 a
 storage/sign/              originals, sealed PDFs and the signing key (gitignored, above the web root)
 migrate.php                migration runner (CLI or ?key=)
 bin/scheduler.php          cron: dispatch due reminders + campaign batches
+bin/pay-sync.php           SmallPay: --check the credentials, or refresh contracts now
 lang/  en.php it.php        customer message copy (WhatsApp + email)
 lang/  ui.en.php ui.it.php  dashboard UI strings
 public/
@@ -88,6 +96,7 @@ public/
   request.php              public customer request form
   portal.php               customer portal (magic-link/password login; view
                            estimate + order status; sign the contract via OTP)
+  pay-return.php           where SmallPay sends the customer after the cashier page
   sign.php                 tokenised signing page (read → OTP → sealed PDF)
   verify.php               public signature check (by reference or by file)
   dashboard.php            CRM control panel (controller; renders /views)
@@ -97,11 +106,13 @@ public/
     form-intake.php        website/Jotform lead → Crm\Leads
     appointment-intake.php appointment request → Crm\Appointments
     bitrix-event.php       optional inbound (guarded by sync flag)
+    smallpay-status.php    SmallPay payment status callback (hashPass-verified)
 views/                     dashboard page partials (overview, leads, deals, …)
 src/
   Bootstrap, Config, Db, Settings, Auth, Event/Log
   Crm/   Pipelines, Contacts, Leads, LeadIntake, Deals, Appointments, Tasks,
          Tickets, Automation, Activities, EntityResolver   — the CRM domain
+  Pay/     SmallPay (REST client), Contracts (lifecycle + reconciliation)
   Portal/  Account (customer login + magic link), Otp (signing codes)
   Sign/    Documents (lifecycle), Audit (hash-chained log), Signer + Pdf (sealed
            certificate), Cms + Asn1 (CAdES), Certificate, Timestamp, Verify

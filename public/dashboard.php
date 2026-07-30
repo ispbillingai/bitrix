@@ -26,6 +26,7 @@ use Glue\Db;
 use Glue\Event\Log;
 use Glue\Notify\Notifier;
 use Glue\Notify\TextMeBot;
+use Glue\Pay\Contracts as PayContracts;
 use Glue\Reminder\Scheduler;
 use Glue\Settings;
 use Glue\Sibill\Client as SibillClient;
@@ -260,6 +261,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'sibill.chase_hour_from', 'sibill.chase_hour_to',
                     'leads_mailbox.host', 'leads_mailbox.port', 'leads_mailbox.user',
                     'leads_mailbox.pass', 'leads_mailbox.poll_minutes',
+                    'smallpay.enabled', 'smallpay.env', 'smallpay.id_merchant', 'smallpay.unique_id',
+                    'smallpay.service_id', 'smallpay.domain', 'smallpay.reference_prefix',
+                    'smallpay.sync_minutes', 'smallpay.modify_installments',
+                    'smallpay.notify_customer_on_failure',
                 ];
                 // PHP rewrites dots in POST field names to underscores, so a field
                 // named 'mail.from_email' actually arrives as 'mail_from_email'.
@@ -282,6 +287,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pairs['sibill.enabled'] = $post('sibill.enabled') !== null ? 'true' : 'false';
                 $pairs['sibill.chase_enabled'] = $post('sibill.chase_enabled') !== null ? 'true' : 'false';
                 $pairs['leads_mailbox.enabled'] = $post('leads_mailbox.enabled') !== null ? 'true' : 'false';
+                $pairs['smallpay.enabled'] = $post('smallpay.enabled') !== null ? 'true' : 'false';
+                $pairs['smallpay.modify_installments'] = $post('smallpay.modify_installments') !== null ? 'true' : 'false';
+                $pairs['smallpay.notify_customer_on_failure'] = $post('smallpay.notify_customer_on_failure') !== null ? 'true' : 'false';
                 // Sender allow-list: comma-separated in the UI, stored as JSON so
                 // the config overlay yields an array. Emptied = fall back to the
                 // config.php default rather than "accept everyone".
@@ -801,6 +809,111 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $tab = 'settings';
                 break;
+            // ---------- payments (SmallPay) ----------
+            // Every one of these ends on the payments tab, and none of them moves
+            // money by itself: they ask SmallPay to file a position, retry a rate,
+            // or say again what it knows. The one that costs something — cancel —
+            // is confirmed in the view.
+            case 'pay_contract_create': {
+                $contactId = (int)($_POST['contact_id'] ?? 0);
+                $ct = null;
+                if ($contactId > 0) {
+                    $q = $pdo->prepare('SELECT * FROM contacts WHERE id = ?');
+                    $q->execute([$contactId]);
+                    $ct = $q->fetch() ?: null;
+                }
+                if ($ct === null) {
+                    throw new RuntimeException($t('pay_e_no_customer'));
+                }
+                // A deal only counts if it belongs to this customer — picking the
+                // wrong one from the list would file the contract against someone
+                // else's sale and quietly mis-report the revenue.
+                $dealId = (int)($_POST['deal_id'] ?? 0);
+                $deal = null;
+                if ($dealId > 0) {
+                    $dq = $pdo->prepare('SELECT contact_id, assigned_to FROM deals WHERE id = ?');
+                    $dq->execute([$dealId]);
+                    $deal = $dq->fetch() ?: null;
+                    if (!$deal || (int)$deal['contact_id'] !== $contactId) {
+                        throw new RuntimeException($t('pay_e_deal_mismatch'));
+                    }
+                }
+                $c = PayContracts::open([
+                    'kind'               => (string)($_POST['kind'] ?? 'subscription'),
+                    'contact_id'         => $contactId,
+                    'deal_id'            => $dealId,
+                    'assigned_to'        => (int)($deal['assigned_to'] ?? $ct['assigned_to'] ?? 0),
+                    'customer_name'      => (string)$ct['name'],
+                    'customer_phone'     => (string)($ct['phone'] ?? ''),
+                    'customer_email'     => (string)($ct['email'] ?? ''),
+                    'lang'               => (string)($ct['lang'] ?? 'it'),
+                    'description'        => (string)($_POST['description'] ?? ''),
+                    'amount_cents'       => money_cents($_POST['amount'] ?? ''),
+                    'first_amount_cents' => money_cents($_POST['first_amount'] ?? ''),
+                    'total_cycles'       => (int)($_POST['total_cycles'] ?? 0),
+                ], $uid);
+                $flash = $t('pay_created');
+                if (!empty($_POST['send_link'])) {
+                    $flash .= PayContracts::sendLink((int)$c['id'], 'both', $uid) > 0
+                        ? ' · ' . $t('pay_link_sent')
+                        : ' · ' . $t('pay_link_not_sent');
+                }
+                $tab = 'payments';
+                break;
+            }
+            case 'pay_send_link':
+                $flash = PayContracts::sendLink((int)$_POST['id'], 'both', $uid) > 0
+                    ? $t('pay_link_sent') : $t('pay_link_not_sent');
+                $tab = 'payments';
+                break;
+            case 'pay_sync':
+                PayContracts::sync((int)$_POST['id']);
+                $flash = $t('pay_refreshed');
+                $tab = 'payments';
+                break;
+            case 'pay_sync_all': {
+                // The manual button ignores the cadence the cron respects —
+                // someone pressing it wants an answer now, not "not due yet".
+                Settings::set('smallpay.last_sync_at', null);
+                $r = PayContracts::syncIfDue() ?? ['checked' => 0, 'changed' => 0, 'errors' => 0];
+                $flash = $t('pay_refreshed') . ': ' . (int)$r['checked']
+                    . ($r['errors'] ? ' · ' . (int)$r['errors'] . ' ' . $t('pay_errors') : '');
+                $flashType = $r['errors'] ? 'err' : 'ok';
+                $tab = 'payments';
+                break;
+            }
+            case 'pay_relaunch': {
+                $r = PayContracts::relaunch((int)$_POST['id'], [], $uid);
+                $flash = $t('pay_retried') . ': ' . count((array)($r['installmentsProcessed'] ?? []));
+                $tab = 'payments';
+                break;
+            }
+            case 'pay_cash': {
+                $charges = array_values(array_filter((array)($_POST['charges'] ?? []), 'strlen'));
+                PayContracts::payInCash((int)$_POST['id'], $charges, $uid);
+                $flash = $t('pay_cashed') . ': ' . count($charges);
+                $tab = 'payments';
+                break;
+            }
+            case 'pay_regenerate':
+                PayContracts::regenerateFirstPayment((int)$_POST['id'], $uid);
+                $flash = $t('pay_regenerated');
+                $tab = 'payments';
+                break;
+            case 'pay_cancel':
+                PayContracts::cancel((int)$_POST['id'], $uid);
+                $flash = $t('pay_cancelled');
+                $tab = 'payments';
+                break;
+            case 'test_smallpay':
+                // checkSellConfigs validates merchant + service + gateway without
+                // creating a position, so this is safe to press against the live
+                // account. It is the only SmallPay call that is.
+                (new \Glue\Pay\SmallPay())->checkSellConfig();
+                $flash = $t('test_ok') . ' · ' . $t('pay_test_ok');
+                $tab = 'settings';
+                break;
+
             case 'sibill_sync':
                 $s = SibillInvoices::sync();
                 $flash = $t('sib_synced') . ': ' . $s['invoices'] . ' — '
@@ -972,7 +1085,7 @@ $agents = Auth::agents();
 $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_format((float)$n, 0);
 
 $views = ['overview', 'leads', 'deals', 'contacts', 'appointments', 'tasks', 'tickets', 'documents',
-          'invoices', 'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents',
+          'invoices', 'payments', 'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents',
           'partners', 'devices', 'network_areas', 'settings', 'instructions'];
 $view = in_array($tab, $views, true) ? $tab : 'overview';
 // Agents can't reach admin views, even by typing the URL.
@@ -1025,6 +1138,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
         'overview' => 'nav_overview', 'leads' => 'nav_leads', 'deals' => 'nav_deals',
         'contacts' => 'nav_contacts', 'appointments' => 'nav_appointments', 'tasks' => 'nav_tasks',
         'tickets' => 'nav_tickets', 'documents' => 'nav_documents', 'invoices' => 'nav_invoices',
+        'payments' => 'nav_payments',
         'campaigns' => 'nav_campaigns', 'messages' => 'nav_messages', 'outbound' => 'nav_outbound',
         'reminders' => 'nav_reminders', 'templates' => 'nav_templates',
         'devices' => 'nav_devices', 'network_areas' => 'nav_network_areas',
@@ -1088,6 +1202,26 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeNav();});
 document.addEventListener('submit',function(e){
   var b=e.target.querySelector('button[type=submit],button:not([type]),input[type=submit]');
   if(b){setTimeout(function(){b.disabled=true;b.style.opacity='0.6';},0);}
+});
+// Reveal a masked secret (API keys, passwords) while it is being checked or
+// typed. Deliberately momentary: it flips back on blur, so a revealed key can't
+// be left legible on a screen someone walks away from or keeps sharing.
+function peek(id, btn){
+  var i=document.getElementById(id); if(!i) return;
+  var show = i.type === 'password';
+  i.type = show ? 'text' : 'password';
+  btn.classList.toggle('on', show);
+  if(show){ i.addEventListener('blur', function once(){
+    i.type='password'; btn.classList.remove('on'); i.removeEventListener('blur', once);
+  }); }
+}
+// Same for the read-only webhook URLs, which carry the intake secret inside the
+// address itself — masking the input alone would still leave them readable.
+document.querySelectorAll('input[data-secret-url]').forEach(function(i){
+  var real = i.value;
+  i.value = i.dataset.secretUrl;
+  i.addEventListener('focus', function(){ i.value = real; i.select(); });
+  i.addEventListener('blur',  function(){ i.value = i.dataset.secretUrl; });
 });
 // Make every table horizontally scrollable on small screens without editing each
 // view: wrap any unwrapped <table> in a .table-wrap container.
@@ -1213,9 +1347,66 @@ function time_ago(?string $dt, callable $t): string {
     if ($s < 86400) { return sprintf($t('ago_h'), intdiv($s, 3600)); }
     return sprintf($t('ago_d'), intdiv($s, 86400));
 }
+/**
+ * Read a money field typed by a human into integer cents.
+ *
+ * Italian keyboards produce "1.234,56"; the same person on another day types
+ * "1234.56" or just "49". All three mean the same amount and all three have to
+ * survive, because this number is what the customer's card is charged: read
+ * "1.234,56" as a plain float and you bill 1,23 instead of 1234,56.
+ *
+ * Rule: the LAST separator is the decimal point when it leaves 1-2 digits
+ * behind it; anything else is a thousands mark and is dropped.
+ */
+function money_cents($raw): int {
+    $s = trim((string)$raw);
+    if ($s === '') { return 0; }
+    $s = preg_replace('/[^\d.,\-]/', '', $s) ?? '';
+    $neg = str_starts_with($s, '-');
+    $s = str_replace('-', '', $s);
+
+    $lastSep = max(strrpos($s, ',') ?: -1, strrpos($s, '.') ?: -1);
+    if ($lastSep >= 0 && strlen($s) - $lastSep - 1 <= 2 && strlen($s) - $lastSep - 1 >= 1) {
+        $int = preg_replace('/\D/', '', substr($s, 0, $lastSep)) ?? '';
+        $dec = str_pad(preg_replace('/\D/', '', substr($s, $lastSep + 1)) ?? '', 2, '0');
+    } else {
+        $int = preg_replace('/\D/', '', $s) ?? '';
+        $dec = '00';
+    }
+    $cents = (int)($int === '' ? '0' : $int) * 100 + (int)substr($dec, 0, 2);
+    return $neg ? -$cents : $cents;
+}
 function fld(callable $h, string $name, string $label, $value, string $hint = ''): void {
     echo '<label class="fld"><span>' . $h($label) . '</span>'
         . '<input name="' . $h($name) . '" value="' . $h($value) . '">'
+        . ($hint ? '<small class="muted">' . $h($hint) . '</small>' : '') . '</label>';
+}
+/**
+ * Same, for a field holding a secret — API keys, mailbox and SMTP passwords,
+ * the intake secret, SmallPay's uniqueId.
+ *
+ * These used to render as ordinary text inputs, so every credential the CRM
+ * holds was legible to anyone standing behind the screen while Settings was
+ * open — or watching a screen share, which is how the page is usually walked
+ * through with the client.
+ *
+ * The value is still submitted normally, so saving keeps working exactly as it
+ * did: an empty field still means empty, and there is no way to accidentally
+ * blank a stored key by not retyping it. What changes is that it is dotted out
+ * until someone deliberately reveals it. That is the threat this addresses —
+ * a shoulder, not an attacker, who by this point is already an authenticated
+ * admin and could read the settings table anyway.
+ */
+function secret_fld(callable $h, string $name, string $label, $value, string $hint = ''): void {
+    static $n = 0;
+    $id = 'sec' . (++$n);
+    echo '<label class="fld"><span>' . $h($label) . '</span>'
+        . '<span class="secretwrap">'
+        . '<input type="password" id="' . $id . '" name="' . $h($name) . '" value="' . $h($value)
+        . '" autocomplete="off" spellcheck="false">'
+        . '<button type="button" class="peek" onclick="peek(\'' . $id . '\',this)" tabindex="-1"'
+        . ' aria-label="show">' . svg('eye') . '</button>'
+        . '</span>'
         . ($hint ? '<small class="muted">' . $h($hint) . '</small>' : '') . '</label>';
 }
 /** <select> of agents for assignment. */
@@ -1318,6 +1509,8 @@ function svg(string $name): string {
         'settings'    => '<circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>',
         'database'    => '<ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>',
         'invoices'    => '<path d="M6 2h9l5 5v13a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z"/><path d="M14 2v6h6"/><path d="M12 11v7"/><path d="M14 12.5h-3a1.5 1.5 0 0 0 0 3h2a1.5 1.5 0 0 1 0 3H10"/>',
+        'payments'    => '<rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/>',
+        'eye'         => '<path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/>',
         'devices'     => '<rect x="4" y="3" width="16" height="12" rx="1"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="15" x2="12" y2="21"/>',
         'partners'    => '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/><path d="M12 12l2 2 4-4"/>',
         'network_areas' => '<rect x="9" y="2" width="6" height="6" rx="1"/><rect x="3" y="16" width="6" height="6" rx="1"/><rect x="15" y="16" width="6" height="6" rx="1"/><path d="M12 8v4M12 12H6v4M12 12h6v4"/>',
@@ -1410,6 +1603,15 @@ input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);
 input:focus,select:focus,textarea:focus{border-color:var(--accent);}
 input[readonly]{color:var(--muted);cursor:pointer;}
 .fld small{display:block;margin-top:6px;font-size:12px;line-height:1.5;}
+/* Masked credential field: the eye sits inside the input, not beside it, so the
+   field keeps the same width as every other one on the row. */
+.secretwrap{position:relative;display:block;}
+.secretwrap input{padding-right:40px;}
+.peek{position:absolute;top:50%;right:6px;transform:translateY(-50%);background:none;border:0;
+  padding:6px;cursor:pointer;color:var(--muted);display:flex;line-height:0;border-radius:6px;}
+.peek:hover{color:var(--txt);background:var(--surface2);}
+.peek.on{color:var(--accent);}
+.peek svg{width:16px;height:16px;}
 .row{display:flex;gap:14px;flex-wrap:wrap;} .row .fld{flex:1;min-width:150px;}
 .btn{padding:10px 16px;border:none;border-radius:8px;background:var(--accent);color:#fff;font-weight:600;
   cursor:pointer;font-size:14px;transition:filter .12s;display:inline-flex;align-items:center;gap:7px;} .btn:hover{filter:brightness(1.08);}

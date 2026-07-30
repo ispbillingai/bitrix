@@ -144,6 +144,34 @@ return [
             . "e, se possibile, di inviarci la contabile.\n"
             . "Per qualsiasi chiarimento può rispondere a questo messaggio.\n"
             . "Grazie, {company}",
+
+        // ---- Contratti SmallPay ----
+        // Il link è tutto il messaggio: qualunque preambolo commerciale lo fa
+        // ignorare, e qualunque tono da banca lo fa segnalare come phishing.
+        // Dire cos'è, quanto costa, e basta.
+        'pay_link' =>
+            "Gentile {name}, ecco la pagina di pagamento sicura per *{description}* — "
+            . "{amount} {every}.\n\n"
+            . "{link}\n\n"
+            . "La pagina è gestita da SmallPay, il nostro fornitore di pagamenti: "
+            . "{company} non vede mai i dati della sua carta. Per qualsiasi dubbio "
+            . "può rispondere a questo messaggio.",
+
+        'pay_active' =>
+            "Grazie {name}! ✅ Il pagamento di *{description}* è andato a buon fine "
+            . "e il contratto è attivo. Addebiteremo {amount} {every} sulla stessa "
+            . "carta; può interromperlo quando vuole, basta comunicarcelo. — {company}",
+
+        'pay_failed' => // al CLIENTE: la carta è stata rifiutata
+            "Gentile {name}, la sua banca non ha autorizzato il pagamento di {amount} "
+            . "per *{description}*, quindi non è stato addebitato nulla. Di solito si "
+            . "tratta di una carta scaduta o di un limite di spesa. Risponda a questo "
+            . "messaggio e le inviamo un nuovo link di pagamento. — {company}",
+
+        'pay_failed_agent' => // al VENDITORE: è il momento di decidere sul servizio
+            "⚠️ Pagamento fallito di {customer_name}: *{description}*, {amount}. "
+            . "Rate insolute: {count}. Apri Pagamenti nel CRM per ritentare "
+            . "l'addebito o inviare un nuovo link.",
     ],
 
     'email' => [
@@ -311,6 +339,47 @@ return [
                 . 'se possibile, di inviarci la contabile.</p>'
                 . '<p>Per qualsiasi chiarimento può rispondere a questa email.</p>'
                 . '<p>Cordiali saluti,<br>{company}</p>',
+        ],
+
+        // ---- Contratti SmallPay ----
+        'pay_link' => [
+            'subject' => 'Il suo link di pagamento — {description}',
+            'html'    => '<p>Gentile {name},</p>'
+                . '<p>ecco la pagina di pagamento sicura per <strong>{description}</strong>.</p>'
+                . '<p>Importo: <strong>{amount}</strong> {every}</p>'
+                . '<p><a href="{link}">Apri la pagina di pagamento</a></p>'
+                . '<p>La pagina è gestita da SmallPay, il nostro fornitore di pagamenti, quindi '
+                . '{company} non vede mai i dati della sua carta. Se il link non si apre, copi '
+                . 'questo indirizzo nel browser:<br>{link}</p>'
+                . '<p>Per qualsiasi dubbio può rispondere a questa email.</p>'
+                . '<p>Cordiali saluti,<br>{company}</p>',
+        ],
+        'pay_active' => [
+            'subject' => 'Pagamento ricevuto — {description}',
+            'html'    => '<p>Gentile {name},</p>'
+                . '<p>grazie. Il pagamento di <strong>{description}</strong> è andato a buon fine '
+                . 'e il contratto è ora attivo.</p>'
+                . '<p>Addebiteremo <strong>{amount}</strong> {every} sulla stessa carta. Può '
+                . 'interrompere il contratto quando vuole comunicandocelo: non è previsto alcun '
+                . 'preavviso.</p>'
+                . '<p>Cordiali saluti,<br>{company}</p>',
+        ],
+        'pay_failed' => [
+            'subject' => 'Pagamento non riuscito — {description}',
+            'html'    => '<p>Gentile {name},</p>'
+                . '<p>la sua banca non ha autorizzato il pagamento di <strong>{amount}</strong> per '
+                . '<strong>{description}</strong>, quindi non è stato addebitato nulla sulla sua carta.</p>'
+                . '<p>Di norma si tratta di una carta scaduta o di un limite di spesa, non di un '
+                . 'problema da parte sua. Risponda a questa email e le invieremo un nuovo link '
+                . 'di pagamento.</p>'
+                . '<p>Cordiali saluti,<br>{company}</p>',
+        ],
+        'pay_failed_agent' => [
+            'subject' => 'Pagamento fallito: {customer_name}',
+            'html'    => '<p>{customer_name} — <strong>{description}</strong>, {amount}.</p>'
+                . '<p>Rate insolute: <strong>{count}</strong>.</p>'
+                . '<p>Apri <strong>Pagamenti</strong> nel CRM per ritentare l\'addebito o inviare '
+                . 'un nuovo link.</p>',
         ],
     ],
 ];

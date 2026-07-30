@@ -143,6 +143,32 @@ return [
             . "send us the payment receipt.\n"
             . "If you need anything, just reply to this message.\n"
             . "Thank you, {company}",
+
+        // ---- SmallPay contracts ----
+        // The link is the whole message: anything before it that reads like a
+        // sales pitch gets the message ignored, and anything that sounds like a
+        // bank gets it reported. Say what it is, what it costs, and stop.
+        'pay_link' =>
+            "Hi {name}, here is the secure payment page for *{description}* — {amount} {every}.\n\n"
+            . "{link}\n\n"
+            . "The page is run by SmallPay, our payment provider: {company} never sees "
+            . "your card details. Any questions, just reply to this message.",
+
+        'pay_active' =>
+            "Thank you {name}! ✅ Your payment for *{description}* went through and the "
+            . "contract is active. We'll take {amount} {every} from the same card, and "
+            . "you can stop it at any time by telling us. — {company}",
+
+        'pay_failed' => // to the CUSTOMER: the card was refused
+            "Hi {name}, your bank did not authorise the payment of {amount} for "
+            . "*{description}*, so nothing was charged. This usually means an expired "
+            . "card or a spending limit. Reply to this message and we'll send you a new "
+            . "payment link. — {company}",
+
+        'pay_failed_agent' => // to the SELLER: this is the moment to decide about the service
+            "⚠️ {customer_name}'s payment failed: *{description}*, {amount}. "
+            . "Unpaid instalments: {count}. Open Payments in the CRM to retry the "
+            . "charge or send a new link.",
     ],
 
     'email' => [
@@ -310,6 +336,44 @@ return [
                 . 'payment receipt.</p>'
                 . '<p>If you need anything, just reply to this email.</p>'
                 . '<p>Kind regards,<br>{company}</p>',
+        ],
+
+        // ---- SmallPay contracts ----
+        'pay_link' => [
+            'subject' => 'Your payment link — {description}',
+            'html'    => '<p>Hi {name},</p>'
+                . '<p>Here is the secure payment page for <strong>{description}</strong>.</p>'
+                . '<p>Amount: <strong>{amount}</strong> {every}</p>'
+                . '<p><a href="{link}">Open the payment page</a></p>'
+                . '<p>The page is run by SmallPay, our payment provider, so {company} never '
+                . 'sees your card details. If the link does not open, copy this address into '
+                . 'your browser:<br>{link}</p>'
+                . '<p>Any questions, just reply to this email.</p>'
+                . '<p>Kind regards,<br>{company}</p>',
+        ],
+        'pay_active' => [
+            'subject' => 'Payment received — {description}',
+            'html'    => '<p>Hi {name},</p>'
+                . '<p>Thank you. Your payment for <strong>{description}</strong> went through '
+                . 'and the contract is now active.</p>'
+                . '<p>We will charge <strong>{amount}</strong> {every} to the same card. You can '
+                . 'stop it at any time by telling us — there is no notice period to serve.</p>'
+                . '<p>Kind regards,<br>{company}</p>',
+        ],
+        'pay_failed' => [
+            'subject' => 'Your payment did not go through — {description}',
+            'html'    => '<p>Hi {name},</p>'
+                . '<p>Your bank did not authorise the payment of <strong>{amount}</strong> for '
+                . '<strong>{description}</strong>, so nothing was charged to your card.</p>'
+                . '<p>This is usually an expired card or a spending limit rather than anything '
+                . 'wrong on your side. Reply to this email and we will send you a new payment link.</p>'
+                . '<p>Kind regards,<br>{company}</p>',
+        ],
+        'pay_failed_agent' => [
+            'subject' => 'Payment failed: {customer_name}',
+            'html'    => '<p>{customer_name} — <strong>{description}</strong>, {amount}.</p>'
+                . '<p>Unpaid instalments: <strong>{count}</strong>.</p>'
+                . '<p>Open <strong>Payments</strong> in the CRM to retry the charge or send a new link.</p>',
         ],
     ],
 ];

@@ -15,6 +15,7 @@ use Glue\Bootstrap;
 use Glue\Campaign\Sender;
 use Glue\Event\Log;
 use Glue\Mail\LeadMailImporter;
+use Glue\Pay\Contracts as PayContracts;
 use Glue\Reminder\Scheduler;
 use Glue\Sibill\Customers as SibillCustomers;
 use Glue\Sibill\Invoices;
@@ -51,18 +52,25 @@ try {
     // Pull lead emails from the company mailbox (POP3) on its own cadence.
     // Self-throttling and never throws; a mailbox outage can't stall the rest.
     $mail = LeadMailImporter::pollIfDue();
+    // Re-read live SmallPay contracts. The status callback is what keeps the CRM
+    // current; this is the net under it, so a callback SmallPay never managed to
+    // deliver can't leave a customer who stopped paying looking paid. Anything
+    // it finds is queued as a message and goes out on the next tick, above.
+    $pay = PayContracts::syncIfDue();
 
     Log::write('scheduler', 'tick', null, null, [
         'reminders' => $reminders,
         'campaigns' => $campaigns,
     ] + ($sibill !== null ? ['sibill' => $sibill] : [])
       + ($chase !== null ? ['chase' => $chase] : [])
-      + ($mail !== null ? ['mail' => $mail] : []));
+      + ($mail !== null ? ['mail' => $mail] : [])
+      + ($pay !== null ? ['pay' => $pay] : []));
     fwrite(STDOUT, "[" . date('c') . "] reminders=" . json_encode($reminders)
         . " campaigns=" . json_encode($campaigns)
         . ($sibill !== null ? " sibill=" . json_encode($sibill) : "")
         . ($chase !== null ? " chase=" . json_encode($chase) : "")
-        . ($mail !== null ? " mail=" . json_encode($mail) : "") . "\n");
+        . ($mail !== null ? " mail=" . json_encode($mail) : "")
+        . ($pay !== null ? " pay=" . json_encode($pay) : "") . "\n");
 } catch (Throwable $e) {
     fwrite(STDERR, "[" . date('c') . "] scheduler error: " . $e->getMessage() . "\n");
     exit(1);

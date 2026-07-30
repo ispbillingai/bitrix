@@ -10,13 +10,19 @@ $is = $h($cfg('app.intake_secret', ''));
 $os = $h($cfg('bitrix.outbound_secret', ''));
 $syncOn = (bool)$cfg('bitrix.sync_enabled', false);
 $sibillOn = (bool)$cfg('sibill.enabled', false);
+$spOn     = (bool)$cfg('smallpay.enabled', false);
+$spEnv    = (string)$cfg('smallpay.env', 'staging');
 $chaseOn  = (bool)$cfg('sibill.chase_enabled', false);
+// Two of these carry a shared secret in the query string. They still have to be
+// copyable — that is the whole point of the box — so they are shown dotted out
+// and reveal themselves on focus, i.e. exactly when someone is about to copy one.
+$mask = static fn(string $u): string => preg_replace('/secret=[^&]+/', 'secret=' . str_repeat('•', 12), $u) ?? $u;
 $urls = [
-    'url_request'   => "$base/request.php",
-    'url_lead_api'  => "$base/webhooks/lead.php",
-    'url_form'      => "$base/webhooks/form-intake.php?secret=$is",
-    'url_appt'      => "$base/webhooks/appointment-intake.php?secret=$is",
-    'url_bitrix_ev' => "$base/webhooks/bitrix-event.php?secret=$os",
+    'url_request'   => ["$base/request.php", false],
+    'url_lead_api'  => ["$base/webhooks/lead.php", false],
+    'url_form'      => ["$base/webhooks/form-intake.php?secret=$is", true],
+    'url_appt'      => ["$base/webhooks/appointment-intake.php?secret=$is", true],
+    'url_bitrix_ev' => ["$base/webhooks/bitrix-event.php?secret=$os", true],
 ];
 $pipelines = \Glue\Crm\Pipelines::all();
 ?>
@@ -26,9 +32,10 @@ $pipelines = \Glue\Crm\Pipelines::all();
 <div class="card">
   <h3><?= $h($t('urls_title')) ?></h3>
   <p class="muted small"><?= $h($t('urls_intro')) ?></p>
-  <?php foreach ($urls as $k => $u): ?>
+  <?php foreach ($urls as $k => [$u, $hasSecret]): ?>
     <label class="fld"><span><?= $h($t($k)) ?></span>
-      <input readonly value="<?= $h($u) ?>" onclick="this.select()"></label>
+      <input readonly value="<?= $h($u) ?>" onclick="this.select()"
+        <?= $hasSecret ? 'data-secret-url="' . $h($mask($u)) . '"' : '' ?>></label>
   <?php endforeach; ?>
 </div>
 
@@ -47,7 +54,7 @@ $pipelines = \Glue\Crm\Pipelines::all();
   <div class="row">
     <?php
     fld($h, 'app.base_url', $t('f_base_url'), $cfg('app.base_url', ''), $t('f_base_url_h'));
-    fld($h, 'app.intake_secret', $t('f_intake'), $cfg('app.intake_secret', ''), $t('f_intake_h'));
+    secret_fld($h, 'app.intake_secret', $t('f_intake'), $cfg('app.intake_secret', ''), $t('f_intake_h'));
     ?>
   </div>
   <div class="row">
@@ -64,7 +71,7 @@ $pipelines = \Glue\Crm\Pipelines::all();
   </div>
 
   <h3><?= $h($t('sec_whatsapp')) ?></h3>
-  <?php fld($h, 'textmebot.api_key', $t('f_tmb_key'), $cfg('textmebot.api_key'), $t('f_tmb_key_h')); ?>
+  <?php secret_fld($h, 'textmebot.api_key', $t('f_tmb_key'), $cfg('textmebot.api_key'), $t('f_tmb_key_h')); ?>
 
   <h3><?= $h($t('sec_mail')) ?></h3>
   <div class="row">
@@ -79,7 +86,7 @@ $pipelines = \Glue\Crm\Pipelines::all();
     fld($h, 'mail.smtp.host', $t('f_smtp_host'), $cfg('mail.smtp.host'));
     fld($h, 'mail.smtp.port', $t('f_smtp_port'), $cfg('mail.smtp.port'));
     fld($h, 'mail.smtp.user', $t('f_smtp_user'), $cfg('mail.smtp.user'));
-    fld($h, 'mail.smtp.pass', $t('f_smtp_pass'), $cfg('mail.smtp.pass'));
+    secret_fld($h, 'mail.smtp.pass', $t('f_smtp_pass'), $cfg('mail.smtp.pass'));
     fld($h, 'mail.smtp.secure', $t('f_smtp_secure'), $cfg('mail.smtp.secure'));
     ?>
   </div>
@@ -95,7 +102,7 @@ $pipelines = \Glue\Crm\Pipelines::all();
     fld($h, 'leads_mailbox.host', $t('f_lm_host'), $cfg('leads_mailbox.host', 'pop.ionos.it'), $t('f_lm_host_h'));
     fld($h, 'leads_mailbox.port', $t('f_lm_port'), $cfg('leads_mailbox.port', 995));
     fld($h, 'leads_mailbox.user', $t('f_lm_user'), $cfg('leads_mailbox.user'));
-    fld($h, 'leads_mailbox.pass', $t('f_lm_pass'), $cfg('leads_mailbox.pass'));
+    secret_fld($h, 'leads_mailbox.pass', $t('f_lm_pass'), $cfg('leads_mailbox.pass'));
     ?>
   </div>
   <div class="row">
@@ -156,7 +163,7 @@ $pipelines = \Glue\Crm\Pipelines::all();
   </label>
   <div class="row">
     <?php
-    fld($h, 'sibill.api_key', $t('f_sibill_key'), $cfg('sibill.api_key'), $t('f_sibill_key_h'));
+    secret_fld($h, 'sibill.api_key', $t('f_sibill_key'), $cfg('sibill.api_key'), $t('f_sibill_key_h'));
     fld($h, 'sibill.company_id', $t('f_sibill_company'), $cfg('sibill.company_id'), $t('f_sibill_company_h'));
     ?>
   </div>
@@ -201,6 +208,58 @@ $pipelines = \Glue\Crm\Pipelines::all();
     <small class="muted"><?= $h($t('f_chase_channel_h')) ?></small>
   </label>
 
+  <h3><?= $h($t('sec_smallpay')) ?> <span class="pill"><?= $h($t('optional')) ?></span></h3>
+  <p class="muted small"><?= $h($t('sec_smallpay_h')) ?></p>
+  <label class="fld" style="display:flex;flex-direction:row;align-items:center;gap:10px">
+    <input type="checkbox" name="smallpay.enabled" value="true" style="width:auto" <?= $spOn ? 'checked' : '' ?>>
+    <span style="margin:0"><?= $h($t('f_sp_enable')) ?></span>
+  </label>
+  <?php if ($spOn && $spEnv !== 'production'): ?>
+    <p class="small" style="color:var(--amber);margin:-4px 0 12px"><?= $h($t('f_sp_staging_warn')) ?></p>
+  <?php endif; ?>
+  <label class="fld"><span><?= $h($t('f_sp_env')) ?></span>
+    <select name="smallpay.env">
+      <?php foreach (['staging', 'production'] as $e): ?>
+        <option value="<?= $e ?>" <?= $spEnv === $e ? 'selected' : '' ?>><?= $h($t('sp_env_' . $e)) ?></option>
+      <?php endforeach; ?>
+    </select>
+    <small class="muted"><?= $h($t('f_sp_env_h')) ?></small>
+  </label>
+  <div class="row">
+    <?php
+    fld($h, 'smallpay.id_merchant', $t('f_sp_merchant'), $cfg('smallpay.id_merchant', ''), $t('f_sp_merchant_h'));
+    secret_fld($h, 'smallpay.unique_id', $t('f_sp_unique'), $cfg('smallpay.unique_id', ''), $t('f_sp_unique_h'));
+    ?>
+  </div>
+  <div class="row">
+    <?php
+    fld($h, 'smallpay.service_id', $t('f_sp_service'), $cfg('smallpay.service_id', ''), $t('f_sp_service_h'));
+    fld($h, 'smallpay.domain', $t('f_sp_domain'), $cfg('smallpay.domain', ''), $t('f_sp_domain_h'));
+    ?>
+  </div>
+  <div class="row">
+    <?php
+    fld($h, 'smallpay.reference_prefix', $t('f_sp_prefix'), $cfg('smallpay.reference_prefix', 'CRM'), $t('f_sp_prefix_h'));
+    fld($h, 'smallpay.sync_minutes', $t('f_sp_sync'), $cfg('smallpay.sync_minutes', 60), $t('f_sp_sync_h'));
+    ?>
+  </div>
+  <label class="fld" style="display:flex;flex-direction:row;align-items:center;gap:10px">
+    <input type="checkbox" name="smallpay.modify_installments" value="true" style="width:auto"
+           <?= (bool)$cfg('smallpay.modify_installments', true) ? 'checked' : '' ?>>
+    <span style="margin:0"><?= $h($t('f_sp_modify')) ?></span>
+  </label>
+  <label class="fld" style="display:flex;flex-direction:row;align-items:center;gap:10px">
+    <input type="checkbox" name="smallpay.notify_customer_on_failure" value="true" style="width:auto"
+           <?= (bool)$cfg('smallpay.notify_customer_on_failure', true) ? 'checked' : '' ?>>
+    <span style="margin:0"><?= $h($t('f_sp_notify_fail')) ?></span>
+  </label>
+  <?php // The callback URL is not a setting: SmallPay is told it when a position
+        // is created. It is shown so it can be checked against SmallPay's portal. ?>
+  <label class="fld"><span><?= $h($t('f_sp_callback')) ?></span>
+    <input readonly value="<?= $h("$base/webhooks/smallpay-status.php") ?>" onclick="this.select()">
+    <small class="muted"><?= $h($t('f_sp_callback_h')) ?></small>
+  </label>
+
   <h3><?= $h($t('sec_bitrix')) ?> <span class="pill"><?= $h($t('optional')) ?></span></h3>
   <p class="muted small"><?= $h($t('sec_bitrix_h')) ?></p>
   <label class="fld" style="display:flex;flex-direction:row;align-items:center;gap:10px">
@@ -210,7 +269,7 @@ $pipelines = \Glue\Crm\Pipelines::all();
   <div class="row">
     <?php
     fld($h, 'bitrix.base_url', $t('f_bitrix_url'), $cfg('bitrix.base_url'), $t('f_bitrix_url_h'));
-    fld($h, 'bitrix.outbound_secret', $t('f_outbound'), $cfg('bitrix.outbound_secret'), $t('f_outbound_h'));
+    secret_fld($h, 'bitrix.outbound_secret', $t('f_outbound'), $cfg('bitrix.outbound_secret'), $t('f_outbound_h'));
     ?>
   </div>
 
@@ -268,5 +327,11 @@ $pipelines = \Glue\Crm\Pipelines::all();
   <?php if (trim((string)$cfg('leads_mailbox.user', '')) !== ''): ?>
   <form method="post" class="inline"><input type="hidden" name="do" value="test_mailbox">
     <button class="btn ghost"><?= $h($t('test_mailbox')) ?></button></form>
+  <?php endif; ?>
+  <?php // Safe against the live account: checkSellConfigs validates the setup
+        // without filing a position or touching a card. ?>
+  <?php if (\Glue\Pay\SmallPay::configured()): ?>
+  <form method="post" class="inline"><input type="hidden" name="do" value="test_smallpay">
+    <button class="btn ghost"><?= $h($t('test_smallpay')) ?></button></form>
   <?php endif; ?>
 </div>
