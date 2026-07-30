@@ -160,15 +160,23 @@ final class Leads
      * and the two-minute floor still absorbs a double-submit whose first lead was
      * closed immediately.
      */
-    public static function duplicateId(array $d): ?int
+    public static function duplicateId(array $d, ?int $excludeId = null): ?int
     {
         $pdo = Db::pdo();
+
+        // $excludeId: "would these values duplicate a lead OTHER than this one?" —
+        // asked when EDITING lead $excludeId, whose own row must not count as its
+        // duplicate. Absent on create, where every existing row is a candidate.
+        $exclude     = $excludeId !== null && $excludeId > 0;
+        $excludeSql  = $exclude ? ' AND id <> ?' : '';
 
         $source     = mb_strtolower(trim((string)($d['source'] ?? ''))) ?: 'website';
         $externalId = trim((string)($d['external_id'] ?? ''));
         if ($externalId !== '') {
-            $stmt = $pdo->prepare('SELECT id FROM leads WHERE external_id = ? AND source = ? ORDER BY id DESC LIMIT 1');
-            $stmt->execute([$externalId, $source]);
+            $args = [$externalId, $source];
+            if ($exclude) { $args[] = $excludeId; }
+            $stmt = $pdo->prepare("SELECT id FROM leads WHERE external_id = ? AND source = ?$excludeSql ORDER BY id DESC LIMIT 1");
+            $stmt->execute($args);
             $id = $stmt->fetchColumn();
             if ($id !== false) {
                 return (int)$id;
@@ -213,10 +221,11 @@ final class Leads
             return null; // nothing distinctive to match on
         }
 
+        if ($exclude) { $args[] = $excludeId; }
         $stmt = $pdo->prepare(
             'SELECT id FROM leads
               WHERE (' . implode(' OR ', $ors) . ")
-                AND ($age)
+                AND ($age)$excludeSql
               ORDER BY id DESC LIMIT 1"
         );
         $stmt->execute($args);

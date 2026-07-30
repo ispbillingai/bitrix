@@ -504,6 +504,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
                 if (array_key_exists('vat_number', $_POST)) { $editData['vat_number'] = $newVat; }
+                // An edit must not graft another customer's identity onto this
+                // lead: creating "Andrea" with only a name (passes — a bare name
+                // is not identity) and then editing his phone in was a working
+                // recipe for a duplicate the create-time filter can never see.
+                // Only CHANGED identifiers are checked — the pre-existing twins
+                // share values as they stand, and keeping a value is not what
+                // creates a duplicate — so a note edit on a twin still saves.
+                if ($editLead) {
+                    $probe = [];
+                    if (array_key_exists('phone', $editData)
+                        && \Glue\Notify\Notifier::normalizePhone((string)$editData['phone'])
+                           !== (string)($editLead['customer_phone'] ?? '')) {
+                        $probe['phone'] = $editData['phone'];
+                    }
+                    if (array_key_exists('email', $editData)
+                        && mb_strtolower(trim((string)$editData['email']))
+                           !== mb_strtolower((string)($editLead['customer_email'] ?? ''))) {
+                        $probe['email'] = $editData['email'];
+                    }
+                    if ($newVat !== '' && $newVat !== $oldVat) {
+                        $probe['vat_number'] = $newVat;
+                    }
+                    $ownerId = $probe ? Leads::duplicateId($probe, (int)$_POST['id']) : null;
+                    if ($ownerId !== null) {
+                        $flash = sprintf($t('lead_edit_dup_flash'), $ownerId);
+                        $flashType = 'err';
+                        $tab = 'leads';
+                        break;
+                    }
+                }
                 Leads::update((int)$_POST['id'], $editData, $uid);
                 $flash = $t('lead_saved');
                 $tab = 'leads';
