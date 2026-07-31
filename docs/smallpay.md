@@ -36,9 +36,10 @@ paymentIds are unique within. Set once, then never changed.
 
 ### The MichaelTech account (verified 2026-07-31)
 
-Merchant id `3050`, domain `michaeltech`. Both authenticate: a §3.2 read signed
-with them gets past authentication and fails only on the payment id not
-existing, which is the expected answer for a payment id that does not exist.
+Merchant id `3050`, domain `michaeltech`, service id `00kSY00000DkYYg`. The
+first two authenticate. The third is a real service but of a type the API may
+not sell through — see **BLOCKED** below, which is the one thing still in the
+way.
 
 The associated service is type **Open**, duration 12, €24.90 + IVA, and its
 gateway is **Nexi – SDD** — SEPA direct debit off a bank account, *not* a card.
@@ -53,8 +54,8 @@ Then:
 2. Press **Test SmallPay** in Settings, or run `php bin/pay-sync.php --check`.
    This calls `checkSellConfigs` (§3.3), which validates merchant + service +
    gateway and creates nothing. It is the only SmallPay call that is safe to
-   fire at a live account out of curiosity. **But see the §3.3 caveat below —
-   on this account it cannot currently pass.**
+   fire at a live account out of curiosity. **On the MichaelTech account this
+   cannot pass yet — see "BLOCKED" below; the service is of the wrong type.**
 3. Switch **Enable** on and rehearse a full contract on staging.
 4. Only then move Environment to *Live*.
 
@@ -174,34 +175,41 @@ be enabled on the account at all, sell the support contract as `installments`
 with 12 / 24 / 36 rates instead — that path is unambiguous in the spec and needs
 no code change.
 
-## §3.3 checkSellConfigs looks broken for string service ids
+## BLOCKED: the account has no service the API may drive
 
-Established against the live account on 2026-07-31, with three calls that create
-nothing:
+Tested live on 2026-07-31 with the correct service id `00kSY00000DkYYg`:
 
-| `serviceSmallpay` sent | SmallPay's answer |
+| Call | SmallPay's answer |
 |---|---|
-| `ookSYooooo0DkYYg` (the Crm service id) | `500 — For input string: "ookSYooooo0DkYYg"` |
-| `1` | `500 — MerchantId non compatibile per Service smallpay richiesto` |
-| `3050` | `500 — Service smallpay da recuperare con crmServiceId!` |
+| §3.3 checkSellConfigs | `400 — serviceSmallpay not accepted for merchant: 3050` |
+| §3.1 create position, FlexPay | `400 — serviceSmallpay type not accepted` |
+| §3.1 create position, 12 rates | `400 — serviceSmallpay type not accepted` |
 
-The first is a Java `NumberFormatException`: the endpoint parses the field as an
-integer. The other two show it then resolving a *numeric internal* service id,
-and refusing because this service must be fetched by its `crmServiceId` — the
-very string that crashes it. So §3.3 int-parses before it ever reaches the
-crmServiceId branch, and no correct value can get through.
+The spec's own error table explains it: *"Il serviceSmallpay in request deve
+essere uno dei seguenti tipi: **API, UComm, Ecommerce**"*. The service on this
+account is type **Open** — the kind sold through the portal's own Sell screen,
+not through an integration. So the credentials are right and the code reaches
+SmallPay cleanly; there is simply nothing on the account the API is allowed to
+sell through.
 
-That is a provider-side bug, not a configuration problem, and it means **the
-Settings connection test cannot go green on this account**. It does not block
-anything else: `serviceSmallpay` is only used for real in §3.1, which is a
-different endpoint. Validate by creating one small position instead (below), or
-ask smallpay@lynxspa.com to fix §3.3.
+**What unblocks it:** ask SmallPay (Services → *Available services*, or *Require
+support*, or smallpay@lynxspa.com) to provision a service of type **API** for
+merchant 3050, mirroring the existing one's terms (12 × €24.90 + IVA, gateway
+Nexi – SDD). Put its *Crm service id* into Settings → SmallPay and the
+connection test should go green.
 
-**Validating without the connection test.** Create one position for a token
-amount against a phone/email you control, check the CRM records the cashier URL,
-and then **do not complete the payment** — an uncompleted position never takes
-money. Cancel it afterwards with §3.9 (the Cancel button) or delete its rates
-with §3.8.
+Everything else is already proven: merchant id, unique id and domain all
+authenticate, and the two refusals above are business rejections from
+SmallPay's application layer, not transport, signature or routing errors.
+
+### An earlier wrong conclusion, for the record
+
+Before the exact service id was to hand, a mistyped one (`o` for `0`) made §3.3
+answer `500 — For input string: …`, a Java `NumberFormatException`, and numeric
+probes answered `MerchantId non compatibile` and `Service smallpay da recuperare
+con crmServiceId!`. That was read here as a provider bug in §3.3. It is not:
+with the correct id the same endpoint answers a clean 400. An unknown service id
+crashes it, which is ugly, but it validates fine. Do not go looking for that bug.
 
 A second, smaller ambiguity: the spec prints §3.1–3.3 under `public/api/sites/…`
 and §3.5–3.9 under a bare `sites/…`. That reads like a documentation slip, so
@@ -225,7 +233,9 @@ bin/pay-sync.php                   --check / --id=N / full refresh
 | Symptom | Cause |
 |---|---|
 | `Unauthorized: Hash generation error` | `unique_id` wrong, or the wrong per-endpoint hash fields |
-| `500 For input string: "<service id>"` | §3.3 only — the provider bug above, not your configuration |
+| `serviceSmallpay type not accepted` | the service is not type API / UComm / Ecommerce — see BLOCKED above |
+| `serviceSmallpay not accepted for merchant: N` | same cause, as §3.3 words it |
+| `500 For input string: "<service id>"` | the service id does not exist — check for `o` vs `0` |
 | `Payment number … already exists` | that reference was filed before; the code adopts the existing position instead of opening a second |
 | `serviceSmallpay type not accepted` | the service must be of type API, UComm or Ecommerce |
 | `aliasGateway not accepted` | no gateway configured for the merchant in the Market portal |
