@@ -25,10 +25,27 @@ Four identifiers, all from the SmallPay Market portal, entered in
 
 | Setting | Where it comes from |
 |---|---|
-| Merchant id (`id_merchant`) | Anagrafica |
-| Unique id (`unique_id`) | Anagrafica — **the shared secret**, see below |
-| Service id (`service_id`) | Servizi, column *Id Servizio crm* |
-| Domain (`domain`) | Agreed with SmallPay: the container our paymentIds live under |
+| Merchant id (`id_merchant`) | Registry (*Anagrafica*) → **Id** |
+| Unique id (`unique_id`) | Registry → **Unique id**. **The shared secret**, see below |
+| Service id (`service_id`) | Services (*Servizi*) → column **Crm service id** |
+| Domain (`domain`) | **Ours to choose.** Not issued by SmallPay |
+
+`domain` is caller-defined — SmallPay's own button snippet says so: *"domain -
+Identificativo del sito (definito dal chiamante)"*. It is just the container our
+paymentIds are unique within. Set once, then never changed.
+
+### The MichaelTech account (verified 2026-07-31)
+
+Merchant id `3050`, domain `michaeltech`. Both authenticate: a §3.2 read signed
+with them gets past authentication and fails only on the payment id not
+existing, which is the expected answer for a payment id that does not exist.
+
+The associated service is type **Open**, duration 12, €24.90 + IVA, and its
+gateway is **Nexi – SDD** — SEPA direct debit off a bank account, *not* a card.
+That is why the customer-facing copy in `lang/*.php` never names the instrument:
+a failed collection here is insufficient funds or a lapsed mandate, not an
+expired card. If a card gateway is added later ("Manage gateways"), the copy
+still reads correctly.
 
 Then:
 
@@ -36,7 +53,8 @@ Then:
 2. Press **Test SmallPay** in Settings, or run `php bin/pay-sync.php --check`.
    This calls `checkSellConfigs` (§3.3), which validates merchant + service +
    gateway and creates nothing. It is the only SmallPay call that is safe to
-   fire at a live account out of curiosity.
+   fire at a live account out of curiosity. **But see the §3.3 caveat below —
+   on this account it cannot currently pass.**
 3. Switch **Enable** on and rehearse a full contract on staging.
 4. Only then move Environment to *Live*.
 
@@ -156,6 +174,35 @@ be enabled on the account at all, sell the support contract as `installments`
 with 12 / 24 / 36 rates instead — that path is unambiguous in the spec and needs
 no code change.
 
+## §3.3 checkSellConfigs looks broken for string service ids
+
+Established against the live account on 2026-07-31, with three calls that create
+nothing:
+
+| `serviceSmallpay` sent | SmallPay's answer |
+|---|---|
+| `ookSYooooo0DkYYg` (the Crm service id) | `500 — For input string: "ookSYooooo0DkYYg"` |
+| `1` | `500 — MerchantId non compatibile per Service smallpay richiesto` |
+| `3050` | `500 — Service smallpay da recuperare con crmServiceId!` |
+
+The first is a Java `NumberFormatException`: the endpoint parses the field as an
+integer. The other two show it then resolving a *numeric internal* service id,
+and refusing because this service must be fetched by its `crmServiceId` — the
+very string that crashes it. So §3.3 int-parses before it ever reaches the
+crmServiceId branch, and no correct value can get through.
+
+That is a provider-side bug, not a configuration problem, and it means **the
+Settings connection test cannot go green on this account**. It does not block
+anything else: `serviceSmallpay` is only used for real in §3.1, which is a
+different endpoint. Validate by creating one small position instead (below), or
+ask smallpay@lynxspa.com to fix §3.3.
+
+**Validating without the connection test.** Create one position for a token
+amount against a phone/email you control, check the CRM records the cashier URL,
+and then **do not complete the payment** — an uncompleted position never takes
+money. Cancel it afterwards with §3.9 (the Cancel button) or delete its rates
+with §3.8.
+
 A second, smaller ambiguity: the spec prints §3.1–3.3 under `public/api/sites/…`
 and §3.5–3.9 under a bare `sites/…`. That reads like a documentation slip, so
 `SmallPay::post()` retries a 404 on the alternate prefix. If one prefix turns
@@ -178,6 +225,7 @@ bin/pay-sync.php                   --check / --id=N / full refresh
 | Symptom | Cause |
 |---|---|
 | `Unauthorized: Hash generation error` | `unique_id` wrong, or the wrong per-endpoint hash fields |
+| `500 For input string: "<service id>"` | §3.3 only — the provider bug above, not your configuration |
 | `Payment number … already exists` | that reference was filed before; the code adopts the existing position instead of opening a second |
 | `serviceSmallpay type not accepted` | the service must be of type API, UComm or Ecommerce |
 | `aliasGateway not accepted` | no gateway configured for the merchant in the Market portal |

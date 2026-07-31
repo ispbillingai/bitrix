@@ -152,17 +152,17 @@ return [
             "Hi {name}, here is the secure payment page for *{description}* — {amount} {every}.\n\n"
             . "{link}\n\n"
             . "The page is run by SmallPay, our payment provider: {company} never sees "
-            . "your card details. Any questions, just reply to this message.",
+            . "your payment details. Any questions, just reply to this message.",
 
         'pay_active' =>
             "Thank you {name}! ✅ Your payment for *{description}* went through and the "
-            . "contract is active. We'll take {amount} {every} from the same card, and "
+            . "contract is active. We'll take {amount} {every} from the same account, and "
             . "you can stop it at any time by telling us. — {company}",
 
-        'pay_failed' => // to the CUSTOMER: the card was refused
+        'pay_failed' => // to the CUSTOMER: the charge was refused
             "Hi {name}, your bank did not authorise the payment of {amount} for "
-            . "*{description}*, so nothing was charged. This usually means an expired "
-            . "card or a spending limit. Reply to this message and we'll send you a new "
+            . "*{description}*, so nothing was charged. This usually means there were not "
+            . "enough funds, or the mandate lapsed. Reply to this message and we'll send you a new "
             . "payment link. — {company}",
 
         'pay_failed_agent' => // to the SELLER: this is the moment to decide about the service
@@ -346,7 +346,7 @@ return [
                 . '<p>Amount: <strong>{amount}</strong> {every}</p>'
                 . '<p><a href="{link}">Open the payment page</a></p>'
                 . '<p>The page is run by SmallPay, our payment provider, so {company} never '
-                . 'sees your card details. If the link does not open, copy this address into '
+                . 'sees your payment details. If the link does not open, copy this address into '
                 . 'your browser:<br>{link}</p>'
                 . '<p>Any questions, just reply to this email.</p>'
                 . '<p>Kind regards,<br>{company}</p>',
@@ -356,7 +356,7 @@ return [
             'html'    => '<p>Hi {name},</p>'
                 . '<p>Thank you. Your payment for <strong>{description}</strong> went through '
                 . 'and the contract is now active.</p>'
-                . '<p>We will charge <strong>{amount}</strong> {every} to the same card. You can '
+                . '<p>We will charge <strong>{amount}</strong> {every} to the same account. You can '
                 . 'stop it at any time by telling us — there is no notice period to serve.</p>'
                 . '<p>Kind regards,<br>{company}</p>',
         ],
@@ -364,8 +364,8 @@ return [
             'subject' => 'Your payment did not go through — {description}',
             'html'    => '<p>Hi {name},</p>'
                 . '<p>Your bank did not authorise the payment of <strong>{amount}</strong> for '
-                . '<strong>{description}</strong>, so nothing was charged to your card.</p>'
-                . '<p>This is usually an expired card or a spending limit rather than anything '
+                . '<strong>{description}</strong>, so nothing was taken from your account.</p>'
+                . '<p>This is usually insufficient funds or a lapsed mandate rather than anything '
                 . 'wrong on your side. Reply to this email and we will send you a new payment link.</p>'
                 . '<p>Kind regards,<br>{company}</p>',
         ],

@@ -154,18 +154,18 @@ return [
             . "{amount} {every}.\n\n"
             . "{link}\n\n"
             . "La pagina è gestita da SmallPay, il nostro fornitore di pagamenti: "
-            . "{company} non vede mai i dati della sua carta. Per qualsiasi dubbio "
+            . "{company} non vede mai i suoi dati di pagamento. Per qualsiasi dubbio "
             . "può rispondere a questo messaggio.",
 
         'pay_active' =>
             "Grazie {name}! ✅ Il pagamento di *{description}* è andato a buon fine "
             . "e il contratto è attivo. Addebiteremo {amount} {every} sulla stessa "
-            . "carta; può interromperlo quando vuole, basta comunicarcelo. — {company}",
+            . "conto; può interromperlo quando vuole, basta comunicarcelo. — {company}",
 
-        'pay_failed' => // al CLIENTE: la carta è stata rifiutata
+        'pay_failed' => // al CLIENTE: l'addebito è stato rifiutato
             "Gentile {name}, la sua banca non ha autorizzato il pagamento di {amount} "
             . "per *{description}*, quindi non è stato addebitato nulla. Di solito si "
-            . "tratta di una carta scaduta o di un limite di spesa. Risponda a questo "
+            . "tratta di fondi insufficienti o di un mandato revocato. Risponda a questo "
             . "messaggio e le inviamo un nuovo link di pagamento. — {company}",
 
         'pay_failed_agent' => // al VENDITORE: è il momento di decidere sul servizio
@@ -349,7 +349,7 @@ return [
                 . '<p>Importo: <strong>{amount}</strong> {every}</p>'
                 . '<p><a href="{link}">Apri la pagina di pagamento</a></p>'
                 . '<p>La pagina è gestita da SmallPay, il nostro fornitore di pagamenti, quindi '
-                . '{company} non vede mai i dati della sua carta. Se il link non si apre, copi '
+                . '{company} non vede mai i suoi dati di pagamento. Se il link non si apre, copi '
                 . 'questo indirizzo nel browser:<br>{link}</p>'
                 . '<p>Per qualsiasi dubbio può rispondere a questa email.</p>'
                 . '<p>Cordiali saluti,<br>{company}</p>',
@@ -359,7 +359,7 @@ return [
             'html'    => '<p>Gentile {name},</p>'
                 . '<p>grazie. Il pagamento di <strong>{description}</strong> è andato a buon fine '
                 . 'e il contratto è ora attivo.</p>'
-                . '<p>Addebiteremo <strong>{amount}</strong> {every} sulla stessa carta. Può '
+                . '<p>Addebiteremo <strong>{amount}</strong> {every} sullo stesso conto. Può '
                 . 'interrompere il contratto quando vuole comunicandocelo: non è previsto alcun '
                 . 'preavviso.</p>'
                 . '<p>Cordiali saluti,<br>{company}</p>',
@@ -368,8 +368,8 @@ return [
             'subject' => 'Pagamento non riuscito — {description}',
             'html'    => '<p>Gentile {name},</p>'
                 . '<p>la sua banca non ha autorizzato il pagamento di <strong>{amount}</strong> per '
-                . '<strong>{description}</strong>, quindi non è stato addebitato nulla sulla sua carta.</p>'
-                . '<p>Di norma si tratta di una carta scaduta o di un limite di spesa, non di un '
+                . '<strong>{description}</strong>, quindi non le è stato addebitato nulla.</p>'
+                . '<p>Di norma si tratta di fondi insufficienti o di un mandato revocato, non di un '
                 . 'problema da parte sua. Risponda a questa email e le invieremo un nuovo link '
                 . 'di pagamento.</p>'
                 . '<p>Cordiali saluti,<br>{company}</p>',
