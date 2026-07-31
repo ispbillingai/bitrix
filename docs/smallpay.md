@@ -41,12 +41,16 @@ first two authenticate. The third is a real service but of a type the API may
 not sell through — see **BLOCKED** below, which is the one thing still in the
 way.
 
-The associated service is type **Open**, duration 12, €24.90 + IVA, and its
-gateway is **Nexi – SDD** — SEPA direct debit off a bank account, *not* a card.
-That is why the customer-facing copy in `lang/*.php` never names the instrument:
-a failed collection here is insufficient funds or a lapsed mandate, not an
-expired card. If a card gateway is added later ("Manage gateways"), the copy
-still reads correctly.
+The associated service is type **Open**, duration 12, €24.90 + IVA, listed
+against a gateway named *Nexi - SDD*. The account's gateway list holds three,
+all ATTIVO: **NEXI**, **STRIPE** and **STRIPE_SDD** — so both card and SEPA
+direct-debit channels exist, and which one collects depends on the service.
+
+That is why the customer-facing copy in `lang/*.php` never names the payment
+instrument. "Your card has expired" is wrong for an SDD collection and "the
+mandate lapsed" is wrong for a card, so the copy says neither: a refusal reads
+as insufficient funds or a lapsed mandate, which is true of both and survives
+the gateway being changed.
 
 Then:
 
@@ -192,11 +196,23 @@ not through an integration. So the credentials are right and the code reaches
 SmallPay cleanly; there is simply nothing on the account the API is allowed to
 sell through.
 
-**What unblocks it:** ask SmallPay (Services → *Available services*, or *Require
-support*, or smallpay@lynxspa.com) to provision a service of type **API** for
-merchant 3050, mirroring the existing one's terms (12 × €24.90 + IVA, gateway
-Nexi – SDD). Put its *Crm service id* into Settings → SmallPay and the
-connection test should go green.
+**Only SmallPay can unblock it.** Every self-service route in the portal was
+checked on 2026-07-31 and none of them can create one:
+
+- **Services → Available services** is *empty* ("The search did not return any
+  results"), so there is nothing to buy or switch on.
+- **SmallPay Integration** is only the JS button configurator plus the
+  WooCommerce and PrestaShop plugins — no API toggle.
+- **Manage gateways** already lists NEXI, STRIPE and STRIPE_SDD, all ATTIVO, so
+  the gateway half of `checkSellConfigs` is satisfied. Gateways are not the
+  problem.
+- The API itself has no endpoint that creates a service — the spec's nine
+  operations are all payment operations.
+
+So: ask SmallPay (*Require support* in the portal, or smallpay@lynxspa.com) to
+provision a service of type **API** for merchant 3050, mirroring the existing
+one's terms (12 × €24.90 + IVA). Put its *Crm service id* into Settings →
+SmallPay and the connection test should go green.
 
 Everything else is already proven: merchant id, unique id and domain all
 authenticate, and the two refusals above are business rejections from
