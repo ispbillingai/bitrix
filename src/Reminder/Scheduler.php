@@ -445,6 +445,18 @@ final class Scheduler
             'entity_id'      => (string)$entityId,
             'bitrix_id'      => (string)$entityId, // legacy placeholder still used in some copy
         ];
+
+        // Partner-addressed reminders (the closed/lost notice) need the partner
+        // themselves resolved — they are not the customer and not an agent, and
+        // they live in their own table. Looked up only for the handful of rules
+        // that address one, so ordinary reminders pay nothing for it.
+        if ($r['recipient_type'] === 'partner') {
+            $p = \Glue\Partner\Partners::forEntity($r['entity_type'], $entityId);
+            $vars['partner_name']  = trim((string)($p['name'] ?? ''));
+            $vars['partner_phone'] = (string)($p['phone'] ?? '');
+            $vars['partner_email'] = (string)($p['email'] ?? '');
+        }
+
         return array_merge($vars, $payload); // payload (agent_name, when, deadline...) wins
     }
 
@@ -470,6 +482,7 @@ final class Scheduler
         return match ($r['recipient_type']) {
             'agent'     => (string)($vars['agent_phone'] ?? ''),
             'logistics' => (string)Config::get('logistics.phone', ''),
+            'partner'   => (string)($vars['partner_phone'] ?? ''),
             default     => (string)($vars['customer_phone'] ?? ''),
         };
     }
@@ -479,6 +492,7 @@ final class Scheduler
         return match ($r['recipient_type']) {
             'agent'     => (string)($vars['agent_email'] ?? ''),
             'logistics' => (string)Config::get('logistics.email', ''),
+            'partner'   => (string)($vars['partner_email'] ?? ''),
             default     => (string)($vars['customer_email'] ?? ''),
         };
     }

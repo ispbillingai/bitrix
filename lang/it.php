@@ -128,6 +128,18 @@ return [
             . "Come da regolamento tornerà disponibile per la lavorazione dopo il periodo di {lock_days} giorni, "
             . "il {available_date}. — {company}",
 
+        // Al PARTNER, ed è l'unico messaggio sull'andamento che riceve mai: la sua
+        // segnalazione è arrivata a destinazione. Mentre viene lavorata non gli
+        // arriva nulla — nessun cambio di fase, nessuna assegnazione, nessun
+        // sollecito.
+        'partner_lead_won' =>
+            "🎉 Buone notizie {partner_name}: la tua segnalazione *{customer_name}* è stata chiusa positivamente. "
+            . "Grazie per la segnalazione! — {company}",
+
+        'partner_lead_lost' =>
+            "Ciao {partner_name}, la tua segnalazione *{customer_name}* si è chiusa senza accordo. "
+            . "Grazie comunque per la segnalazione — alla prossima. — {company}",
+
         // Al CLIENTE: ha fatture scadute non pagate. I dati stanno su righe
         // etichettate invece che dentro la frase, così "1 fattura" e "5 fatture"
         // non richiedono due versioni del testo. Nessun numero di telefono nel
@@ -326,6 +338,18 @@ return [
             'html'    => '<p>Ciao {enterer_name},</p><p>la partita IVA <strong>{vat}</strong> risulta già inserita '
                 . 'da un altro collaboratore. Come da regolamento tornerà disponibile per la lavorazione dopo il '
                 . 'periodo di {lock_days} giorni, il <strong>{available_date}</strong>.</p><p>{company}</p>',
+        ],
+        'partner_lead_won' => [
+            'subject' => 'La tua segnalazione {customer_name} è stata chiusa',
+            'html'    => '<p>Buone notizie {partner_name},</p>'
+                . '<p>la tua segnalazione <strong>{customer_name}</strong> è stata chiusa positivamente.</p>'
+                . '<p>Grazie per la segnalazione!</p><p>{company}</p>',
+        ],
+        'partner_lead_lost' => [
+            'subject' => 'La tua segnalazione {customer_name} non è andata a buon fine',
+            'html'    => '<p>Ciao {partner_name},</p>'
+                . '<p>la tua segnalazione <strong>{customer_name}</strong> si è chiusa senza accordo.</p>'
+                . '<p>Grazie comunque per la segnalazione — alla prossima.</p><p>{company}</p>',
         ],
         'invoice_overdue' => [
             'subject' => 'Sollecito di pagamento — importi insoluti',

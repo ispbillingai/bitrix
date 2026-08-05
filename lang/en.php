@@ -127,6 +127,17 @@ return [
             . "As per the rules it will become available for processing again after the {lock_days}-day period, "
             . "on {available_date}. — {company}",
 
+        // To the PARTNER, and the only progress message they ever get: their lead
+        // has reached the end of the road. Nothing is said while it is being
+        // worked — no stage moves, no assignments, no chasing.
+        'partner_lead_won' =>
+            "🎉 Good news {partner_name}: your lead *{customer_name}* has been closed successfully. "
+            . "Thank you for the introduction! — {company}",
+
+        'partner_lead_lost' =>
+            "Hi {partner_name}, your lead *{customer_name}* has been closed without an agreement. "
+            . "Thank you all the same for the introduction — we look forward to the next one. — {company}",
+
         // To the CUSTOMER: they have unpaid invoices past due. Figures go on
         // labelled lines rather than inside the sentence, so one invoice and five
         // invoices don't need two versions of the copy. No phone number in the
@@ -323,6 +334,19 @@ return [
             'html'    => '<p>Hi {enterer_name},</p><p>VAT number <strong>{vat}</strong> has already been entered '
                 . 'by another associate. As per the rules it will become available for processing again after the '
                 . '{lock_days}-day period, on <strong>{available_date}</strong>.</p><p>{company}</p>',
+        ],
+        'partner_lead_won' => [
+            'subject' => 'Your lead {customer_name} has been closed',
+            'html'    => '<p>Good news {partner_name},</p>'
+                . '<p>Your lead <strong>{customer_name}</strong> has been closed successfully.</p>'
+                . '<p>Thank you for the introduction!</p><p>{company}</p>',
+        ],
+        'partner_lead_lost' => [
+            'subject' => 'Your lead {customer_name} was not closed',
+            'html'    => '<p>Hi {partner_name},</p>'
+                . '<p>Your lead <strong>{customer_name}</strong> has been closed without an agreement.</p>'
+                . '<p>Thank you all the same for the introduction — we look forward to the next one.</p>'
+                . '<p>{company}</p>',
         ],
         'invoice_overdue' => [
             'subject' => 'Payment reminder — outstanding invoices',

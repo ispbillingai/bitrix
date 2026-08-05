@@ -140,10 +140,14 @@ final class Deals
             // Partner referral commission: if this deal came from a partner-referred
             // lead, create a pending accrual (idempotent). Never fatal.
             \Glue\Partner\Partners::accrueForWonDeal($dealId);
+            // ...and this is the one moment the referring partner hears from us.
+            \Glue\Partner\Partners::notifyOutcome('deal', $dealId, 'won');
         }
-        // Lost -> just stop chasing.
+        // Lost -> just stop chasing. The referring partner is told, the same way
+        // they are told about a win: end of the road either way.
         if ($isLost) {
             $sched->cancelForEntity('deal', $dealId, ['sign_due', 'sign_overdue']);
+            \Glue\Partner\Partners::notifyOutcome('deal', $dealId, 'lost');
         }
 
         if ($stageChanged) {

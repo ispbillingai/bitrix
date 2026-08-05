@@ -3,15 +3,26 @@ declare(strict_types=1);
 
 namespace Glue\Partner;
 
+use Glue\Crm\Leads;
+use Glue\Crm\VatLock;
 use Glue\Db;
 use Glue\Event\Log;
+use Glue\Reminder\Scheduler;
 use Throwable;
 
 /**
- * Partners (referrers). A partner refers customers via ?ref=CODE; a referred lead
- * that becomes a WON deal earns the partner a commission (a % of the deal value)
- * as a 'pending' accrual an admin later approves and marks paid. Partners are not
- * CRM users — separate table + separate login (partner.php). See migration 019.
+ * Partners (referrers). A partner brings customers in two ways: by sharing their
+ * personal link (?ref=CODE), or by typing the lead into their own area himself
+ * (submitLead). Either way the lead carries referred_by_partner_id, and a
+ * referred lead that becomes a WON deal earns the partner a commission (a % of
+ * the deal value) as a 'pending' accrual an admin later approves and marks paid.
+ * Partners are not CRM users — separate table + separate login (partner.php).
+ * See migrations 019 and 033.
+ *
+ * What a partner is told, and when, is deliberately narrow (client's rule): in
+ * their area they see the STATUS of their leads and nothing of how the pipeline
+ * is being worked, and they are messaged ONLY once a lead reaches the end of the
+ * road — closed or lost. notifyOutcome() is the single door for that message.
  */
 final class Partners
 {
@@ -135,15 +146,194 @@ final class Partners
         Log::write('partner', 'lead_referred', 'lead', $leadId, ['partner_id' => $partnerId]);
     }
 
-    /** A partner's referred leads with stage/status (for the partner area + admin). */
+    /**
+     * A partner's leads — the ones they referred through their link and the ones
+     * they typed in themselves. Carries the internal stage/status (the admin view
+     * shows them) plus `deal_status`, the last word on how the lead ended, which
+     * outcome() below turns into the one thing the PARTNER is shown.
+     */
     public static function referrals(int $partnerId): array
     {
         $s = Db::pdo()->prepare(
-            "SELECT l.id, l.customer_name, l.stage_code, l.status, l.received_at
+            "SELECT l.id, l.customer_name, l.stage_code, l.status, l.received_at,
+                    (SELECT d.status FROM deals d WHERE d.lead_id = l.id
+                      ORDER BY d.id DESC LIMIT 1) AS deal_status
                FROM leads l WHERE l.referred_by_partner_id = ? ORDER BY l.id DESC"
         );
         $s->execute([$partnerId]);
         return $s->fetchAll() ?: [];
+    }
+
+    /**
+     * The one word a partner is allowed to see about a lead: 'open' (we are on
+     * it), 'won' (closed) or 'lost'. Everything else — which stage it sits in,
+     * who is working it, what it is worth — stays inside the CRM.
+     *
+     * A discarded lead is lost. Otherwise the DEAL has the last word: a converted
+     * lead is only "closed" once its deal is won, and a lost deal is a lost lead
+     * however far through the pipeline it travelled. A lead still in the pipeline,
+     * or converted but with the deal still open, reads as open.
+     *
+     * @param array $row a row from referrals() (or any lead row plus deal_status)
+     */
+    public static function outcome(array $row): string
+    {
+        if (($row['status'] ?? '') === 'junk') {
+            return 'lost';
+        }
+        return match ($row['deal_status'] ?? '') {
+            'won'   => 'won',
+            'lost'  => 'lost',
+            default => 'open',
+        };
+    }
+
+    // ---- partner-entered leads ------------------------------------------------
+
+    /**
+     * A partner files a lead from their own area. Same door as everyone else
+     * (Leads::create), so the duplicate check, the welcome message and the
+     * automations behave exactly as they do for a lead off the public form —
+     * plus the two rules that are specific to partner entries:
+     *
+     *   - 90-day VAT exclusivity. A partita IVA another associate already claimed
+     *     is refused here rather than filed, and the partner is told when it frees
+     *     up (same treatment as the ?ref= form gives, see public/request.php).
+     *   - No claiming by re-typing. If the entry merely duplicates a lead that
+     *     already exists, the request is still recorded on that lead's timeline
+     *     (Leads::create groups it) but attribution is never touched. Otherwise a
+     *     partner could take over a colleague's customer — or harvest the office's
+     *     own inbound leads — simply by typing their name in. Only a genuinely new
+     *     lead is attributed; the partner is told which of the two happened.
+     *
+     * @param array $d name|company|email|phone|vat_number|comments|lang
+     * @return array{ok:bool,error?:string,lead_id?:int,duplicate?:string,available_at?:string}
+     */
+    public static function submitLead(int $partnerId, array $d): array
+    {
+        $partner = self::find($partnerId);
+        if (!$partner || (int)$partner['active'] !== 1) {
+            return ['ok' => false, 'error' => 'inactive'];
+        }
+
+        $name  = trim((string)($d['name'] ?? ''));
+        $email = trim((string)($d['email'] ?? ''));
+        $phone = trim((string)($d['phone'] ?? ''));
+        if ($name === '' || ($email === '' && $phone === '')) {
+            return ['ok' => false, 'error' => 'required'];
+        }
+
+        $fields = [
+            'name'       => $name,
+            'email'      => $email,
+            'phone'      => $phone,
+            'company'    => trim((string)($d['company'] ?? '')),
+            'comments'   => trim((string)($d['comments'] ?? '')),
+            'vat_number' => (string)($d['vat_number'] ?? ''),
+            'source'     => 'partner',
+            'lang'       => $d['lang'] ?? null,
+        ];
+
+        // VAT exclusivity first: a blocked number must not create a lead at all.
+        $vat = VatLock::normalize((string)($d['vat_number'] ?? ''));
+        $claim = ['ok' => true, 'fresh' => false];
+        if ($vat !== '') {
+            $claim = VatLock::claim($vat, 'partner', $partnerId);
+            if (!$claim['ok']) {
+                VatLock::notifyTaken('partner', $partnerId, $vat, (string)$claim['available_at']);
+                if (!empty($claim['lead_id'])) {
+                    \Glue\Crm\Activities::add('lead', (int)$claim['lead_id'], 'system',
+                        "Blocked duplicate entry of VAT $vat via partner {$partner['name']} (locked until "
+                        . date('d/m/Y', strtotime((string)$claim['available_at'])) . ')');
+                }
+                Log::write('partner', 'vat_blocked', 'lead', (int)($claim['lead_id'] ?? 0),
+                    ['vat' => $vat, 'partner_id' => $partnerId]);
+                return ['ok' => false, 'error' => 'vat_taken',
+                    'available_at' => date('d/m/Y', strtotime((string)$claim['available_at']) ?: time())];
+            }
+        }
+
+        // Ask BEFORE creating whether this is a duplicate: create() answers with the
+        // existing lead's id in that case, and we need to know which id we got.
+        $dupId  = Leads::duplicateId($fields);
+        $leadId = Leads::create($fields);
+        if ($dupId !== null && $leadId === $dupId) {
+            $ownerId = (int)(self::ownerIdOfLead($leadId) ?? 0);
+            Log::write('partner', 'lead_duplicate', 'lead', $leadId,
+                ['partner_id' => $partnerId, 'owner_id' => $ownerId]);
+            return ['ok' => true, 'lead_id' => $leadId,
+                'duplicate' => $ownerId === $partnerId ? 'own' : 'other'];
+        }
+
+        self::attributeLead($leadId, $partnerId);
+        if ($vat !== '' && !empty($claim['fresh'])) {
+            VatLock::attachLead($vat, $leadId);
+            VatLock::notifyThanks('partner', $partnerId, $vat, $name);
+        }
+        Log::write('partner', 'lead_entered', 'lead', $leadId, ['partner_id' => $partnerId]);
+        return ['ok' => true, 'lead_id' => $leadId];
+    }
+
+    // ---- end-of-road notification ---------------------------------------------
+
+    /**
+     * Tell the owning partner their lead is finished — closed ('won') or 'lost'.
+     * The ONLY message a partner ever gets about a lead's progress: called from
+     * Deals::moveStage on the won/lost transitions and from Leads::moveStage when
+     * a lead is discarded before it ever became a deal.
+     *
+     * Dedupe is keyed on the LEAD, not the entity, so one customer journey yields
+     * at most one "closed" and one "lost" however many records it passed through.
+     * Never fatal, and never enqueued at all when no (active) partner owns it.
+     */
+    public static function notifyOutcome(string $entityType, int $entityId, string $outcome): void
+    {
+        try {
+            if (!in_array($outcome, ['won', 'lost'], true)) {
+                return;
+            }
+            $leadId  = $entityType === 'deal' ? self::leadIdOfDeal($entityId) : $entityId;
+            $partner = $leadId > 0 ? self::forLead($leadId) : null;
+            if (!$partner) {
+                return;
+            }
+            (new Scheduler())->enqueue([
+                'entity_type'    => $entityType,
+                'entity_id'      => $entityId,
+                'rule_key'       => $outcome === 'won' ? 'partner_lead_won' : 'partner_lead_lost',
+                'recipient_type' => 'partner',
+                'channel'        => 'both',
+                'due_at'         => date('Y-m-d H:i:s'),
+                'dedupe_key'     => "partner_$outcome:lead:$leadId",
+            ]);
+            Log::write('partner', 'lead_outcome_notified', $entityType, $entityId,
+                ['partner_id' => (int)$partner['id'], 'outcome' => $outcome, 'lead_id' => $leadId]);
+        } catch (Throwable $e) {
+            // A partner notification must never break a stage change.
+            Log::write('partner', 'lead_outcome_failed', $entityType, $entityId, ['error' => $e->getMessage()]);
+        }
+    }
+
+    /** The ACTIVE partner behind a lead, or null. */
+    public static function forLead(int $leadId): ?array
+    {
+        $id = self::ownerIdOfLead($leadId);
+        if ($id === null) {
+            return null;
+        }
+        $p = self::find($id);
+        return $p && (int)$p['active'] === 1 ? $p : null;
+    }
+
+    /**
+     * The ACTIVE partner behind a lead or a deal, or null — the Scheduler's way of
+     * answering "who is this partner-addressed reminder actually for?".
+     */
+    public static function forEntity(string $entityType, int $entityId): ?array
+    {
+        $leadId = $entityType === 'deal' ? self::leadIdOfDeal($entityId)
+                : ($entityType === 'lead' ? $entityId : 0);
+        return $leadId > 0 ? self::forLead($leadId) : null;
     }
 
     // ---- accruals -------------------------------------------------------------
@@ -241,6 +431,23 @@ final class Partners
     }
 
     // ---- helpers --------------------------------------------------------------
+
+    /** referred_by_partner_id of a lead: an id, or null when nobody owns it. */
+    private static function ownerIdOfLead(int $leadId): ?int
+    {
+        $s = Db::pdo()->prepare('SELECT referred_by_partner_id FROM leads WHERE id = ?');
+        $s->execute([$leadId]);
+        $id = (int)($s->fetchColumn() ?: 0);
+        return $id > 0 ? $id : null;
+    }
+
+    /** The lead a deal grew out of (0 when it was created standalone). */
+    private static function leadIdOfDeal(int $dealId): int
+    {
+        $s = Db::pdo()->prepare('SELECT lead_id FROM deals WHERE id = ?');
+        $s->execute([$dealId]);
+        return (int)($s->fetchColumn() ?: 0);
+    }
 
     private static function refExists(string $code): bool
     {

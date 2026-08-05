@@ -300,6 +300,14 @@ final class Leads
             'UPDATE leads SET stage_code = ?, status = ?, stage_changed_at = NOW() WHERE id = ?'
         )->execute([$stageCode, $status, $leadId]);
 
+        // Discarded here, before it ever became a deal: that IS the end of the road,
+        // so the referring partner is told now. A lead that converts instead stays
+        // quiet — Deals::moveStage announces the won/lost outcome once the deal has
+        // one. Either way the partner hears from us exactly once per outcome.
+        if ($status === 'junk' && (string)$lead['status'] !== 'junk') {
+            \Glue\Partner\Partners::notifyOutcome('lead', $leadId, 'lost');
+        }
+
         if ($oldStage === $firstStage && $stageCode !== $firstStage) {
             // Both cadences Automation::inactivity started, not just the agent's:
             // cancelling 'lead_inactivity' alone left the customer-facing

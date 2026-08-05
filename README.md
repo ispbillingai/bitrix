@@ -44,6 +44,15 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 - **Appointments**: requests come in → staff assign a seller and confirm a time →
   reminders fire to **both** parties before the event.
 - **Tasks + KPI**: assign work to sellers, score on completion, leaderboard.
+- **Partner area** (`public/partner.php`): partners log into their own page —
+  not the CRM — and do exactly three things. They **enter their own leads**
+  (typed in, or brought in by sharing their `request.php?ref=CODE` link); they
+  see the **status** of those leads and nothing else about them (in progress /
+  closed / lost — no pipeline stage, no seller, no deal value); and they follow
+  their commissions. They are **messaged only when a lead ends** — closed or
+  lost — and never while it is being worked. Entering a partita IVA reserves
+  that customer for them for 90 days; re-typing a customer who is already in the
+  system files the note on the existing lead but never transfers ownership.
 - **Documents (electronic signature)**: upload a PDF, send it for signature, the
   customer confirms with a one-time code, and the CRM seals the result itself —
   a CAdES-signed PDF holding a signature certificate plus the original document,
@@ -72,6 +81,7 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 | Signing reminders (15 days after sent, then 10/5 days before the deal's signature due date, + overdue to 15) | `Crm\Deals::moveStage` into the quote stage → `sign_due`/`sign_overdue` |
 | Closing: thank-you + notify logistics | won stage → `thank_you` + `logistics_notify` |
 | KPI / score evaluation | `Crm\Tasks` (kpi_score/weight) + leaderboard |
+| Partner enters their own leads, sees only their status, hears only about closed/lost | `partner.php` → `Partner\Partners::submitLead` / `::outcome` / `::notifyOutcome` → `partner_lead_won`/`partner_lead_lost` |
 | Manual interrupt / silence any automation | move the record's stage; pending reminders auto-cancel |
 | Mass WhatsApp/email marketing | `campaign.php` + `Campaign\Sender` (throttled) |
 | Sign a document with an OTP, in-house | `views/documents.php` → `Sign\Documents` → `Sign\Signer` (CAdES) → `public/sign.php` / `public/verify.php` |
@@ -99,6 +109,7 @@ public/
   pay-return.php           where SmallPay sends the customer after the cashier page
   sign.php                 tokenised signing page (read → OTP → sealed PDF)
   verify.php               public signature check (by reference or by file)
+  partner.php              partner area (enter leads, their status, commissions)
   dashboard.php            CRM control panel (controller; renders /views)
   campaign.php             create a mass campaign
   webhooks/
@@ -112,6 +123,7 @@ src/
   Bootstrap, Config, Db, Settings, Auth, Event/Log
   Crm/   Pipelines, Contacts, Leads, LeadIntake, Deals, Appointments, Tasks,
          Tickets, Automation, Activities, EntityResolver   — the CRM domain
+  Partner/ Partners (accounts, lead entry, referrals, commissions, outcome notice)
   Pay/     SmallPay (REST client), Contracts (lifecycle + reconciliation)
   Portal/  Account (customer login + magic link), Otp (signing codes)
   Sign/    Documents (lifecycle), Audit (hash-chained log), Signer + Pdf (sealed
