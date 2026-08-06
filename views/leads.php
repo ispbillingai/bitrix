@@ -119,6 +119,10 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
                 <span class="byhand" title="<?= $h($t('entered_by_title')) ?>">
                   <?= svg('pen') ?><?= $h($t('entered_by')) ?> <?= $h($cby) ?></span>
               <?php endif; ?>
+              <?php if (!empty($c['partner_name'])): ?>
+                <span class="bypartner" title="<?= $h($t('from_partner_title')) ?>">
+                  <?= svg('partners') ?><?= $h($c['partner_name']) ?></span>
+              <?php endif; ?>
             </div>
             <?php $cmsg = trim((string)($c['comments'] ?? '')); if ($cmsg !== ''): ?>
               <div class="muted small note-clip l4" style="margin-top:7px" title="<?= $h($cmsg) ?>">“<?= $h($cmsg) ?>”</div>
@@ -202,6 +206,10 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
       <?php $cby = $r['creator_name'] ?: $r['creator_username']; if ($cby): ?>
         <span class="byhand" title="<?= $h($t('entered_by_title')) ?>">
           <?= svg('pen') ?><?= $h($t('entered_by')) ?> <?= $h($cby) ?></span>
+      <?php endif; ?>
+      <?php if (!empty($r['partner_name'])): ?>
+        <span class="bypartner" title="<?= $h($t('from_partner_title')) ?>">
+          <?= svg('partners') ?><?= $h($t('from_partner')) ?> <?= $h($r['partner_name']) ?></span>
       <?php endif; ?>
       <?php $acc = \Glue\Portal\Account::accessStats((int)$r['contact_id']); if ($acc['count'] > 0): ?>
         <span class="pill" title="<?= $h($t('portal_access_title')) ?>" style="background:var(--accent-soft,rgba(91,108,255,.14));color:var(--accent,#5b6cff)">

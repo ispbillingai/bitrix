@@ -197,6 +197,12 @@ tbody tr:hover{background:var(--surface2);} tr:last-child td{border-bottom:none;
 .byhand{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:6px;
   background:var(--amber-bg);color:var(--amber);font-size:11px;font-weight:600;white-space:nowrap;}
 .byhand svg{width:11px;height:11px;flex:0 0 auto;}
+/* "brought in by a partner" marker — which referrer this lead belongs to. Its own
+   colour, not .byhand's: a partner lead and a hand-keyed lead are different facts
+   and both can be true at once. */
+.bypartner{display:inline-flex;align-items:center;gap:4px;padding:2px 7px;border-radius:6px;
+  background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:600;white-space:nowrap;}
+.bypartner svg{width:11px;height:11px;flex:0 0 auto;}
 .avatar{display:inline-flex;width:22px;height:22px;border-radius:50%;background:var(--accent-soft);color:var(--accent);
   align-items:center;justify-content:center;font-size:11px;font-weight:700;}
 .tl{display:flex;flex-direction:column;gap:0;}

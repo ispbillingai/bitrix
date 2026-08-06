@@ -360,7 +360,7 @@ final class Leads
         return $stmt->fetch() ?: null;
     }
 
-    /** @return array<int,array> recent leads with agent + creator labels ($assignedTo scopes to one seller, $source to one origin, $zone to one area) */
+    /** @return array<int,array> recent leads with agent + creator + partner labels ($assignedTo scopes to one seller, $source to one origin, $zone to one area) */
     public static function all(int $limit = 300, ?int $assignedTo = null, ?string $source = null, ?string $zone = null): array
     {
         $limit = max(1, min(1000, $limit));
@@ -377,10 +377,12 @@ final class Leads
         $where = $conds ? ' WHERE ' . implode(' AND ', $conds) : '';
         return Db::pdo()->query(
             "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name,
-                    c.username AS creator_username, c.full_name AS creator_name
+                    c.username AS creator_username, c.full_name AS creator_name,
+                    pt.name AS partner_name
              FROM leads l
              LEFT JOIN users u ON u.id = l.assigned_to
              LEFT JOIN users c ON c.id = l.created_by
+             LEFT JOIN partners pt ON pt.id = l.referred_by_partner_id
              $where ORDER BY l.id DESC LIMIT $limit"
         )->fetchAll();
     }
@@ -397,10 +399,12 @@ final class Leads
         $where = "WHERE l.status IN ('open', 'junk')" . ($assignedTo ? ' AND l.assigned_to = ' . (int)$assignedTo : '');
         $rows = Db::pdo()->query(
             "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name,
-                    c.username AS creator_username, c.full_name AS creator_name
+                    c.username AS creator_username, c.full_name AS creator_name,
+                    pt.name AS partner_name
              FROM leads l
              LEFT JOIN users u ON u.id = l.assigned_to
              LEFT JOIN users c ON c.id = l.created_by
+             LEFT JOIN partners pt ON pt.id = l.referred_by_partner_id
              $where ORDER BY l.id DESC"
         )->fetchAll();
         $out = [];

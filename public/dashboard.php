@@ -162,10 +162,12 @@ if (($_GET['export'] ?? '') === 'leads' && !$isAgent) {
     $xm  = preg_match('/^\d{4}-\d{2}$/', (string)($_GET['m'] ?? '')) ? (string)$_GET['m'] : date('Y-m');
     $xsrc = mb_strtolower(trim((string)($_GET['src'] ?? '')));
     $sql = "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name,
-                   c.username AS creator_username, c.full_name AS creator_name
+                   c.username AS creator_username, c.full_name AS creator_name,
+                   pt.name AS partner_name
             FROM leads l
             LEFT JOIN users u ON u.id = l.assigned_to
             LEFT JOIN users c ON c.id = l.created_by
+            LEFT JOIN partners pt ON pt.id = l.referred_by_partner_id
             WHERE l.received_at >= CONCAT(?, '-01')
               AND l.received_at <  CONCAT(?, '-01') + INTERVAL 1 MONTH"
         . ($xsrc !== '' ? ' AND l.source = ?' : '') . ' ORDER BY l.received_at';
@@ -181,7 +183,7 @@ if (($_GET['export'] ?? '') === 'leads' && !$isAgent) {
     $sep = ';';                   // Italian Excel expects semicolons
     fputcsv($out, ['ID', $t('th_created'), $t('f_name'), $t('f_phone'), $t('f_email'), $t('f_vat'),
         $t('f_source'), $t('f_zone'), $t('f_fair'), $t('f_fair_city'),
-        $t('th_stage'), $t('th_status'), $t('th_agent'), $t('entered_by'),
+        $t('th_stage'), $t('th_status'), $t('th_agent'), $t('entered_by'), $t('th_partner'),
         $t('f_message'), $t('exp_processing')], $sep);
     foreach ($xrows as $xr) {
         $trail = [];
@@ -197,6 +199,10 @@ if (($_GET['export'] ?? '') === 'leads' && !$isAgent) {
             $xr['status'], $xr['agent_name'] ?: ($xr['agent_username'] ?: ''),
             // Blank creator = the lead arrived on its own (form/API), not keyed in.
             $xr['creator_name'] ?: ($xr['creator_username'] ?: $t('entered_inbound')),
+            // Which partner brought it in ('' = none). Its own column: "entered by"
+            // above reads "came in from the web" for a partner lead, since no CRM
+            // user typed it, and that alone hid who the lead actually came from.
+            (string)($xr['partner_name'] ?? ''),
             (string)$xr['comments'], implode("\n", $trail),
         ], $sep);
     }
