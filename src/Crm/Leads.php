@@ -308,6 +308,17 @@ final class Leads
             \Glue\Partner\Partners::notifyOutcome('lead', $leadId, 'lost');
         }
 
+        // Landed on the converted stage, so this lead IS business now and must have
+        // a deal to go on living in. Dragging a card into the Converted column used
+        // to set the status and stop there: the lead left the leads board (which
+        // shows open/discarded) and never arrived on the deals board, because only
+        // the Convert button ever created the deal. Five leads had vanished that way
+        // before this was found. Both doors now go through ensureDeal, which is
+        // idempotent, so neither can produce a second deal.
+        if ($status === 'converted' && (string)$lead['status'] !== 'converted') {
+            self::ensureDeal($lead, $actorId);
+        }
+
         if ($oldStage === $firstStage && $stageCode !== $firstStage) {
             // Both cadences Automation::inactivity started, not just the agent's:
             // cancelling 'lead_inactivity' alone left the customer-facing
@@ -334,21 +345,52 @@ final class Leads
         if (!$lead || $lead['status'] !== 'open') {
             return 0;
         }
-        $dealId = Deals::create([
-            'title'    => $lead['title'] ?: ('Deal: ' . ($lead['customer_name'] ?? '')),
-            'contact_id' => $lead['contact_id'],
-            'lead_id'  => $leadId,
-            'name'     => $lead['customer_name'],
-            'phone'    => $lead['customer_phone'],
-            'email'    => $lead['customer_email'],
-            'lang'     => $lead['lang'],
-            'assigned_to' => $lead['assigned_to'],
-        ], $actorId);
-
+        $dealId = self::ensureDeal($lead, $actorId);
         $won = Pipelines::wonStageCode('lead') ?? 'CONVERTED';
-        self::moveStage($leadId, $won, $actorId);
-        Activities::add('lead', $leadId, 'system', "Converted to deal #$dealId", $actorId);
+        self::moveStage($leadId, $won, $actorId);   // finds the deal already there
         return $dealId;
+    }
+
+    /**
+     * The deal this lead became, created if it hasn't got one yet. Returns its id.
+     *
+     * The single place a lead turns into a deal, reached from both doors: the
+     * Convert button (convert(), which calls this first and then moves the stage)
+     * and dragging the card onto the converted stage (moveStage, which calls this
+     * after). Whichever runs first, the other finds the deal already there.
+     *
+     * The named lock is the same guard create() uses: two requests racing in — a
+     * double-tapped button, a card dropped twice — could otherwise both read "no
+     * deal" and both insert one.
+     */
+    private static function ensureDeal(array $lead, ?int $actorId = null): int
+    {
+        $leadId = (int)$lead['id'];
+        $pdo    = Db::pdo();
+        $lock   = 'glue_lead_deal:' . $leadId;
+        $pdo->prepare('SELECT GET_LOCK(?, 5)')->execute([$lock]);
+        try {
+            $q = $pdo->prepare('SELECT id FROM deals WHERE lead_id = ? ORDER BY id LIMIT 1');
+            $q->execute([$leadId]);
+            $existing = (int)($q->fetchColumn() ?: 0);
+            if ($existing > 0) {
+                return $existing;
+            }
+            $dealId = Deals::create([
+                'title'       => $lead['title'] ?: ('Deal: ' . ($lead['customer_name'] ?? '')),
+                'contact_id'  => $lead['contact_id'],
+                'lead_id'     => $leadId,
+                'name'        => $lead['customer_name'],
+                'phone'       => $lead['customer_phone'],
+                'email'       => $lead['customer_email'],
+                'lang'        => $lead['lang'],
+                'assigned_to' => $lead['assigned_to'],
+            ], $actorId);
+            Activities::add('lead', $leadId, 'system', "Converted to deal #$dealId", $actorId);
+            return $dealId;
+        } finally {
+            $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$lock]);
+        }
     }
 
     // ---- reads ----------------------------------------------------------------
@@ -397,15 +439,20 @@ final class Leads
 
     /**
      * Leads grouped by stage_code for the kanban board. $assignedTo scopes to one
-     * seller, $partnerId to one partner's leads. Shows OPEN leads plus leads that
-     * were DISCARDED (status 'junk') so the Discarded/lost column actually
-     * populates — moving a lead to the lost stage sets status='junk', and
-     * previously those vanished from the board. Converted leads leave the board
-     * (they live on as deals).
+     * seller, $partnerId to one partner's leads.
+     *
+     * Shows OPEN leads, DISCARDED ones (status 'junk', so the Discarded column
+     * actually populates), and leads CONVERTED in the last 60 days — the same
+     * courtesy Deals::byStage extends to won/lost deals, and for the same reason:
+     * a card dragged into the Converted column simply evaporated, which reads as
+     * "I lost the lead", not as "it moved on". It now lands in that column and
+     * stays put long enough to be seen. Older converted leads drop off; they live
+     * on as deals, which is where the work continues.
      */
     public static function byStage(?int $assignedTo = null, ?int $partnerId = null): array
     {
-        $where = "WHERE l.status IN ('open', 'junk')"
+        $where = "WHERE (l.status IN ('open', 'junk')
+                     OR (l.status = 'converted' AND l.updated_at >= DATE_SUB(NOW(), INTERVAL 60 DAY)))"
             . ($assignedTo ? ' AND l.assigned_to = ' . (int)$assignedTo : '')
             . ($partnerId ? ' AND l.referred_by_partner_id = ' . (int)$partnerId : '');
         $rows = Db::pdo()->query(
