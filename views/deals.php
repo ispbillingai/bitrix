@@ -20,7 +20,7 @@ foreach ($byStage as $code => $cards) {
 ?>
 <h2><?= $h($t('nav_deals')) ?></h2>
 
-<?php if (empty($isAgent)): agent_filter($h, $t, $agents, 'deals', $filterAgentId ?? null); ?>
+<?php if (empty($isAgent)): pipeline_filter($h, $t, $agents, 'deals', $filterAgentId ?? null); ?>
 <?php endif; ?>
 
 <?php if (empty($isAgent)): ?>

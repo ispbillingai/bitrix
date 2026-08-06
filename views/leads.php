@@ -5,7 +5,14 @@
  * to a deal, annotated, and its timeline read. In scope: $t, $h, $pdo, $agents, $uid.
  */
 $stages = \Glue\Crm\Pipelines::stagesForEntity('lead');
-$byStage = \Glue\Crm\Leads::byStage($scopeId ?? null);
+$partnerFilter = $filterPartnerId ?? null;
+$byStage = \Glue\Crm\Leads::byStage($scopeId ?? null, $partnerFilter);
+// Partner list for the filter, by name (Partners::all is newest-first, which is
+// no order at all in a dropdown). Admins only — agents never see the bar.
+$partnerOpts = empty($isAgent) ? \Glue\Partner\Partners::all() : [];
+usort($partnerOpts, fn($a, $b) => strcasecmp((string)$a['name'], (string)$b['name']));
+$partnerRow = null;
+foreach ($partnerOpts as $po) { if ((int)$po['id'] === (int)$partnerFilter) { $partnerRow = $po; } }
 $sources = \Glue\Crm\Leads::sources();
 $zones   = \Glue\Crm\Leads::zones();
 $fairs      = \Glue\Crm\Leads::fairs();
@@ -14,7 +21,7 @@ $fairViews  = \Glue\Crm\FormViews::stats('fair');
 $fairUrl    = \Glue\Config::appBaseUrl() . '/fair.php';
 $srcFilter = mb_strtolower(trim((string)($_GET['src'] ?? '')));
 $zoneFilter = trim((string)($_GET['zone'] ?? ''));
-$rows = \Glue\Crm\Leads::all(300, $scopeId ?? null, $srcFilter ?: null, $zoneFilter ?: null);
+$rows = \Glue\Crm\Leads::all(300, $scopeId ?? null, $srcFilter ?: null, $zoneFilter ?: null, $partnerFilter);
 // monthly per-source report (admin): ?m=YYYY-MM, defaults to the current month
 $ym = preg_match('/^\d{4}-\d{2}$/', (string)($_GET['m'] ?? '')) ? (string)$_GET['m'] : date('Y-m');
 $ymPrev = date('Y-m', strtotime($ym . '-01 -1 month'));
@@ -23,7 +30,7 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
 ?>
 <h2><?= $h($t('nav_leads')) ?></h2>
 
-<?php if (empty($isAgent)): agent_filter($h, $t, $agents, 'leads', $filterAgentId ?? null); ?>
+<?php if (empty($isAgent)): pipeline_filter($h, $t, $agents, 'leads', $filterAgentId ?? null, $partnerOpts, $partnerFilter); ?>
 <?php endif; ?>
 
 <details class="drawer">
@@ -173,10 +180,17 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
   <?php if ($srcFilter !== ''): ?>
     <span class="pill"><?= $h($t('f_source')) ?>: <?= $h($srcFilter) ?></span>
   <?php endif; ?>
+  <?php if ($partnerRow): ?>
+    <span class="bypartner" title="<?= $h($t('from_partner_title')) ?>">
+      <?= svg('partners') ?><?= $h($t('from_partner')) ?> <?= $h($partnerRow['name']) ?></span>
+    <a class="btn ghost tiny" href="?export=leads&m=<?= $h($ym) ?>&partner=<?= (int)$partnerFilter ?>"><?= $h($t('exp_excel')) ?></a>
+  <?php endif; ?>
   <?php if ($zones): ?>
     <form method="get" class="inline" style="margin:0">
       <input type="hidden" name="tab" value="leads">
       <?php if ($srcFilter !== ''): ?><input type="hidden" name="src" value="<?= $h($srcFilter) ?>"><?php endif; ?>
+      <?php if ($partnerFilter): ?><input type="hidden" name="partner" value="<?= (int)$partnerFilter ?>"><?php endif; ?>
+      <?php if ($filterAgentId ?? null): ?><input type="hidden" name="agent" value="<?= (int)$filterAgentId ?>"><?php endif; ?>
       <select name="zone" onchange="this.form.submit()">
         <option value=""><?= $h($t('zone_all')) ?></option>
         <?php foreach ($zones as $z): ?>
@@ -185,7 +199,7 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
       </select>
     </form>
   <?php endif; ?>
-  <?php if ($srcFilter !== '' || $zoneFilter !== ''): ?>
+  <?php if ($srcFilter !== '' || $zoneFilter !== '' || $partnerFilter): ?>
     <a class="btn ghost tiny" href="?tab=leads"><?= $h($t('clear')) ?></a>
   <?php endif; ?>
 </div>

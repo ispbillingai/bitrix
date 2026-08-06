@@ -113,6 +113,8 @@ return [
     'th_partner'     => 'Partner',
     'filter_by_agent' => 'View pipeline for',
     'all_agents'      => 'All agents',
+    'filter_by_partner' => 'Partner',
+    'all_partners'    => 'All partners',
     'clear'           => 'Clear',
     'portal_access_h'     => 'Private area access',
     'portal_access_title' => 'Private-area accesses',

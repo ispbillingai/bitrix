@@ -360,8 +360,13 @@ final class Leads
         return $stmt->fetch() ?: null;
     }
 
-    /** @return array<int,array> recent leads with agent + creator + partner labels ($assignedTo scopes to one seller, $source to one origin, $zone to one area) */
-    public static function all(int $limit = 300, ?int $assignedTo = null, ?string $source = null, ?string $zone = null): array
+    /**
+     * @return array<int,array> recent leads with agent + creator + partner labels.
+     * $assignedTo scopes to one seller, $source to one origin, $zone to one area,
+     * $partnerId to the leads one partner brought in (entered in their area or
+     * through their referral link — both set referred_by_partner_id).
+     */
+    public static function all(int $limit = 300, ?int $assignedTo = null, ?string $source = null, ?string $zone = null, ?int $partnerId = null): array
     {
         $limit = max(1, min(1000, $limit));
         $conds = [];
@@ -373,6 +378,9 @@ final class Leads
         }
         if ($zone !== null && $zone !== '') {
             $conds[] = 'l.zone = ' . Db::pdo()->quote($zone);
+        }
+        if ($partnerId) {
+            $conds[] = 'l.referred_by_partner_id = ' . (int)$partnerId;
         }
         $where = $conds ? ' WHERE ' . implode(' AND ', $conds) : '';
         return Db::pdo()->query(
@@ -389,14 +397,17 @@ final class Leads
 
     /**
      * Leads grouped by stage_code for the kanban board. $assignedTo scopes to one
-     * seller. Shows OPEN leads plus leads that were DISCARDED (status 'junk') so
-     * the Discarded/lost column actually populates — moving a lead to the lost
-     * stage sets status='junk', and previously those vanished from the board.
-     * Converted leads leave the board (they live on as deals).
+     * seller, $partnerId to one partner's leads. Shows OPEN leads plus leads that
+     * were DISCARDED (status 'junk') so the Discarded/lost column actually
+     * populates — moving a lead to the lost stage sets status='junk', and
+     * previously those vanished from the board. Converted leads leave the board
+     * (they live on as deals).
      */
-    public static function byStage(?int $assignedTo = null): array
+    public static function byStage(?int $assignedTo = null, ?int $partnerId = null): array
     {
-        $where = "WHERE l.status IN ('open', 'junk')" . ($assignedTo ? ' AND l.assigned_to = ' . (int)$assignedTo : '');
+        $where = "WHERE l.status IN ('open', 'junk')"
+            . ($assignedTo ? ' AND l.assigned_to = ' . (int)$assignedTo : '')
+            . ($partnerId ? ' AND l.referred_by_partner_id = ' . (int)$partnerId : '');
         $rows = Db::pdo()->query(
             "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name,
                     c.username AS creator_username, c.full_name AS creator_name,

@@ -118,6 +118,9 @@ $filterAgentId = (!$isAgent && !empty($_GET['agent'])) ? (int)$_GET['agent'] : n
 if ($filterAgentId !== null) {
     $scopeId = $filterAgentId;
 }
+// Admin-only too: ?partner=<id> narrows the Leads board to the leads one partner
+// brought in — entered in their own area or through their referral link.
+$filterPartnerId = (!$isAgent && !empty($_GET['partner'])) ? (int)$_GET['partner'] : null;
 $agentViews   = ['overview', 'leads', 'deals', 'appointments', 'tasks', 'messages', 'tickets', 'documents', 'instructions'];
 $techViews    = ['devices', 'network_areas'];
 $agentActions = [
@@ -161,6 +164,10 @@ if (isset($_GET['sdl'])) {
 if (($_GET['export'] ?? '') === 'leads' && !$isAgent) {
     $xm  = preg_match('/^\d{4}-\d{2}$/', (string)($_GET['m'] ?? '')) ? (string)$_GET['m'] : date('Y-m');
     $xsrc = mb_strtolower(trim((string)($_GET['src'] ?? '')));
+    // ?partner=<id> exports just that partner's leads — the filter on the board,
+    // carried into the spreadsheet, so "show me what this partner brought" is one
+    // click from the answer on screen.
+    $xpid = (int)($_GET['partner'] ?? 0);
     $sql = "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name,
                    c.username AS creator_username, c.full_name AS creator_name,
                    pt.name AS partner_name
@@ -170,12 +177,13 @@ if (($_GET['export'] ?? '') === 'leads' && !$isAgent) {
             LEFT JOIN partners pt ON pt.id = l.referred_by_partner_id
             WHERE l.received_at >= CONCAT(?, '-01')
               AND l.received_at <  CONCAT(?, '-01') + INTERVAL 1 MONTH"
-        . ($xsrc !== '' ? ' AND l.source = ?' : '') . ' ORDER BY l.received_at';
+        . ($xsrc !== '' ? ' AND l.source = ?' : '')
+        . ($xpid > 0 ? ' AND l.referred_by_partner_id = ' . $xpid : '') . ' ORDER BY l.received_at';
     $stmt = $pdo->prepare($sql);
     $stmt->execute($xsrc !== '' ? [$xm, $xm, $xsrc] : [$xm, $xm]);
     $xrows = $stmt->fetchAll();
 
-    $fname = 'leads_' . ($xsrc !== '' ? $xsrc : 'all') . '_' . $xm . '.csv';
+    $fname = 'leads_' . ($xpid > 0 ? 'partner' . $xpid : ($xsrc !== '' ? $xsrc : 'all')) . '_' . $xm . '.csv';
     header('Content-Type: text/csv; charset=UTF-8');
     header('Content-Disposition: attachment; filename="' . $fname . '"');
     $out = fopen('php://output', 'w');
@@ -1441,11 +1449,19 @@ function agent_select(callable $h, array $agents, string $name, $selected = null
  * board scoped to ?agent=<id>; the empty option clears it back to everyone. Keeps
  * the current tab via the hidden field so the querystring stays on this view.
  */
-function agent_filter(callable $h, callable $t, array $agents, string $tab, ?int $selected = null): void {
-    echo '<form method="get" class="agent-filter" style="margin:0 0 14px;display:flex;align-items:center;gap:8px">';
+/**
+ * The board's "whose work am I looking at?" bar. One form, so the selects
+ * compose: narrowing to a partner keeps the seller you had chosen, and the other
+ * way round — two separate forms would each have dropped the other's field on
+ * submit. $partners empty (Deals) renders the seller select alone, as before.
+ */
+function pipeline_filter(callable $h, callable $t, array $agents, string $tab, ?int $selected = null,
+                         array $partners = [], ?int $selPartner = null): void {
+    $sty = 'padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface2);color:var(--txt);font-size:13px';
+    echo '<form method="get" class="agent-filter" style="margin:0 0 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
     echo '<input type="hidden" name="tab" value="' . $h($tab) . '">';
     echo '<span class="muted small">' . $h($t('filter_by_agent')) . '</span>';
-    echo '<select name="agent" onchange="this.form.submit()" style="padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface2);color:var(--txt);font-size:13px">';
+    echo '<select name="agent" onchange="this.form.submit()" style="' . $sty . '">';
     echo '<option value="">' . $h($t('all_agents')) . '</option>';
     foreach ($agents as $a) {
         $label = trim((string)($a['full_name'] ?? '')) ?: $a['username'];
@@ -1453,7 +1469,20 @@ function agent_filter(callable $h, callable $t, array $agents, string $tab, ?int
         echo '<option value="' . $h($a['id']) . '"' . $sel . '>' . $h($label) . '</option>';
     }
     echo '</select>';
-    if ($selected !== null) {
+    if ($partners) {
+        echo '<span class="muted small">' . $h($t('filter_by_partner')) . '</span>';
+        echo '<select name="partner" onchange="this.form.submit()" style="' . $sty . '">';
+        echo '<option value="">' . $h($t('all_partners')) . '</option>';
+        foreach ($partners as $p) {
+            $sel = ($selPartner !== null && (int)$selPartner === (int)$p['id']) ? ' selected' : '';
+            // An inactive partner stays listed: the leads they already brought in
+            // are still ours to look through.
+            $suffix = (int)$p['active'] === 1 ? '' : ' (' . $t('u_disabled') . ')';
+            echo '<option value="' . $h($p['id']) . '"' . $sel . '>' . $h($p['name'] . $suffix) . '</option>';
+        }
+        echo '</select>';
+    }
+    if ($selected !== null || $selPartner !== null) {
         echo '<a class="btn ghost tiny" href="?tab=' . $h($tab) . '">' . $h($t('clear')) . '</a>';
     }
     echo '</form>';
