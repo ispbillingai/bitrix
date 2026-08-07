@@ -317,6 +317,12 @@ final class Leads
         // idempotent, so neither can produce a second deal.
         if ($status === 'converted' && (string)$lead['status'] !== 'converted') {
             self::ensureDeal($lead, $actorId);
+            // ...and this column is the office's finish line ("the Converted ones
+            // should be considered closed"), so the partner hears it closed here,
+            // not later off the deal pipeline. Deals::moveStage announces the same
+            // outcome on a won deal and shares this dedupe key, so a lead that
+            // converts and then wins is announced once, not twice.
+            \Glue\Partner\Partners::notifyOutcome('lead', $leadId, 'won');
         }
 
         if ($oldStage === $firstStage && $stageCode !== $firstStage) {

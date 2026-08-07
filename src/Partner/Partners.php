@@ -174,8 +174,8 @@ final class Partners
      *   contacted   we have been in touch
      *   qualified   it is a real opportunity
      *   working     ditto, for any other stage a custom pipeline may add
-     *   negotiation it became a deal and the deal is live
-     *   won         closed
+     *   negotiation a deal is live on it but the lead was never marked converted
+     *   won         CLOSED — the lead reached the converted stage, or its deal won
      *   lost        discarded, or the deal fell through
      *
      * The first cut of this collapsed everything except "discarded" into a single
@@ -184,10 +184,15 @@ final class Partners
      * status is not updated". Every stage the office moves a lead through now
      * shows up here.
      *
-     * The DEAL still has the last word once there is one: a converted lead is
-     * only "won" when its deal is won, and a lost deal is a lost lead however far
-     * it travelled. What a partner is MESSAGED about is unchanged and deliberately
-     * narrower — closed or lost only, see notifyOutcome().
+     * CONVERTED IS CLOSED. That is the office's own reading of its board — the
+     * cards sitting in that column say "Completato - Consegnato" — so a partner
+     * whose lead reaches it is told it closed, without waiting on the deal
+     * pipeline behind it. A deal explicitly marked LOST still overrides: that is
+     * a deliberate "it fell through after all", and the partner should hear the
+     * truth rather than keep a win that stopped being one.
+     *
+     * What a partner is MESSAGED about stays deliberately narrow — closed or
+     * lost only, never the rungs in between. See notifyOutcome().
      *
      * @param array $row a row from referrals() (or any lead row plus deal_status)
      */
@@ -196,11 +201,13 @@ final class Partners
         if (($row['status'] ?? '') === 'junk') {
             return 'lost';
         }
-        // Once a deal exists it, not the lead, says where things stand.
         $deal = (string)($row['deal_status'] ?? '');
+        if ($deal === 'lost') { return 'lost'; }   // an explicit reversal wins
         if ($deal === 'won')  { return 'won'; }
-        if ($deal === 'lost') { return 'lost'; }
-        if ($deal === 'open' || ($row['status'] ?? '') === 'converted') {
+        if (($row['status'] ?? '') === 'converted') {
+            return 'won';
+        }
+        if ($deal === 'open') {
             return 'negotiation';
         }
 
@@ -321,12 +328,16 @@ final class Partners
 
     /**
      * Tell the owning partner their lead is finished — closed ('won') or 'lost'.
-     * The ONLY message a partner ever gets about a lead's progress: called from
-     * Deals::moveStage on the won/lost transitions and from Leads::moveStage when
-     * a lead is discarded before it ever became a deal.
+     * The ONLY message a partner ever gets about a lead's progress. Three callers,
+     * all of them a finish line:
+     *   Leads::moveStage  -> 'won'  when the lead reaches the converted stage,
+     *                        which is where this office considers a lead closed;
+     *   Leads::moveStage  -> 'lost' when it is discarded instead;
+     *   Deals::moveStage  -> 'won'/'lost' when a deal is settled either way.
      *
      * Dedupe is keyed on the LEAD, not the entity, so one customer journey yields
-     * at most one "closed" and one "lost" however many records it passed through.
+     * at most one "closed" and one "lost" however many records it passed through —
+     * converting a lead and then winning its deal is one message, not two.
      * Never fatal, and never enqueued at all when no (active) partner owns it.
      */
     public static function notifyOutcome(string $entityType, int $entityId, string $outcome): void

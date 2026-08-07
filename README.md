@@ -47,10 +47,12 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 - **Partner area** (`public/partner.php`): partners log into their own page —
   not the CRM — and do exactly three things. They **enter their own leads**
   (typed in, or brought in by sharing their `request.php?ref=CODE` link); they
-  see the **status** of those leads and nothing else about them (in progress /
-  closed / lost — no pipeline stage, no seller, no deal value); and they follow
-  their commissions. They are **messaged only when a lead ends** — closed or
-  lost — and never while it is being worked. Entering a partita IVA reserves
+  see the **status** of those leads and nothing else about them (new, contacted,
+  qualified, closed, lost — no seller, no deal value, no internal stage codes);
+  and they follow their commissions. The status climbs as the office works the
+  lead, and a lead reaching the **converted** stage reads as **closed** — that
+  is the finish line here. They are **messaged only when a lead ends** — closed
+  or lost — and never on the rungs in between. Entering a partita IVA reserves
   that customer for them for 90 days; re-typing a customer who is already in the
   system files the note on the existing lead but never transfers ownership.
 - **Documents (electronic signature)**: upload a PDF, send it for signature, the

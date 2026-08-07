@@ -13,10 +13,12 @@ declare(strict_types=1);
  * What the nav deliberately holds, and nothing more (client's rule):
  *   Overview     their own numbers
  *   New lead     enter a lead themselves
- *   My leads     the STATUS of each — new, contacted, qualified, in negotiation,
- *                closed, lost — and no more: no assigned seller, no deal value,
- *                no internal stage codes. It has to MOVE as the office works the
- *                lead, or it tells the partner nothing (Partners::status).
+ *   My leads     the STATUS of each — new, contacted, qualified, closed, lost —
+ *                and no more: no assigned seller, no deal value, no internal
+ *                stage codes. It has to MOVE as the office works the lead, or it
+ *                tells the partner nothing (Partners::status). A lead reaching
+ *                the converted stage reads CLOSED — that is this office's
+ *                finish line.
  *   Commissions  what their closed leads earned
  *   Referral link  the ?ref= link, which files leads under them the same way
  *
