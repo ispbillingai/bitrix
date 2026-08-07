@@ -13,8 +13,10 @@ declare(strict_types=1);
  * What the nav deliberately holds, and nothing more (client's rule):
  *   Overview     their own numbers
  *   New lead     enter a lead themselves
- *   My leads     the STATUS of each — in progress / closed / lost — and no more:
- *                no pipeline stage, no assigned seller, no deal value
+ *   My leads     the STATUS of each — new, contacted, qualified, in negotiation,
+ *                closed, lost — and no more: no assigned seller, no deal value,
+ *                no internal stage codes. It has to MOVE as the office works the
+ *                lead, or it tells the partner nothing (Partners::status).
  *   Commissions  what their closed leads earned
  *   Referral link  the ?ref= link, which files leads under them the same way
  *
@@ -217,7 +219,7 @@ foreach ($refs as $r) {
         <div class="empty"><?= $h($t('no_referrals')) ?></div>
       <?php else: ?>
         <div class="feed">
-          <?php foreach (array_slice($refs, 0, 6) as $r): $st = Partners::outcome($r); ?>
+          <?php foreach (array_slice($refs, 0, 6) as $r): $st = Partners::status($r); ?>
             <div class="feed-row">
               <div class="feed-ic"><?= svg('leads') ?></div>
               <div class="feed-main">
@@ -270,7 +272,7 @@ foreach ($refs as $r) {
     <table>
       <thead><tr><th><?= $h($t('customer')) ?></th><th><?= $h($t('status')) ?></th><th><?= $h($t('date')) ?></th></tr></thead>
       <tbody>
-        <?php foreach ($refs as $r): $st = Partners::outcome($r); ?>
+        <?php foreach ($refs as $r): $st = Partners::status($r); ?>
           <tr>
             <td><strong><?= $h($r['customer_name'] ?: ('#' . $r['id'])) ?></strong></td>
             <td><span class="pill pill-<?= $h($st) ?>"><?= $h($t('st_' . $st)) ?></span></td>
@@ -362,8 +364,11 @@ function partner_strings(string $lang): array
         'ov_total' => 'Total leads', 'ov_recent' => 'Latest leads', 'ov_all' => 'See all',
         'ov_open_sub' => 'we are working on them',
         'ov_won_sub' => 'closed successfully', 'ov_lost_sub' => 'closed without agreement',
-        // the only three words a partner sees about a lead
-        'st_open' => 'In progress', 'st_won' => 'Closed', 'st_lost' => 'Lost',
+        // what a partner is shown about a lead — a status that actually moves
+        'st_new' => 'New', 'st_contacted' => 'Contacted', 'st_qualified' => 'Qualified',
+        'st_working' => 'Being worked', 'st_negotiation' => 'In negotiation',
+        'st_won' => 'Closed', 'st_lost' => 'Lost',
+        'st_open' => 'In progress',   // the tile, which counts every one of the above
         // leads
         'referrals' => 'My leads', 'leads_sub' => 'The status of every lead you brought in. We message you as soon as one is closed or lost.',
         'no_referrals' => 'No leads yet — enter your first one.',
@@ -411,7 +416,10 @@ function partner_strings(string $lang): array
         'ov_total' => 'Segnalazioni totali', 'ov_recent' => 'Ultime segnalazioni', 'ov_all' => 'Vedi tutte',
         'ov_open_sub' => 'ci stiamo lavorando',
         'ov_won_sub' => 'chiuse positivamente', 'ov_lost_sub' => 'chiuse senza accordo',
-        'st_open' => 'In corso', 'st_won' => 'Chiusa', 'st_lost' => 'Persa',
+        'st_new' => 'Nuova', 'st_contacted' => 'Contattata', 'st_qualified' => 'Qualificata',
+        'st_working' => 'In lavorazione', 'st_negotiation' => 'In trattativa',
+        'st_won' => 'Chiusa', 'st_lost' => 'Persa',
+        'st_open' => 'In corso',
         'referrals' => 'Le mie segnalazioni', 'leads_sub' => 'Lo stato di ogni segnalazione che hai portato. Ti scriviamo appena una viene chiusa o persa.',
         'no_referrals' => 'Ancora nessuna segnalazione — inserisci la prima.',
         'customer' => 'Cliente', 'status' => 'Stato', 'date' => 'Data',

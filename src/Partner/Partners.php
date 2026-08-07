@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Glue\Partner;
 
 use Glue\Crm\Leads;
+use Glue\Crm\Pipelines;
 use Glue\Crm\VatLock;
 use Glue\Db;
 use Glue\Event\Log;
@@ -165,23 +166,65 @@ final class Partners
     }
 
     /**
-     * The one word a partner is allowed to see about a lead: 'open' (we are on
-     * it), 'won' (closed) or 'lost'. Everything else — which stage it sits in,
-     * who is working it, what it is worth — stays inside the CRM.
+     * The one word a partner is shown about a lead. Still only a status — never
+     * who is working it, which seller, or what it is worth — but a status that
+     * MOVES, which is the whole point of showing one:
      *
-     * A discarded lead is lost. Otherwise the DEAL has the last word: a converted
-     * lead is only "closed" once its deal is won, and a lost deal is a lost lead
-     * however far through the pipeline it travelled. A lead still in the pipeline,
-     * or converted but with the deal still open, reads as open.
+     *   new         just arrived, nobody has picked it up yet
+     *   contacted   we have been in touch
+     *   qualified   it is a real opportunity
+     *   working     ditto, for any other stage a custom pipeline may add
+     *   negotiation it became a deal and the deal is live
+     *   won         closed
+     *   lost        discarded, or the deal fell through
+     *
+     * The first cut of this collapsed everything except "discarded" into a single
+     * "in progress", so a partner watched their lead be contacted, qualified and
+     * converted without one word changing on screen — reported, fairly, as "the
+     * status is not updated". Every stage the office moves a lead through now
+     * shows up here.
+     *
+     * The DEAL still has the last word once there is one: a converted lead is
+     * only "won" when its deal is won, and a lost deal is a lost lead however far
+     * it travelled. What a partner is MESSAGED about is unchanged and deliberately
+     * narrower — closed or lost only, see notifyOutcome().
      *
      * @param array $row a row from referrals() (or any lead row plus deal_status)
      */
-    public static function outcome(array $row): string
+    public static function status(array $row): string
     {
         if (($row['status'] ?? '') === 'junk') {
             return 'lost';
         }
-        return match ($row['deal_status'] ?? '') {
+        // Once a deal exists it, not the lead, says where things stand.
+        $deal = (string)($row['deal_status'] ?? '');
+        if ($deal === 'won')  { return 'won'; }
+        if ($deal === 'lost') { return 'lost'; }
+        if ($deal === 'open' || ($row['status'] ?? '') === 'converted') {
+            return 'negotiation';
+        }
+
+        $stage = strtoupper(trim((string)($row['stage_code'] ?? '')));
+        if ($stage === '' || $stage === strtoupper((string)Pipelines::firstStageCode('lead'))) {
+            return 'new';
+        }
+        // The seeded pipeline's own stages get their own word; anything an
+        // operator adds later falls back to the honest generic one.
+        return match ($stage) {
+            'CONTACTED' => 'contacted',
+            'QUALIFIED' => 'qualified',
+            default     => 'working',
+        };
+    }
+
+    /**
+     * The coarse bucket behind status(): 'open', 'won' or 'lost'. What the
+     * overview tiles count, and the vocabulary the closed/lost notification
+     * speaks — neither wants the full ladder.
+     */
+    public static function outcome(array $row): string
+    {
+        return match (self::status($row)) {
             'won'   => 'won',
             'lost'  => 'lost',
             default => 'open',

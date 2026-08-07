@@ -154,6 +154,12 @@ th{color:var(--muted);font-size:11.5px;text-transform:uppercase;letter-spacing:.
 tbody tr:hover{background:var(--surface2);} tr:last-child td{border-bottom:none;}
 .pill{display:inline-block;padding:4px 10px;border-radius:7px;background:var(--surface2);font-size:12px;font-weight:600;border:1px solid var(--line);text-transform:capitalize;}
 .pill-pending,.pill-requested,.pill-open{color:var(--amber);background:var(--amber-bg);border-color:transparent;}
+/* Partner-facing lead ladder (partner.php): new -> contacted/qualified/working
+   -> negotiation -> won/lost. Cool at the start, warm in the middle, decided at
+   the end, so a partner reads movement down the column at a glance. */
+.pill-new{color:var(--accent);background:var(--accent-soft);border-color:transparent;}
+.pill-contacted,.pill-working{color:var(--amber);background:var(--amber-bg);border-color:transparent;}
+.pill-qualified,.pill-negotiation{color:var(--violet);background:rgba(124,92,255,.14);border-color:transparent;}
 .pill-sent,.pill-confirmed,.pill-done,.pill-won,.pill-converted{color:var(--green);background:var(--green-bg);border-color:transparent;}
 .pill-failed,.pill-cancelled,.pill-lost,.pill-junk,.pill-no_show{color:var(--red);background:var(--red-bg);border-color:transparent;}
 .reason-err{color:var(--red);word-break:break-word;max-width:340px;}
