@@ -59,6 +59,11 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
         <input name="zone" list="zone-list" placeholder="<?= $h($t('f_zone_ph')) ?>"></label>
       <label class="fld"><span><?= $h($t('f_lang')) ?></span>
         <select name="lang"><option value="">—</option><option value="it">IT</option><option value="en">EN</option></select></label>
+      <?php if ($partnerOpts): ?>
+      <label class="fld"><span><?= $h($t('f_partner')) ?></span>
+        <?php partner_select($h, $t, $partnerOpts); ?>
+        <span class="muted small" style="margin-top:4px"><?= $h($t('f_partner_hint')) ?></span></label>
+      <?php endif; ?>
     </div>
     <label class="fld"><span><?= $h($t('f_message')) ?></span><textarea name="comments" rows="2"></textarea></label>
     <button class="btn"><?= $h($t('save')) ?></button>
@@ -95,6 +100,13 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
         <label class="fld"><span><?= $h($t('f_lang')) ?></span>
           <select name="lang"><option value="">—</option><option value="it">IT</option><option value="en">EN</option></select></label>
       </div>
+      <?php if ($partnerOpts): ?>
+      <div class="row">
+        <label class="fld"><span><?= $h($t('f_partner')) ?></span>
+          <?php partner_select($h, $t, $partnerOpts); ?>
+          <span class="muted small" style="margin-top:4px"><?= $h($t('f_partner_hint')) ?></span></label>
+      </div>
+      <?php endif; ?>
       <label class="fld"><span><?= $h($t('f_message')) ?></span><textarea name="comments" rows="2"></textarea></label>
       <button class="btn"><?= $h($t('save')) ?></button>
     </form>
@@ -271,6 +283,10 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
               <div class="row">
                 <label class="fld"><span><?= $h($t('f_fair')) ?></span><input name="fair_name" list="fair-list" value="<?= $h($r['fair_name'] ?? '') ?>"></label>
                 <label class="fld"><span><?= $h($t('f_fair_city')) ?></span><input name="fair_city" list="faircity-list" value="<?= $h($r['fair_city'] ?? '') ?>"></label>
+                <?php if ($partnerOpts): ?>
+                <label class="fld"><span><?= $h($t('f_partner')) ?></span>
+                  <?php partner_select($h, $t, $partnerOpts, $r['referred_by_partner_id'] ?? null); ?></label>
+                <?php endif; ?>
               </div>
               <label class="fld"><span><?= $h($t('f_message')) ?></span><textarea name="comments" rows="2"><?= $h($r['comments'] ?? '') ?></textarea></label>
               <button class="btn tiny"><?= $h($t('save')) ?></button>

@@ -148,6 +148,53 @@ final class Partners
     }
 
     /**
+     * Set — or clear — a lead's partner by hand. attributeLead() above is the
+     * automatic door (the ?ref= link, the partner's own area); this is the
+     * deliberate one, used by the owner to file a lead on behalf of a partner who
+     * phoned it in, and to correct an attribution that landed on the wrong one.
+     *
+     * Deliberately NOT bound by the "no claiming by re-typing" rule submitLead()
+     * enforces: that rule exists to stop a partner awarding themselves someone
+     * else's customer, and the owner overriding attribution is the remedy for it,
+     * not an instance of it. So it leaves a trace on the lead's own timeline —
+     * who moved the credit, and off whom.
+     *
+     * Commission follows attribution at won-time (accrueForDeal reads this same
+     * column when the deal closes), so re-pointing a lead that has not been won
+     * yet re-points the commission with it.
+     *
+     * @param int|null $partnerId null (or 0) clears the attribution
+     * @return bool false when the id names no partner — nothing is changed
+     */
+    public static function setReferrer(int $leadId, ?int $partnerId, ?int $actorId = null): bool
+    {
+        $partner = null;
+        if ($partnerId !== null && $partnerId > 0) {
+            $partner = self::find($partnerId);
+            if (!$partner) {
+                return false;
+            }
+        } else {
+            $partnerId = null;
+        }
+
+        $current = self::ownerIdOfLead($leadId);
+        if ($current === $partnerId) {
+            return true; // already where it should be — no timeline noise
+        }
+        Db::pdo()->prepare("UPDATE leads SET referred_by_partner_id = ? WHERE id = ?")
+            ->execute([$partnerId, $leadId]);
+
+        $was = $current !== null ? (string)(self::find($current)['name'] ?? "#$current") : null;
+        \Glue\Crm\Activities::add('lead', $leadId, 'system',
+            ($partner ? 'Lead attributed to partner ' . $partner['name'] : 'Partner attribution removed')
+            . ($was !== null ? " (was $was)" : ''), $actorId);
+        Log::write('partner', 'lead_referrer_set', 'lead', $leadId,
+            ['partner_id' => $partnerId, 'was' => $current, 'by' => $actorId]);
+        return true;
+    }
+
+    /**
      * A partner's leads — the ones they referred through their link and the ones
      * they typed in themselves. Carries the internal stage/status (the admin view
      * shows them) plus `deal_status`, the last word on how the lead ended, which

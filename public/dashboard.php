@@ -459,6 +459,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 if ($isAgent && $scopeId && $dupLeadId === null) {
                     Leads::assign($newLeadId, $scopeId, $uid);
                 }
+                // The owner filing a lead on behalf of a partner who phoned it in:
+                // same credit the ?ref= link and the partner's own area confer.
+                // Admins only — sellers post this form too, and who earns the
+                // commission is not theirs to set. Never onto a merged duplicate:
+                // that would hand a live lead somebody else already owns to a
+                // partner who happened to be named while re-typing it.
+                $onBehalfOf = (!$isAgent && !empty($_POST['partner_id'])) ? (int)$_POST['partner_id'] : 0;
+                if ($onBehalfOf > 0 && $dupLeadId === null) {
+                    \Glue\Partner\Partners::setReferrer($newLeadId, $onBehalfOf, $uid);
+                }
                 if ($vat !== '' && !empty($vc['fresh'])) {
                     \Glue\Crm\VatLock::attachLead($vat, $newLeadId);
                     \Glue\Crm\VatLock::notifyThanks('agent', (int)$uid, $vat, trim((string)($_POST['name'] ?? '')));
@@ -581,6 +591,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
                 Leads::update((int)$_POST['id'], $editData, $uid);
+                // Attribution is not a lead column update() knows about — it lives
+                // on the partner side, and moving it is logged there. Admins only,
+                // and only when the form actually carried the field: an empty value
+                // is a real instruction ("no partner"), a missing one is not.
+                if (!$isAgent && array_key_exists('partner_id', $_POST)) {
+                    \Glue\Partner\Partners::setReferrer(
+                        (int)$_POST['id'], ((int)$_POST['partner_id']) ?: null, $uid);
+                }
                 $flash = $t('lead_saved');
                 $tab = 'leads';
                 break;
@@ -1441,6 +1459,21 @@ function agent_select(callable $h, array $agents, string $name, $selected = null
         $label = trim((string)($a['full_name'] ?? '')) ?: $a['username'];
         $sel = ((string)$selected === (string)$a['id']) ? ' selected' : '';
         echo '<option value="' . $h($a['id']) . '"' . $sel . '>' . $h($label) . '</option>';
+    }
+    echo '</select>';
+}
+/**
+ * Partner picker for the lead forms — "this one was brought in by…". Admin only:
+ * who gets the credit (and the commission that follows it) is not a seller's call.
+ * Lists disabled partners too, like the filter bar does, so an existing
+ * attribution survives an edit made after the partner's account was switched off.
+ */
+function partner_select(callable $h, callable $t, array $partners, $selected = null, string $name = 'partner_id'): void {
+    echo '<select name="' . $h($name) . '"><option value="">' . $h($t('partner_none')) . '</option>';
+    foreach ($partners as $p) {
+        $sel = ((string)$selected !== '' && (string)$selected === (string)$p['id']) ? ' selected' : '';
+        $suffix = (int)$p['active'] === 1 ? '' : ' (' . $t('u_disabled') . ')';
+        echo '<option value="' . $h($p['id']) . '"' . $sel . '>' . $h($p['name'] . $suffix) . '</option>';
     }
     echo '</select>';
 }
