@@ -267,19 +267,36 @@ final class Scheduler
     }
 
     /**
-     * Atomically claim a due reminder before dispatching it (optimistic lock on
-     * `attempts`). Web-tick dispatch runs on page loads, so two simultaneous
-     * requests can both select the same due row; without this claim both sent it
-     * (customers received every recurring reminder twice) and each re-enqueue
-     * forked the repeat chain. Exactly one caller wins the UPDATE.
+     * How long a claimed reminder stays leased to its dispatcher. Must outlast the
+     * slowest possible send — TextMeBot sleeps out its rate-limit gap, then allows
+     * a 15s call, and retries twice on a 403 — plus the SMTP leg. Five minutes is
+     * comfortably past that, and short enough that a dispatcher killed mid-send
+     * (deploy, OOM) leaves the reminder retryable rather than stranded.
+     */
+    private const DISPATCH_LEASE_SEC = 300;
+
+    /**
+     * Atomically claim a due reminder before dispatching it. Exactly one caller
+     * wins the UPDATE; everyone else skips.
+     *
+     * The claim is conditional on the ROW's current state, never on a value the
+     * caller read earlier. It used to compare `attempts` to the value in the row
+     * the caller had SELECTed, which only breaks a tie between two dispatchers
+     * that read the same value: a reminder stays 'pending' for the whole send
+     * (TextMeBot sleeps out its 8s gap first), so the every-minute cron kept
+     * SELECTing rows the web request had claimed a second earlier — attempts was
+     * already 1, the cron claimed 1 -> 2 and sent the message again. That is the
+     * "welcome / agent-assigned WhatsApp arrives twice" bug. Holding a timed lease
+     * instead makes a send already in flight unclaimable.
      */
     private function claimForDispatch(array $r): bool
     {
         $stmt = $this->db->prepare(
-            "UPDATE reminders SET attempts = attempts + 1
-             WHERE id = ? AND status = 'pending' AND attempts = ?"
+            "UPDATE reminders SET attempts = attempts + 1, locked_at = NOW()
+             WHERE id = ? AND status = 'pending'
+               AND (locked_at IS NULL OR locked_at <= NOW() - INTERVAL ? SECOND)"
         );
-        $stmt->execute([(int)$r['id'], (int)$r['attempts']]);
+        $stmt->execute([(int)$r['id'], self::DISPATCH_LEASE_SEC]);
         return $stmt->rowCount() === 1;
     }
 
@@ -504,18 +521,20 @@ final class Scheduler
         return $current !== null && $current !== $fromStage;
     }
 
-    // attempts is incremented by claimForDispatch(), not here.
+    // attempts is incremented by claimForDispatch(), not here. Both terminal marks
+    // release the dispatch lease — the status change alone already makes the row
+    // unclaimable, but a row put back to 'pending' by hand should be sendable at once.
     private function mark(int $id, string $status): void
     {
         $this->db->prepare(
-            "UPDATE reminders SET status=?, sent_at=NOW() WHERE id=?"
+            "UPDATE reminders SET status=?, sent_at=NOW(), locked_at=NULL WHERE id=?"
         )->execute([$status, $id]);
     }
 
     private function markFailed(int $id, string $error): void
     {
         $this->db->prepare(
-            "UPDATE reminders SET status='failed', last_error=? WHERE id=?"
+            "UPDATE reminders SET status='failed', last_error=?, locked_at=NULL WHERE id=?"
         )->execute([mb_substr($error, 0, 1000), $id]);
     }
 }

@@ -250,6 +250,7 @@ CREATE TABLE IF NOT EXISTS reminders (
     lang CHAR(2) NULL,
     status ENUM('pending','sent','skipped','cancelled','failed') NOT NULL DEFAULT 'pending',
     attempts INT UNSIGNED NOT NULL DEFAULT 0,
+    locked_at DATETIME NULL,                -- dispatch lease: set while a send is in flight
     last_error TEXT NULL,
     sent_at DATETIME NULL,
     dedupe_key VARCHAR(128) NULL,
