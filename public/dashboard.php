@@ -1099,12 +1099,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'active' => isset($_POST['active']) ? 1 : 0,
                     'password' => $_POST['password'] ?? '',
                 ];
-                if ((int)($_POST['id'] ?? 0) > 0) {
-                    \Glue\Partner\Partners::update((int)$_POST['id'], $pdata);
+                // One referrer, one row. The same partner was entered twice — once
+                // with only his email, once with only his phone — and both rows then
+                // sat in the list on the same commission. Name, email and phone are
+                // each identity on this small hand-kept roster.
+                $pEditId = (int)($_POST['id'] ?? 0);
+                $pDupId = \Glue\Partner\Partners::duplicateId($pdata, $pEditId ?: null);
+                if ($pDupId !== null) {
+                    $pDup = \Glue\Partner\Partners::find($pDupId);
+                    $flash = sprintf($t('pt_dup_flash'), $pDupId, (string)($pDup['name'] ?? ''));
+                    $flashType = 'err';
+                    $tab = 'partners';
+                    break;
+                }
+                if ($pEditId > 0) {
+                    \Glue\Partner\Partners::update($pEditId, $pdata);
                     $flash = $t('saved');
                 } else {
                     \Glue\Partner\Partners::create($pdata);
                     $flash = $t('pt_added');
+                }
+                $tab = 'partners';
+                break;
+            case 'partner_delete': // admin only — remove a roster mistake (duplicate, typo)
+                $pDel = \Glue\Partner\Partners::delete((int)($_POST['id'] ?? 0), $uid);
+                if ($pDel['ok']) {
+                    $flash = $t('pt_deleted');
+                } elseif (($pDel['error'] ?? '') === 'in_use') {
+                    // Referred leads / accrued commission make this a record, not a
+                    // mistake — deactivating is what removes it from circulation.
+                    $flash = sprintf($t('pt_del_in_use'), (int)($pDel['referrals'] ?? 0), (int)($pDel['accruals'] ?? 0));
+                    $flashType = 'err';
+                } else {
+                    $flash = $t('not_allowed');
+                    $flashType = 'err';
                 }
                 $tab = 'partners';
                 break;

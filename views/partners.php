@@ -69,6 +69,15 @@ $money = fn($n) => (string)\Glue\Config::get('crm.currency', 'EUR') . ' ' . numb
         <button class="btn tiny"><?= $h($t('save')) ?></button>
       </form>
 
+      <?php /* Removing a roster mistake (a duplicate, a typo'd entry). A partner who
+               has actually referred or earned is refused by Partners::delete() —
+               untick Active for those, so their referrals and commissions survive. */ ?>
+      <form method="post" style="margin-top:10px" onsubmit="return confirm('<?= $h($t('confirm_pt_delete')) ?>')">
+        <input type="hidden" name="do" value="partner_delete"><input type="hidden" name="id" value="<?= $pid ?>">
+        <button class="btn tiny ghost" style="color:var(--red)"><?= $h($t('delete')) ?></button>
+        <span class="muted small" style="margin-left:8px"><?= $h($t('pt_del_hint')) ?></span>
+      </form>
+
       <div class="cols c-1-1" style="margin-top:14px">
         <div>
           <h3><?= $h($t('pt_accruals')) ?></h3>

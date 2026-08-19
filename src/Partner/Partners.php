@@ -8,6 +8,7 @@ use Glue\Crm\Pipelines;
 use Glue\Crm\VatLock;
 use Glue\Db;
 use Glue\Event\Log;
+use Glue\Notify\Notifier;
 use Glue\Reminder\Scheduler;
 use Throwable;
 
@@ -51,6 +52,80 @@ final class Partners
         $s = Db::pdo()->prepare("SELECT * FROM partners WHERE ref_code = ? AND active = 1");
         $s->execute([$code]);
         return $s->fetch() ?: null;
+    }
+
+    /**
+     * The existing partner these details would merely duplicate, or null.
+     *
+     * The roster is a small, hand-kept list, so a repeated NAME is identity here —
+     * unlike a lead, where two walk-ins can genuinely both be "Mario Rossi". That
+     * is exactly how the same referrer got entered twice: once with only his email,
+     * once with only his phone, so the two rows shared no identifier at all and
+     * both sat in the list on the same commission.
+     *
+     * Both sides are normalised before comparing (partner phones are stored as
+     * typed — migration 031 rewrote leads and contacts, not this table), and the
+     * roster is a handful of rows, so it is compared in PHP rather than in SQL.
+     *
+     * $excludeId: "would this duplicate a partner OTHER than this one?" — asked when
+     * editing, whose own row must not count as its own twin.
+     */
+    public static function duplicateId(array $d, ?int $excludeId = null): ?int
+    {
+        $name  = self::foldName((string)($d['name'] ?? ''));
+        $email = mb_strtolower(trim((string)($d['email'] ?? '')));
+        $phone = Notifier::normalizePhone((string)($d['phone'] ?? ''));
+        if ($name === '' && $email === '' && $phone === '') {
+            return null;
+        }
+        foreach (self::all() as $p) {
+            if ($excludeId !== null && (int)$p['id'] === $excludeId) {
+                continue;
+            }
+            if ($name !== '' && $name === self::foldName((string)$p['name'])) {
+                return (int)$p['id'];
+            }
+            if ($email !== '' && $email === mb_strtolower(trim((string)($p['email'] ?? '')))) {
+                return (int)$p['id'];
+            }
+            if ($phone !== '' && $phone === Notifier::normalizePhone((string)($p['phone'] ?? ''))) {
+                return (int)$p['id'];
+            }
+        }
+        return null;
+    }
+
+    /** Case- and spacing-insensitive name, for comparison only. */
+    private static function foldName(string $name): string
+    {
+        return trim(mb_strtolower((string)preg_replace('/\s+/u', ' ', trim($name))));
+    }
+
+    /**
+     * Delete a partner. Returns ['ok'=>bool, 'error'=>?string, ...counts].
+     *
+     * Refused while the partner still has referred leads or commission accruals:
+     * deleting then would either orphan the attribution or quietly erase money
+     * owed. Deactivating is the answer for a partner who has worked — this exists
+     * for the roster mistake (a duplicate, a typo'd entry), which by definition has
+     * neither. The referral link dies with the row: ?ref=CODE stops resolving.
+     */
+    public static function delete(int $id, ?int $actorId = null): array
+    {
+        $p = self::find($id);
+        if (!$p) {
+            return ['ok' => false, 'error' => 'not_found'];
+        }
+        $pdo  = Db::pdo();
+        $refs = (int)$pdo->query('SELECT COUNT(*) FROM leads WHERE referred_by_partner_id = ' . (int)$id)->fetchColumn();
+        $accr = (int)$pdo->query('SELECT COUNT(*) FROM partner_accruals WHERE partner_id = ' . (int)$id)->fetchColumn();
+        if ($refs > 0 || $accr > 0) {
+            return ['ok' => false, 'error' => 'in_use', 'referrals' => $refs, 'accruals' => $accr];
+        }
+        $pdo->prepare('DELETE FROM partners WHERE id = ?')->execute([$id]);
+        Log::write('partner', 'partner_deleted', 'partner', $id,
+            ['name' => $p['name'], 'ref' => $p['ref_code'], 'by' => $actorId]);
+        return ['ok' => true];
     }
 
     /**
