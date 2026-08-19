@@ -152,6 +152,8 @@ final class Partners
 
     /**
      * Create a partner. Generates a unique ref_code if none given. Returns id.
+     * The phone is stored in the normalised +39... shape, the same one duplicateId()
+     * and login() compare against, so how it was typed cannot change what is stored.
      * @param array $d name|email|phone|commission_pct|ref_code|password
      */
     public static function create(array $d): int
@@ -174,7 +176,7 @@ final class Partners
         $s->execute([
             $name,
             trim((string)($d['email'] ?? '')) ?: null,
-            trim((string)($d['phone'] ?? '')) ?: null,
+            Notifier::normalizePhone((string)($d['phone'] ?? '')) ?: null,
             $ref,
             self::clampPct($d['commission_pct'] ?? 10),
             $hash,
@@ -203,12 +205,12 @@ final class Partners
         if (!empty($d['password'])) {
             Db::pdo()->prepare(
                 "UPDATE partners SET name=?, email=?, phone=?, ref_code=?, commission_pct=?, active=?, password_hash=? WHERE id=?"
-            )->execute([$name, trim((string)($d['email'] ?? '')) ?: null, trim((string)($d['phone'] ?? '')) ?: null,
+            )->execute([$name, trim((string)($d['email'] ?? '')) ?: null, Notifier::normalizePhone((string)($d['phone'] ?? '')) ?: null,
                 $ref, $pct, $active, password_hash((string)$d['password'], PASSWORD_BCRYPT), $id]);
         } else {
             Db::pdo()->prepare(
                 "UPDATE partners SET name=?, email=?, phone=?, ref_code=?, commission_pct=?, active=? WHERE id=?"
-            )->execute([$name, trim((string)($d['email'] ?? '')) ?: null, trim((string)($d['phone'] ?? '')) ?: null,
+            )->execute([$name, trim((string)($d['email'] ?? '')) ?: null, Notifier::normalizePhone((string)($d['phone'] ?? '')) ?: null,
                 $ref, $pct, $active, $id]);
         }
         Log::write('partner', 'partner_updated', 'partner', $id, ['name' => $name]);
@@ -225,7 +227,9 @@ final class Partners
             "SELECT * FROM partners WHERE active = 1 AND password_hash IS NOT NULL
                AND (email = :e OR (phone <> '' AND phone = :p)) LIMIT 1"
         );
-        $s->execute([':e' => $loginId, ':p' => $loginId]);
+        // Phones are stored normalised, so normalise what was typed too — otherwise
+        // a partner who signs in with his plain national number never matches.
+        $s->execute([':e' => $loginId, ':p' => Notifier::normalizePhone($loginId) ?: $loginId]);
         $row = $s->fetch();
         if ($row && password_verify($password, (string)$row['password_hash'])) {
             unset($row['password_hash']);
