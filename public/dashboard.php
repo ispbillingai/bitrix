@@ -1099,10 +1099,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'active' => isset($_POST['active']) ? 1 : 0,
                     'password' => $_POST['password'] ?? '',
                 ];
-                // One referrer, one row. The same partner was entered twice — once
-                // with only his email, once with only his phone — and both rows then
-                // sat in the list on the same commission. Name, email and phone are
-                // each identity on this small hand-kept roster.
+                // An email or a phone belongs to one referrer, so reusing one is
+                // refused. A shared NAME is not: two partners can genuinely be called
+                // the same thing. It is only flagged after the save — which is the
+                // only signal there is for the pair that started this, entered once
+                // with an email alone and once with a phone alone.
                 $pEditId = (int)($_POST['id'] ?? 0);
                 $pDupId = \Glue\Partner\Partners::duplicateId($pdata, $pEditId ?: null);
                 if ($pDupId !== null) {
@@ -1112,12 +1113,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $tab = 'partners';
                     break;
                 }
+                $pSameName = \Glue\Partner\Partners::sameNameId($pdata, $pEditId ?: null);
                 if ($pEditId > 0) {
                     \Glue\Partner\Partners::update($pEditId, $pdata);
                     $flash = $t('saved');
                 } else {
                     \Glue\Partner\Partners::create($pdata);
                     $flash = $t('pt_added');
+                }
+                if ($pSameName !== null) {
+                    $flash .= ' ' . sprintf($t('pt_same_name_warn'), $pSameName);
+                    $flashType = 'warn';
                 }
                 $tab = 'partners';
                 break;
@@ -1253,7 +1259,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
       </div>
     </header>
     <div class="content">
-    <?php if ($flash): ?><div class="flash <?= $flashType === 'err' ? 'flash-err' : '' ?>"><?= $h($flash) ?></div><?php endif; ?>
+    <?php if ($flash): ?><div class="flash <?= $flashType === 'err' ? 'flash-err' : ($flashType === 'warn' ? 'flash-warn' : '') ?>"><?= $h($flash) ?></div><?php endif; ?>
 <?php }
 
 function render_foot(): void { ?>

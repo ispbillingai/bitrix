@@ -55,13 +55,16 @@ final class Partners
     }
 
     /**
-     * The existing partner these details would merely duplicate, or null.
+     * The existing partner these details would duplicate, or null. Contact details
+     * only: an email or a phone already on the roster belongs to one referrer, so
+     * reusing one is refused outright.
      *
-     * The roster is a small, hand-kept list, so a repeated NAME is identity here —
-     * unlike a lead, where two walk-ins can genuinely both be "Mario Rossi". That
-     * is exactly how the same referrer got entered twice: once with only his email,
-     * once with only his phone, so the two rows shared no identifier at all and
-     * both sat in the list on the same commission.
+     * A shared NAME is deliberately NOT a duplicate — two referrers can genuinely
+     * be called the same thing, and refusing the second would be wrong. It is only
+     * flagged, by sameNameId() below, since the pair that started all this shared
+     * nothing else: one row was entered with only an email, the other with only a
+     * phone. Blocking is for what cannot legitimately repeat; the name gets a
+     * warning and the delete button.
      *
      * Both sides are normalised before comparing (partner phones are stored as
      * typed — migration 031 rewrote leads and contacts, not this table), and the
@@ -72,23 +75,42 @@ final class Partners
      */
     public static function duplicateId(array $d, ?int $excludeId = null): ?int
     {
-        $name  = self::foldName((string)($d['name'] ?? ''));
         $email = mb_strtolower(trim((string)($d['email'] ?? '')));
         $phone = Notifier::normalizePhone((string)($d['phone'] ?? ''));
-        if ($name === '' && $email === '' && $phone === '') {
+        if ($email === '' && $phone === '') {
             return null;
         }
         foreach (self::all() as $p) {
             if ($excludeId !== null && (int)$p['id'] === $excludeId) {
                 continue;
             }
-            if ($name !== '' && $name === self::foldName((string)$p['name'])) {
-                return (int)$p['id'];
-            }
             if ($email !== '' && $email === mb_strtolower(trim((string)($p['email'] ?? '')))) {
                 return (int)$p['id'];
             }
             if ($phone !== '' && $phone === Notifier::normalizePhone((string)($p['phone'] ?? ''))) {
+                return (int)$p['id'];
+            }
+        }
+        return null;
+    }
+
+    /**
+     * A partner already on the roster under this name, or null. Never blocks a
+     * save — it is what lets the save SAY "there is already a Massimiliano Cioffi
+     * Trade, #18", which is the only signal available when the two entries share
+     * no contact detail. Whether they are the same referrer is the admin's call.
+     */
+    public static function sameNameId(array $d, ?int $excludeId = null): ?int
+    {
+        $name = self::foldName((string)($d['name'] ?? ''));
+        if ($name === '') {
+            return null;
+        }
+        foreach (self::all() as $p) {
+            if ($excludeId !== null && (int)$p['id'] === $excludeId) {
+                continue;
+            }
+            if ($name === self::foldName((string)$p['name'])) {
                 return (int)$p['id'];
             }
         }

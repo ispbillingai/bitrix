@@ -166,6 +166,8 @@ tbody tr:hover{background:var(--surface2);} tr:last-child td{border-bottom:none;
 .flash{background:var(--green-bg);border:1px solid var(--green);color:var(--green);padding:12px 16px;
   border-radius:8px;margin-bottom:18px;word-break:break-word;font-weight:500;}
 .flash-err{background:var(--red-bg);border-color:var(--red);color:var(--red);}
+/* saved, but worth a second look — a partner entered under a name already on the roster. */
+.flash-warn{background:var(--amber-bg);border-color:var(--amber);color:var(--amber);}
 .warn{background:var(--amber-bg);border:1px solid var(--amber);color:var(--amber);padding:12px 16px;
   border-radius:8px;margin-bottom:18px;font-size:13px;line-height:1.55;}
 .step{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);
