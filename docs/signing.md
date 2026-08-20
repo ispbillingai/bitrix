@@ -135,6 +135,29 @@ it (subject, serial, SHA-256 fingerprint).
 it can forge every signature you have ever issued and every one you will. Back it
 up somewhere you would be comfortable backing up your company stamp.
 
+#### What is installed on crm.upgradesrls.com
+
+Since 2026-08-20 production runs on a qualified eIDAS certificate, in
+`/etc/crm/` — outside the web root, `root:www-data`, the key `0640` so the web
+user can read it but never rewrite it:
+
+| File | |
+|---|---|
+| `/etc/crm/signing-cert.pem` | `CN=Arturo Michael Aiello, O=Michael tech srl, C=IT` |
+| `/etc/crm/signing-chain.pem` | Sectigo Qualified Natural Person CA R35 |
+| `/etc/crm/signing-key.pem` | RSA 4096, unencrypted (`sign.key_pass` empty) |
+
+Issued by **Sectigo Qualified Natural Person CA R35**, valid **2026-08-20 →
+2027-08-20**, serial `4A7BD160C5871A8A9EA68698D74C95EF`. It carries the
+`QcCompliance` and `QcType: esign` statements but **not** `QcSSCD` — the key is
+a file we hold, not a device the signer holds, which is precisely the AdES-not-QES
+line drawn above. Renew before 2027-08-20; nothing warns except the badge on the
+Documents page.
+
+It is a **natural-person** certificate, so documents are sealed as *Arturo
+Michael Aiello*, not as Michael tech srl. If you want the company itself named
+as signer you need an electronic-seal certificate (`QcType: eseal`) instead.
+
 ### 4. Time stamping (recommended)
 
 ```php

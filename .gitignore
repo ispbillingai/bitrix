@@ -16,6 +16,11 @@
 *.key
 *.p12
 *.pfx
+# The certificates themselves are public, but they arrive in the same drop as
+# the key and belong on the server, not in history.
+*.cer
+*.crt
+*.pem
 
 # Local logs / scratch
 /logs/*.log
