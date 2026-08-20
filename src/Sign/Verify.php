@@ -17,6 +17,14 @@ namespace Glue\Sign;
 final class Verify
 {
     private const OID_MESSAGE_DIGEST = '1.2.840.113549.1.9.4';
+    private const OID_SIGNING_CERT_V2 = '1.2.840.113549.1.9.16.2.47';
+
+    /** Digest OIDs that may appear as an explicit ESSCertIDv2 hashAlgorithm. */
+    private const HASH_OIDS = [
+        '2.16.840.1.101.3.4.2.1' => 'sha256',
+        '2.16.840.1.101.3.4.2.2' => 'sha384',
+        '2.16.840.1.101.3.4.2.3' => 'sha512',
+    ];
 
     /**
      * Full report for one document.
@@ -66,8 +74,8 @@ final class Verify
 
             // 3. the cryptographic signature inside that PDF
             $cms = self::signedPdf($bytes);
-            $checks[] = self::check('signature_valid', $cms['ok'], $cms['detail']);
-            if ($cms['ok']) {
+            $checks[] = self::check('signature_valid', $cms['signature_ok'], $cms['detail']);
+            if ($cms['signature_ok']) {
                 $checks[] = self::check('covers_whole_file', $cms['covers_all'], $cms['covers_all']
                     ? 'the signature covers the entire file apart from the signature itself'
                     : 'part of the file lies outside the signed byte ranges');
@@ -103,12 +111,19 @@ final class Verify
     /**
      * Verify the CAdES signature embedded in a signed PDF, using only the file.
      *
-     * @return array{ok:bool, detail:string, covers_all:bool, signer:?array, signed_at:?string}
+     * `signature_ok` is the cryptography alone; `ok` is the answer to "should
+     * anyone rely on this file", which additionally requires that the signature
+     * covers every byte of it. They are separate because a report wants to say
+     * *which* of the two failed, while a verdict badge only wants the verdict.
+     *
+     * @return array{ok:bool, signature_ok:bool, detail:string, covers_all:bool,
+     *               signer:?array, signed_at:?string}
      */
     public static function signedPdf(string $pdf): array
     {
         $fail = fn(string $why): array => [
-            'ok' => false, 'detail' => $why, 'covers_all' => false, 'signer' => null, 'signed_at' => null,
+            'ok' => false, 'signature_ok' => false, 'detail' => $why,
+            'covers_all' => false, 'signer' => null, 'signed_at' => null,
         ];
 
         if (!preg_match('/\/ByteRange\s*\[\s*(\d+)\s+(\d+)\s+(\d+)\s+(\d+)\s*\]/', $pdf, $m)) {
@@ -160,10 +175,25 @@ final class Verify
             return $fail('the signature does not verify against the certificate in the file');
         }
 
+        // signingCertificateV2 names the one certificate this signature was made
+        // with. Without this check the certificate can be swapped or edited — the
+        // public key still verifies the content, so everything looks fine while
+        // the identity on display is no longer the one that was signed for.
+        $pin = $parsed['signing_cert'];
+        if ($pin === null) {
+            return $fail('the signature does not say which certificate made it');
+        }
+        if (!hash_equals($pin['hash'], hash($pin['algo'], $parsed['cert'], true))) {
+            return $fail('the certificate in the file is not the one this signature was made with');
+        }
+
         $info = openssl_x509_parse(self::derToPem($parsed['cert'], 'CERTIFICATE')) ?: [];
         return [
-            'ok'         => true,
-            'detail'     => 'verified against the certificate embedded in the file',
+            'ok'           => $coversAll,
+            'signature_ok' => true,
+            'detail'       => $coversAll
+                ? 'verified against the certificate embedded in the file'
+                : 'the signature is valid but does not cover the whole file — content was added after signing',
             'covers_all' => $coversAll,
             'signer'     => [
                 'subject'     => self::dnText($info['subject'] ?? []),
@@ -272,7 +302,76 @@ final class Verify
             'signature'      => $sigEl ? $sigEl['content'] : '',
             'message_digest' => $digestEl ? $digestEl['content'] : '',
             'signing_time'   => self::signingTime($attrs),
+            'signing_cert'   => self::signingCertHash($attrs),
         ];
+    }
+
+    /**
+     * The certificate fingerprint carried in the signingCertificateV2 attribute.
+     *
+     *   SigningCertificateV2 ::= SEQUENCE { certs SEQUENCE OF ESSCertIDv2 }
+     *   ESSCertIDv2 ::= SEQUENCE { hashAlgorithm AlgorithmIdentifier DEFAULT sha256,
+     *                              certHash OCTET STRING, issuerSerial OPTIONAL }
+     *
+     * DER forbids encoding a DEFAULT, so hashAlgorithm is usually absent and the
+     * digest is sha256 — but a signature from elsewhere may spell it out, so read
+     * it when it is there rather than assuming.
+     *
+     * @param array<string,string> $attrs
+     * @return array{algo:string, hash:string}|null
+     */
+    private static function signingCertHash(array $attrs): ?array
+    {
+        $raw = $attrs[self::OID_SIGNING_CERT_V2] ?? null;
+        if ($raw === null) {
+            return null;
+        }
+        // SigningCertificateV2 -> the SEQUENCE OF -> the first ESSCertIDv2.
+        $o = 0;
+        $outer = Asn1::read($raw, $o);
+        if ($outer === null) {
+            return null;
+        }
+        $certsSeq = Asn1::children($outer['content'])[0] ?? null;
+        if ($certsSeq === null) {
+            return null;
+        }
+        $o = 0;
+        $certsEl = Asn1::read($certsSeq, $o);
+        $first = $certsEl ? (Asn1::children($certsEl['content'])[0] ?? null) : null;
+        if ($first === null) {
+            return null;
+        }
+        $o = 0;
+        $idEl = Asn1::read($first, $o);
+        $parts = $idEl ? Asn1::children($idEl['content']) : [];
+        if (!$parts) {
+            return null;
+        }
+
+        $algo = 'sha256';
+        $idx  = 0;
+        if (ord($parts[0][0]) === Asn1::SEQUENCE) {   // hashAlgorithm was spelled out
+            $ao = 0;
+            $algoSeq = Asn1::read($parts[0], $ao);
+            $oidRaw  = $algoSeq ? (Asn1::children($algoSeq['content'])[0] ?? null) : null;
+            $oidEl   = null;
+            if ($oidRaw !== null) {
+                $oo = 0;
+                $oidEl = Asn1::read($oidRaw, $oo);
+            }
+            $algo = $oidEl ? (self::HASH_OIDS[self::oidText($oidEl['content'])] ?? '') : '';
+            $idx  = 1;
+        }
+        if ($algo === '' || !isset($parts[$idx])) {
+            return null;
+        }
+        $ho = 0;
+        $hashEl = Asn1::read($parts[$idx], $ho);
+        if ($hashEl === null || $hashEl['tag'] !== Asn1::OCTET_STRING) {
+            return null;
+        }
+        return ['algo' => $algo, 'hash' => $hashEl['content']];
     }
 
     /**
