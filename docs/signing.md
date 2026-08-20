@@ -101,6 +101,17 @@ mkdir -p storage/sign && chown -R www-data:www-data storage/sign && chmod 750 st
 If `storage/` is not writable the app falls back to `public/uploads/sign/`, which
 `.htaccess` blocks — it works, but above the web root is better.
 
+Get the ownership right or you get a subtler problem than a crash. `Store::path()`
+picks its folder with `is_dir()`, and whether that answers true depends on who is
+asking: on crm.upgradesrls.com `storage/sign` was root-owned `0750`, so web
+requests (www-data) silently used the `public/uploads/sign` fallback while CLI
+runs as root used `storage/sign` — the same code reading two different folders,
+with every document reachable from only one of them. Fixed on 2026-08-20 by
+chowning the tree to www-data and moving the files up. If you ever change this
+folder, move the existing files with it: `sign_documents.orig_path` and
+`signed_path` hold **basenames**, resolved through `Store::path()` at read time,
+so repointing the folder without moving the files orphans every document.
+
 ### 3. The certificate
 
 With nothing configured, the first signature generates a 3072-bit key and a
@@ -153,6 +164,14 @@ Issued by **Sectigo Qualified Natural Person CA R35**, valid **2026-08-20 →
 a file we hold, not a device the signer holds, which is precisely the AdES-not-QES
 line drawn above. Renew before 2027-08-20; nothing warns except the badge on the
 Documents page.
+
+Time stamping is **on**, against `http://timestamp.sectigo.com`. Signatures are
+therefore CAdES-T / PAdES-B-T rather than B-B, and the sealing time is asserted
+by Sectigo rather than by this server's clock. The token adds ~6.6 KB, taking a
+sealed signature to about 11 KB of the 20 KB `Pdf::SIG_BYTES` reserves. Sectigo's
+timestamping chain roots in USERTrust RSA, which Adobe and the operating systems
+already trust. Note this is a *trusted* time stamp, not a **qualified** one — an
+EU qualified TSP is the next step up if these documents ever need to be QES-grade.
 
 It is a **natural-person** certificate, so documents are sealed as *Arturo
 Michael Aiello*, not as Michael tech srl. If you want the company itself named
