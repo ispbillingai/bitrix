@@ -22,6 +22,10 @@
 *.crt
 *.pem
 
+# Signed sample files produced to demonstrate the signature to a third party.
+# Regenerate them rather than committing them.
+/verifica-firma/
+
 # Local logs / scratch
 /logs/*.log
 *.log
