@@ -489,6 +489,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $flash = $t('saved');
                 }
                 $tab = 'leads';
+                // Post/redirect/get, as the ticket actions below already do. Saving a
+                // lead holds the page for 5-6 seconds — the welcome WhatsApp goes out
+                // inline, and TextMeBot's rate-limit gap is waited out first — so a
+                // seller who thinks the click missed reloads, and reloading a POST
+                // result re-sends the entire form. That is how the Debora entry
+                // arrived a second time, byte-identical, 18 seconds after the first,
+                // and got reported as the CRM refusing to file the lead. Landing on a
+                // GET makes reload, back and forward harmless.
+                if (!$ajax) {
+                    $_SESSION['dash_flash'] = [$flash, $flashType];
+                    header('Location: ?tab=leads');
+                    exit;
+                }
                 break;
             case 'lead_assign':
                 Leads::assign((int)$_POST['id'], (int)$_POST['agent_id'], $uid);
