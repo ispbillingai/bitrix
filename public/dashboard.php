@@ -481,7 +481,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $key = ($dupRow && (string)$dupRow['status'] === 'converted')
                         ? 'lead_dup_customer_flash' : 'lead_dup_flash';
                     $flash = sprintf($t($key), $dupLeadId);
-                    $flashType = 'err';
+                    // Amber, not red: the request was not thrown away, it was written
+                    // onto the twin as a note. Red read as "refused" and sent sellers
+                    // hunting for something the CRM had already filed.
+                    $flashType = 'warn';
                 } else {
                     $flash = $t('saved');
                 }

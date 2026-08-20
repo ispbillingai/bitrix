@@ -97,7 +97,7 @@ return [
     'f_vat'          => 'Partita IVA',
     'f_vat_ph'       => 'es. 01234567890',
     'vat_taken_flash' => 'Lead NON salvato: la partita IVA %s è già stata inserita da un altro collaboratore. Tornerà disponibile il %s.',
-    'lead_dup_flash' => 'Questo cliente ha già un lead aperto (#%d): è stato aperto quello invece di crearne un doppione.',
+    'lead_dup_flash' => 'Questo cliente ha già un lead aperto (#%d): la richiesta è stata aggiunta come nota su quel lead invece di aprirne un doppione. Aprilo per leggerla.',
     'lead_edit_dup_flash' => 'Modifiche NON salvate: quel telefono, email o partita IVA appartiene al lead #%d. Lavora su quel lead invece di copiarne i dati qui.',
     'lead_dup_customer_flash' => 'Questo nominativo è già un cliente (lead #%d convertito): la richiesta è stata aggiunta alla sua scheda invece di aprire un nuovo lead.',
     'rk_vat_thanks'  => 'Lead con P.IVA inserito (ringraziamento)',
