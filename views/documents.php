@@ -103,7 +103,8 @@ try {
         <select name="lang"><option value="it">Italiano</option><option value="en">English</option></select></label>
     </div>
     <div class="row">
-      <label class="fld"><span><?= $h($t('f_name')) ?></span><input name="name"></label>
+      <label class="fld"><span><?= $h($t('f_first_name')) ?></span><input name="first_name"></label>
+      <label class="fld"><span><?= $h($t('f_last_name')) ?></span><input name="last_name"></label>
       <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone"></label>
       <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email"></label>
     </div>

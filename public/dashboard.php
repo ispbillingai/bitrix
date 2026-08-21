@@ -676,10 +676,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // ---------- documents (electronic signature) ----------
             case 'doc_create':
+                // Collected as nome + cognome, stored as one name — the same shape
+                // request.php and LeadIntake already use for contacts.
+                $docName = trim(trim((string)($_POST['first_name'] ?? ''))
+                    . ' ' . trim((string)($_POST['last_name'] ?? '')));
                 $res = SignDocs::create([
                     'title'      => $_POST['title'] ?? '',
                     'contact_id' => (int)($_POST['contact_id'] ?? 0),
-                    'name'       => $_POST['name'] ?? '', 'phone' => $_POST['phone'] ?? '',
+                    'name'       => $docName, 'phone' => $_POST['phone'] ?? '',
                     'email'      => $_POST['email'] ?? '', 'lang' => $_POST['lang'] ?? null,
                 ], $_FILES['document'] ?? null, $uid);
                 if ($res['ok']) {

@@ -150,6 +150,8 @@ return [
 
     // fields
     'f_name'         => 'Nome',
+    'f_first_name'   => 'Nome',
+    'f_last_name'    => 'Cognome',
     'f_phone'        => 'Telefono',
     'f_email'        => 'Email',
     'f_company'      => 'Azienda',

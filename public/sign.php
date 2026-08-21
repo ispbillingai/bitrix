@@ -105,11 +105,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $blocked === '') {
 
     if ($do === 'request_code') {
         $consent = !empty($_POST['consent']);
-        $typed   = trim((string)($_POST['typed_name'] ?? ''));
+        // Two boxes on the page, one name on the record — the signer's full name
+        // is what the certificate prints and what the evidence stores.
+        $first = trim((string)($_POST['typed_first'] ?? ''));
+        $last  = trim((string)($_POST['typed_last'] ?? ''));
+        $typed = trim($first . ' ' . $last);
         if (!$consent) {
             $prg($t('need_consent'), 'err', $docId, null, $token);
         }
-        if (mb_strlen($typed) < 3) {
+        if ($first === '' || $last === '' || mb_strlen($typed) < 3) {
             $prg($t('need_name'), 'err', $docId, null, $token);
         }
         $_SESSION['sign_consent_' . $docId] = ['consent' => true, 'name' => $typed];
@@ -248,9 +252,21 @@ function render_page(callable $t, callable $h, string $lang, string $brand, ?arr
     <form method="post" class="signform">
       <input type="hidden" name="t" value="<?= $h($token) ?>">
       <input type="hidden" name="do" value="request_code">
-      <label class="fld"><span><?= $h($t('f_typed_name')) ?></span>
-        <input name="typed_name" required minlength="3" value="<?= $h($doc['signer_name']) ?>">
-      </label>
+      <?php
+        // Prefill by splitting the name we were given at the first space: an
+        // Italian surname far more often carries a particle ("De Luca") than a
+        // first name is compound, so the remainder is the safer surname guess.
+        // Either way the signer sees both boxes and can correct them.
+        [$preFirst, $preLast] = array_pad(explode(' ', trim((string)$doc['signer_name']), 2), 2, '');
+      ?>
+      <div class="namerow">
+        <label class="fld"><span><?= $h($t('f_typed_first')) ?></span>
+          <input name="typed_first" required value="<?= $h($preFirst) ?>" autocomplete="given-name">
+        </label>
+        <label class="fld"><span><?= $h($t('f_typed_last')) ?></span>
+          <input name="typed_last" required value="<?= $h($preLast) ?>" autocomplete="family-name">
+        </label>
+      </div>
       <label class="consent">
         <input type="checkbox" name="consent" value="1" required>
         <span><?= $h($t('consent_text')) ?></span>
@@ -309,7 +325,8 @@ function sign_strings(string $lang): array
         'dl_original' => 'tap to open',
         'fingerprint' => 'Document fingerprint (SHA-256)',
         'fingerprint_help' => 'This value identifies the exact file you are signing. It is printed on your certificate, so you can always check the two match.',
-        'f_typed_name' => 'Your full name',
+        'f_typed_first' => 'First name',
+        'f_typed_last'  => 'Last name',
         'consent_text' => 'I have read the document and I am signing it electronically.',
         'send_code'   => 'Send me the code',
         'send_code_help' => 'We will send it to {to}',
@@ -344,7 +361,7 @@ function sign_strings(string $lang): array
         'otp_error'   => 'Something went wrong while sealing the document. Nothing was signed — please try again.',
         'otp_throttled' => 'Too many codes requested. Please wait a little and try again.',
         'need_consent' => 'Please tick the box to confirm you have read the document.',
-        'need_name'   => 'Please enter your full name.',
+        'need_name'   => 'Please enter both your first name and your last name.',
         'signed_ok'   => 'Signed — thank you.',
         'foot'        => 'Electronic signature',
     ];
@@ -355,7 +372,8 @@ function sign_strings(string $lang): array
         'dl_original' => 'tocca per aprire',
         'fingerprint' => 'Impronta del documento (SHA-256)',
         'fingerprint_help' => 'Questo valore identifica il file esatto che stai firmando. È riportato sul tuo certificato, così puoi sempre verificare che coincidano.',
-        'f_typed_name' => 'Il tuo nome e cognome',
+        'f_typed_first' => 'Nome',
+        'f_typed_last'  => 'Cognome',
         'consent_text' => 'Ho letto il documento e lo firmo elettronicamente.',
         'send_code'   => 'Inviami il codice',
         'send_code_help' => 'Lo invieremo a {to}',
@@ -390,7 +408,7 @@ function sign_strings(string $lang): array
         'otp_error'   => 'Qualcosa è andato storto durante il sigillo. Non è stato firmato nulla — riprova.',
         'otp_throttled' => 'Troppi codici richiesti. Attendi qualche minuto e riprova.',
         'need_consent' => 'Spunta la casella per confermare di aver letto il documento.',
-        'need_name'   => 'Inserisci il tuo nome e cognome.',
+        'need_name'   => 'Inserisci sia il nome che il cognome.',
         'signed_ok'   => 'Firmato — grazie.',
         'foot'        => 'Firma elettronica',
     ];
@@ -439,6 +457,11 @@ h1{font-size:22px;line-height:1.3;margin-bottom:6px;letter-spacing:-.3px}
 /* forms */
 .fld{display:block;margin:16px 0 12px;font-size:13px;font-weight:600;color:#49536a}
 .fld span{display:block;margin-bottom:7px}
+/* Nome and Cognome sit side by side where there is room, and stack on a phone —
+   which is where most people open the signing link. */
+.namerow{display:grid;grid-template-columns:1fr 1fr;gap:0 12px}
+.namerow .fld{margin-bottom:0}
+@media (max-width:460px){.namerow{grid-template-columns:1fr;gap:0}}
 input{width:100%;padding:12px 14px;border:1.5px solid #dde2ec;border-radius:11px;font-size:15px;outline:none;background:#fbfcfe;font-family:inherit}
 input:focus{border-color:var(--accent);background:#fff;box-shadow:0 0 0 3px rgba(91,108,255,.13)}
 .consent{display:flex;gap:11px;align-items:flex-start;margin:14px 0 4px;padding:14px;background:#f6f8ff;border:1px solid #e3e8ff;border-radius:12px;font-size:13.5px;font-weight:500;cursor:pointer}
