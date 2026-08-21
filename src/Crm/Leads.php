@@ -434,11 +434,12 @@ final class Leads
         return Db::pdo()->query(
             "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name,
                     c.username AS creator_username, c.full_name AS creator_name,
-                    pt.name AS partner_name
+                    pt.name AS partner_name, ct.company AS company
              FROM leads l
              LEFT JOIN users u ON u.id = l.assigned_to
              LEFT JOIN users c ON c.id = l.created_by
              LEFT JOIN partners pt ON pt.id = l.referred_by_partner_id
+             LEFT JOIN contacts ct ON ct.id = l.contact_id
              $where ORDER BY l.id DESC LIMIT $limit"
         )->fetchAll();
     }
@@ -464,11 +465,12 @@ final class Leads
         $rows = Db::pdo()->query(
             "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name,
                     c.username AS creator_username, c.full_name AS creator_name,
-                    pt.name AS partner_name
+                    pt.name AS partner_name, ct.company AS company
              FROM leads l
              LEFT JOIN users u ON u.id = l.assigned_to
              LEFT JOIN users c ON c.id = l.created_by
              LEFT JOIN partners pt ON pt.id = l.referred_by_partner_id
+             LEFT JOIN contacts ct ON ct.id = l.contact_id
              $where ORDER BY l.id DESC"
         )->fetchAll();
         $out = [];

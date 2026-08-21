@@ -170,11 +170,12 @@ if (($_GET['export'] ?? '') === 'leads' && !$isAgent) {
     $xpid = (int)($_GET['partner'] ?? 0);
     $sql = "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name,
                    c.username AS creator_username, c.full_name AS creator_name,
-                   pt.name AS partner_name
+                   pt.name AS partner_name, ct.company AS company
             FROM leads l
             LEFT JOIN users u ON u.id = l.assigned_to
             LEFT JOIN users c ON c.id = l.created_by
             LEFT JOIN partners pt ON pt.id = l.referred_by_partner_id
+            LEFT JOIN contacts ct ON ct.id = l.contact_id
             WHERE l.received_at >= CONCAT(?, '-01')
               AND l.received_at <  CONCAT(?, '-01') + INTERVAL 1 MONTH"
         . ($xsrc !== '' ? ' AND l.source = ?' : '')
@@ -189,7 +190,7 @@ if (($_GET['export'] ?? '') === 'leads' && !$isAgent) {
     $out = fopen('php://output', 'w');
     fwrite($out, "\xEF\xBB\xBF"); // UTF-8 BOM so Excel reads accents correctly
     $sep = ';';                   // Italian Excel expects semicolons
-    fputcsv($out, ['ID', $t('th_created'), $t('f_name'), $t('f_phone'), $t('f_email'), $t('f_vat'),
+    fputcsv($out, ['ID', $t('th_created'), $t('f_name'), $t('f_phone'), $t('f_email'), $t('f_company'), $t('f_vat'),
         $t('f_source'), $t('f_zone'), $t('f_fair'), $t('f_fair_city'),
         $t('th_stage'), $t('th_status'), $t('th_agent'), $t('entered_by'), $t('th_partner'),
         $t('f_message'), $t('exp_processing')], $sep);
@@ -201,7 +202,7 @@ if (($_GET['export'] ?? '') === 'leads' && !$isAgent) {
         }
         fputcsv($out, [
             $xr['id'], $xr['received_at'], $xr['customer_name'], $xr['customer_phone'],
-            $xr['customer_email'], (string)($xr['vat_number'] ?? ''), $xr['source'],
+            $xr['customer_email'], (string)($xr['company'] ?? ''), (string)($xr['vat_number'] ?? ''), $xr['source'],
             (string)($xr['zone'] ?? ''), (string)($xr['fair_name'] ?? ''), (string)($xr['fair_city'] ?? ''),
             stage_label($t, (string)$xr['stage_code'], Pipelines::label('lead', (string)$xr['stage_code'])),
             $xr['status'], $xr['agent_name'] ?: ($xr['agent_username'] ?: ''),

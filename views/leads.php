@@ -130,7 +130,16 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
               $cby = $c['creator_name'] ?: $c['creator_username']; ?>
           <div class="kcard" draggable="true" data-id="<?= $h($c['id']) ?>">
             <b><?= $h($nm) ?></b>
+            <?php if (!empty($c['company'])): ?>
+              <div class="muted small" style="margin-top:2px"><?= $h($c['company']) ?></div>
+            <?php endif; ?>
             <div class="meta">
+              <?php // The card IS the lead right after saving it: a seller who cannot
+                    // see the number has to open the row below to call anybody.
+                    if (($tel = phone_link($h, $c['customer_phone'])) !== ''): ?>
+                <span><?= $tel ?></span>
+              <?php endif; ?>
+              <?php if (!empty($c['customer_email'])): ?><span><?= $h($c['customer_email']) ?></span><?php endif; ?>
               <span><?= $h($c['source']) ?></span>
               <span title="<?= $h(short_time($c['received_at'])) ?>"><?= $h(time_ago($c['received_at'], $t)) ?></span>
               <?php if ($ag): ?><span><?= avatar($h, $ag) ?> <?= $h($ag) ?></span><?php endif; ?>
@@ -224,7 +233,7 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
     <summary class="dw-sum">
       <?= avatar($h, $r['customer_name']) ?>
       <span class="dw-info"><b><?= $h($r['customer_name'] ?: ('#' . $r['id'])) ?></b>
-        <span class="muted small"> · <?= phone_link($h, $r['customer_phone']) ?> <?= $h($r['customer_email']) ?><?= !empty($r['vat_number']) ? ' · ' . $h($t('f_vat')) . ' ' . $h($r['vat_number']) : '' ?><?= !empty($r['zone']) ? ' · ' . $h($t('f_zone')) . ' ' . $h($r['zone']) : '' ?><?= !empty($r['fair_name']) ? ' · ' . $h($t('f_fair')) . ' ' . $h($r['fair_name']) . (!empty($r['fair_city']) ? ' (' . $h($r['fair_city']) . ')' : '') : '' ?></span>
+        <span class="muted small"> · <?= phone_link($h, $r['customer_phone']) ?> <?= $h($r['customer_email']) ?><?= !empty($r['company']) ? ' · ' . $h($r['company']) : '' ?><?= !empty($r['vat_number']) ? ' · ' . $h($t('f_vat')) . ' ' . $h($r['vat_number']) : '' ?><?= !empty($r['zone']) ? ' · ' . $h($t('f_zone')) . ' ' . $h($r['zone']) : '' ?><?= !empty($r['fair_name']) ? ' · ' . $h($t('f_fair')) . ' ' . $h($r['fair_name']) . (!empty($r['fair_city']) ? ' (' . $h($r['fair_city']) . ')' : '') : '' ?></span>
         <?php if ($msg !== ''): ?><span class="muted small note-clip l2" style="margin-top:2px">“<?= $h($msg) ?>”</span><?php endif; ?></span>
       <span class="pill"><?= $h(stage_label($t, $r['stage_code'], \Glue\Crm\Pipelines::label('lead', $r['stage_code']))) ?></span>
       <?= pill($h, $r['status'], $t) ?>
@@ -269,6 +278,7 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
               </div>
               <div class="row">
                 <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email" value="<?= $h($r['customer_email']) ?>"></label>
+                <label class="fld"><span><?= $h($t('f_company')) ?></span><input name="company" value="<?= $h($r['company'] ?? '') ?>"></label>
                 <label class="fld"><span><?= $h($t('f_vat')) ?></span><input name="vat_number" value="<?= $h($r['vat_number'] ?? '') ?>" placeholder="<?= $h($t('f_vat_ph')) ?>"></label>
               </div>
               <div class="row">
