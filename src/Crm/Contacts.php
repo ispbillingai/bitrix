@@ -15,6 +15,32 @@ use PDO;
 final class Contacts
 {
     /**
+     * Nome + Cognome as they are typed, into the single name that is stored.
+     * Forms ask for the two parts; contacts.name holds the one string.
+     */
+    public static function fullName(string $first, string $last): string
+    {
+        return trim(trim($first) . ' ' . trim($last));
+    }
+
+    /**
+     * The inverse, for putting a stored name back into two boxes:
+     * "Mario De Luca" -> ["Mario", "De Luca"].
+     *
+     * Split at the FIRST space, because an Italian surname carries a particle
+     * ("De Luca", "Lo Russo") far more often than a first name is compound, so
+     * the remainder is the better surname guess. It is only ever a prefill —
+     * whoever is looking at the two boxes can correct them.
+     *
+     * @return array{0:string, 1:string}
+     */
+    public static function splitName(string $full): array
+    {
+        $parts = array_pad(explode(' ', trim($full), 2), 2, '');
+        return [trim($parts[0]), trim($parts[1])];
+    }
+
+    /**
      * Find an existing contact by phone or email, else create one.
      * @return int contact id
      */

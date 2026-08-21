@@ -252,13 +252,7 @@ function render_page(callable $t, callable $h, string $lang, string $brand, ?arr
     <form method="post" class="signform">
       <input type="hidden" name="t" value="<?= $h($token) ?>">
       <input type="hidden" name="do" value="request_code">
-      <?php
-        // Prefill by splitting the name we were given at the first space: an
-        // Italian surname far more often carries a particle ("De Luca") than a
-        // first name is compound, so the remainder is the safer surname guess.
-        // Either way the signer sees both boxes and can correct them.
-        [$preFirst, $preLast] = array_pad(explode(' ', trim((string)$doc['signer_name']), 2), 2, '');
-      ?>
+      <?php [$preFirst, $preLast] = \Glue\Crm\Contacts::splitName((string)$doc['signer_name']); ?>
       <div class="namerow">
         <label class="fld"><span><?= $h($t('f_typed_first')) ?></span>
           <input name="typed_first" required value="<?= $h($preFirst) ?>" autocomplete="given-name">

@@ -439,13 +439,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // create() folds a duplicate into the lead that already exists and
                 // hands that one back. Ask first, so the seller is told what
                 // happened instead of reading "Saved" and expecting a new record.
+                // Nome and Cognome are two boxes on the form and one stored name,
+                // the same shape request.php and fair.php already post.
+                $leadName = \Glue\Crm\Contacts::fullName(
+                    (string)($_POST['first_name'] ?? ''), (string)($_POST['last_name'] ?? ''));
                 $dupLeadId = Leads::duplicateId([
-                    'name' => $_POST['name'] ?? '', 'phone' => $_POST['phone'] ?? '',
+                    'name' => $leadName, 'phone' => $_POST['phone'] ?? '',
                     'email' => $_POST['email'] ?? '', 'vat_number' => $vat,
                     'source' => $src ?: 'manual',
                 ]);
                 $newLeadId = Leads::create([
-                    'name' => $_POST['name'] ?? '', 'phone' => $_POST['phone'] ?? '', 'email' => $_POST['email'] ?? '',
+                    'name' => $leadName, 'phone' => $_POST['phone'] ?? '', 'email' => $_POST['email'] ?? '',
                     'company' => $_POST['company'] ?? '', 'comments' => $_POST['comments'] ?? '',
                     'source' => $src ?: 'manual', 'zone' => $_POST['zone'] ?? '', 'lang' => $_POST['lang'] ?? null,
                     'vat_number' => $vat,
@@ -558,6 +562,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $editData = [];
                 foreach (['name', 'phone', 'email', 'company', 'source', 'zone', 'fair_name', 'fair_city', 'comments', 'lang'] as $ef) {
                     if (array_key_exists($ef, $_POST)) { $editData[$ef] = $_POST[$ef]; }
+                }
+                // The form posts the name in two boxes; rebuild the one stored name.
+                if (array_key_exists('first_name', $_POST) || array_key_exists('last_name', $_POST)) {
+                    $editData['name'] = \Glue\Crm\Contacts::fullName(
+                        (string)($_POST['first_name'] ?? ''), (string)($_POST['last_name'] ?? ''));
                 }
                 $newVat = \Glue\Crm\VatLock::normalize((string)($_POST['vat_number'] ?? ''));
                 $editLead = Leads::find((int)$_POST['id']);

@@ -38,7 +38,8 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
   <form method="post" class="card" style="margin-top:12px">
     <input type="hidden" name="do" value="lead_create">
     <div class="row">
-      <label class="fld"><span><?= $h($t('f_name')) ?></span><input name="name" required></label>
+      <label class="fld"><span><?= $h($t('f_first_name')) ?></span><input name="first_name" required></label>
+      <label class="fld"><span><?= $h($t('f_last_name')) ?></span><input name="last_name"></label>
       <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone" placeholder="+39…"></label>
       <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email"></label>
     </div>
@@ -89,7 +90,8 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
           <input name="fair_city" list="faircity-list" placeholder="<?= $h($t('f_fair_city_ph')) ?>"></label>
       </div>
       <div class="row">
-        <label class="fld"><span><?= $h($t('f_name')) ?></span><input name="name" required></label>
+        <label class="fld"><span><?= $h($t('f_first_name')) ?></span><input name="first_name" required></label>
+        <label class="fld"><span><?= $h($t('f_last_name')) ?></span><input name="last_name"></label>
         <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone" placeholder="+39…"></label>
         <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email"></label>
       </div>
@@ -272,8 +274,10 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
             <form method="post" class="card" style="margin-top:10px">
               <input type="hidden" name="do" value="lead_edit">
               <input type="hidden" name="id" value="<?= $h($r['id']) ?>">
+              <?php [$edFirst, $edLast] = \Glue\Crm\Contacts::splitName((string)$r['customer_name']); ?>
               <div class="row">
-                <label class="fld"><span><?= $h($t('f_name')) ?></span><input name="name" value="<?= $h($r['customer_name']) ?>" required></label>
+                <label class="fld"><span><?= $h($t('f_first_name')) ?></span><input name="first_name" value="<?= $h($edFirst) ?>" required></label>
+                <label class="fld"><span><?= $h($t('f_last_name')) ?></span><input name="last_name" value="<?= $h($edLast) ?>"></label>
                 <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone" value="<?= $h($r['customer_phone']) ?>" placeholder="+39…"></label>
               </div>
               <div class="row">
