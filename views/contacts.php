@@ -1,9 +1,16 @@
 <?php
 /**
  * Contacts — the people behind leads/deals. Create + recent list.
+ *
+ * Nome and Cognome are two stored columns (migration 036) and get a column each
+ * here. For rows entered before that split the parts are a guess, so every row
+ * opens an edit form to correct it.
+ *
  * In scope: $t, $h, $pdo.
  */
-$rows = \Glue\Crm\Contacts::all(300);
+$rows   = \Glue\Crm\Contacts::all(300);
+$openId = (int)($_GET['c'] ?? 0);
+$link   = static fn(int $id): string => '?tab=contacts' . ($id ? '&c=' . $id : '');
 ?>
 <h2><?= $h($t('nav_contacts')) ?></h2>
 
@@ -28,15 +35,49 @@ $rows = \Glue\Crm\Contacts::all(300);
 </details>
 
 <table><thead><tr>
-  <th><?= $h($t('f_name')) ?></th><th><?= $h($t('f_company')) ?></th><th><?= $h($t('f_phone')) ?></th>
-  <th><?= $h($t('f_email')) ?></th><th><?= $h($t('f_lang')) ?></th><th><?= $h($t('th_created')) ?></th>
+  <th><?= $h($t('f_first_name')) ?></th><th><?= $h($t('f_last_name')) ?></th>
+  <th><?= $h($t('f_company')) ?></th><th><?= $h($t('f_phone')) ?></th>
+  <th><?= $h($t('f_email')) ?></th><th><?= $h($t('f_lang')) ?></th>
+  <th><?= $h($t('th_created')) ?></th><th></th>
 </tr></thead><tbody>
-<?php if (!$rows): ?><tr><td colspan="6" class="muted"><?= $h($t('none_yet')) ?></td></tr><?php endif; ?>
-<?php foreach ($rows as $r): ?>
+<?php if (!$rows): ?><tr><td colspan="8" class="muted"><?= $h($t('none_yet')) ?></td></tr><?php endif; ?>
+<?php foreach ($rows as $r): $cid = (int)$r['id']; $isOpen = $openId === $cid;
+  // Fall back to the split for a row written before the columns existed.
+  [$fbFirst, $fbLast] = \Glue\Crm\Contacts::splitName((string)$r['name']);
+  $first = trim((string)($r['first_name'] ?? '')) ?: $fbFirst;
+  $last  = trim((string)($r['last_name'] ?? '')) ?: $fbLast;
+?>
   <tr>
-    <td><?= avatar($h, $r['name']) ?> <?= $h($r['name']) ?></td>
+    <td><?= avatar($h, $r['name']) ?> <?= $h($first) ?></td>
+    <td><?= $h($last) ?: '<span class="muted">—</span>' ?></td>
     <td><?= $h($r['company']) ?></td><td><?= phone_link($h, $r['phone']) ?></td><td><?= $h($r['email']) ?></td>
     <td><span class="pill"><?= $h($r['lang']) ?></span></td><td class="small muted"><?= $h(short_time($r['created_at'])) ?></td>
+    <td class="small"><a class="btn ghost tiny" href="<?= $h($link($isOpen ? 0 : $cid)) ?>#c<?= $cid ?>">
+      <?= $h($isOpen ? $t('contact_close') : $t('contact_edit')) ?></a></td>
   </tr>
+  <?php if ($isOpen): ?>
+  <tr id="c<?= $cid ?>"><td colspan="8" style="background:var(--surface2)">
+    <form method="post" class="card" style="background:var(--surface2);margin:0">
+      <input type="hidden" name="do" value="contact_edit">
+      <input type="hidden" name="id" value="<?= $cid ?>">
+      <div class="row">
+        <label class="fld"><span><?= $h($t('f_first_name')) ?></span><input name="first_name" value="<?= $h($first) ?>" required></label>
+        <label class="fld"><span><?= $h($t('f_last_name')) ?></span><input name="last_name" value="<?= $h($last) ?>"></label>
+        <label class="fld"><span><?= $h($t('f_company')) ?></span><input name="company" value="<?= $h($r['company'] ?? '') ?>"></label>
+      </div>
+      <div class="row">
+        <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone" value="<?= $h($r['phone'] ?? '') ?>"></label>
+        <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email" value="<?= $h($r['email'] ?? '') ?>"></label>
+        <label class="fld"><span><?= $h($t('f_lang')) ?></span>
+          <select name="lang">
+            <option value="it"<?= ($r['lang'] ?? 'it') === 'it' ? ' selected' : '' ?>>IT</option>
+            <option value="en"<?= ($r['lang'] ?? '') === 'en' ? ' selected' : '' ?>>EN</option>
+          </select></label>
+      </div>
+      <label class="fld"><span><?= $h($t('f_notes')) ?></span><textarea name="notes" rows="2"><?= $h($r['notes'] ?? '') ?></textarea></label>
+      <button class="btn"><?= $h($t('save')) ?></button>
+    </form>
+  </td></tr>
+  <?php endif; ?>
 <?php endforeach; ?>
 </tbody></table>

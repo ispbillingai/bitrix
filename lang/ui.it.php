@@ -327,6 +327,8 @@ return [
     'lead_converted' => 'Convertito in trattativa',
     'deal_new'       => 'Nuova trattativa',
     'contact_new'    => 'Nuovo contatto',
+    'contact_edit'   => 'Modifica',
+    'contact_close'  => 'Chiudi',
     'portal_send'    => 'Invia accesso portale',
     'portal_confirm' => 'Inviare al cliente il link al suo portale (email + WhatsApp)?',
     'portal_signed'  => 'Firmato',

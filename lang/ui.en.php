@@ -327,6 +327,8 @@ return [
     'lead_converted' => 'Converted to deal',
     'deal_new'       => 'New deal',
     'contact_new'    => 'New contact',
+    'contact_edit'   => 'Edit',
+    'contact_close'  => 'Close',
     'portal_send'    => 'Send portal access',
     'portal_confirm' => 'Send the customer a link to their portal (email + WhatsApp)?',
     'portal_signed'  => 'Signed',

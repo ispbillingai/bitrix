@@ -720,7 +720,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // ---------- contacts ----------
             case 'contact_create':
                 Contacts::create([
-                    'name' => Contacts::fullName((string)($_POST['first_name'] ?? ''), (string)($_POST['last_name'] ?? '')),
+                    'first_name' => $_POST['first_name'] ?? '', 'last_name' => $_POST['last_name'] ?? '',
+                    'company' => $_POST['company'] ?? '',
+                    'phone' => $_POST['phone'] ?? '', 'email' => $_POST['email'] ?? '',
+                    'lang' => $_POST['lang'] ?? null, 'notes' => $_POST['notes'] ?? '',
+                ]);
+                $flash = $t('saved');
+                $tab = 'contacts';
+                break;
+
+            // The split of an older contact's name is a guess (see migration 036);
+            // this is where a wrong one gets corrected.
+            case 'contact_edit':
+                Contacts::update((int)($_POST['id'] ?? 0), [
+                    'first_name' => $_POST['first_name'] ?? '', 'last_name' => $_POST['last_name'] ?? '',
                     'company' => $_POST['company'] ?? '',
                     'phone' => $_POST['phone'] ?? '', 'email' => $_POST['email'] ?? '',
                     'lang' => $_POST['lang'] ?? null, 'notes' => $_POST['notes'] ?? '',

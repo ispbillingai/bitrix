@@ -15,12 +15,38 @@ use PDO;
 final class Contacts
 {
     /**
-     * Nome + Cognome as they are typed, into the single name that is stored.
-     * Forms ask for the two parts; contacts.name holds the one string.
+     * Nome + Cognome as they are typed, into the single joined name.
+     * contacts.name holds the join; first_name/last_name hold the parts.
      */
     public static function fullName(string $first, string $last): string
     {
         return trim(trim($first) . ' ' . trim($last));
+    }
+
+    /**
+     * The three name columns for one write, from whatever the caller passed.
+     *
+     * Callers come in two shapes and both must fill all three: the dashboard
+     * forms send first_name/last_name, while the public forms and the mailbox
+     * importer send a single name. Whichever arrives, the other is derived here
+     * rather than at each call site, so no write path can leave a row half-split.
+     *
+     * @return array{name:string, first_name:string, last_name:string}
+     */
+    public static function nameParts(array $d): array
+    {
+        $first = trim((string)($d['first_name'] ?? ''));
+        $last  = trim((string)($d['last_name'] ?? ''));
+        $name  = trim((string)($d['name'] ?? ''));
+
+        if ($first !== '' || $last !== '') {
+            $name = self::fullName($first, $last) ?: ($name ?: 'Unknown');
+            return ['name' => $name, 'first_name' => $first, 'last_name' => $last];
+        }
+
+        $name = $name ?: 'Unknown';
+        [$first, $last] = self::splitName($name);
+        return ['name' => $name, 'first_name' => $first, 'last_name' => $last];
     }
 
     /**
@@ -66,12 +92,15 @@ final class Contacts
 
     public static function create(array $d): int
     {
+        $n = self::nameParts($d);
         $stmt = Db::pdo()->prepare(
-            'INSERT INTO contacts (name, company, phone, email, lang, source, assigned_to, notes)
-             VALUES (:name, :company, :phone, :email, :lang, :source, :assigned_to, :notes)'
+            'INSERT INTO contacts (name, first_name, last_name, company, phone, email, lang, source, assigned_to, notes)
+             VALUES (:name, :first_name, :last_name, :company, :phone, :email, :lang, :source, :assigned_to, :notes)'
         );
         $stmt->execute([
-            ':name'        => trim((string)($d['name'] ?? '')) ?: 'Unknown',
+            ':name'        => $n['name'],
+            ':first_name'  => $n['first_name'],
+            ':last_name'   => $n['last_name'],
             ':company'     => $d['company'] ?? null,
             ':phone'       => trim((string)($d['phone'] ?? '')) ?: null,
             ':email'       => trim((string)($d['email'] ?? '')) ?: null,
@@ -97,9 +126,16 @@ final class Contacts
         return Db::pdo()->query("SELECT * FROM contacts ORDER BY id DESC LIMIT $limit")->fetchAll();
     }
 
+    /**
+     * Edit a contact. A caller touching any name field re-derives all three, so
+     * name can never drift out of step with the two parts it is built from.
+     */
     public static function update(int $id, array $fields): void
     {
-        $allowed = ['name', 'company', 'phone', 'email', 'lang', 'source', 'assigned_to', 'notes'];
+        if (isset($fields['first_name']) || isset($fields['last_name']) || isset($fields['name'])) {
+            $fields = array_merge($fields, self::nameParts($fields));
+        }
+        $allowed = ['name', 'first_name', 'last_name', 'company', 'phone', 'email', 'lang', 'source', 'assigned_to', 'notes'];
         $set = [];
         $args = [];
         foreach ($fields as $k => $v) {
