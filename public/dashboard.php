@@ -720,7 +720,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // ---------- contacts ----------
             case 'contact_create':
                 Contacts::create([
-                    'name' => $_POST['name'] ?? '', 'company' => $_POST['company'] ?? '',
+                    'name' => Contacts::fullName((string)($_POST['first_name'] ?? ''), (string)($_POST['last_name'] ?? '')),
+                    'company' => $_POST['company'] ?? '',
                     'phone' => $_POST['phone'] ?? '', 'email' => $_POST['email'] ?? '',
                     'lang' => $_POST['lang'] ?? null, 'notes' => $_POST['notes'] ?? '',
                 ]);

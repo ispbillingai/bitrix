@@ -12,7 +12,8 @@ $rows = \Glue\Crm\Contacts::all(300);
   <form method="post" class="card" style="margin-top:12px">
     <input type="hidden" name="do" value="contact_create">
     <div class="row">
-      <label class="fld"><span><?= $h($t('f_name')) ?></span><input name="name" required></label>
+      <label class="fld"><span><?= $h($t('f_first_name')) ?></span><input name="first_name" required></label>
+      <label class="fld"><span><?= $h($t('f_last_name')) ?></span><input name="last_name"></label>
       <label class="fld"><span><?= $h($t('f_company')) ?></span><input name="company"></label>
     </div>
     <div class="row">
