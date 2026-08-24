@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Glue\Reminder;
 
 use Glue\Config;
+use Glue\Crm\Contacts;
 use Glue\Crm\EntityResolver;
 use Glue\Db;
 use Glue\Event\Log;
@@ -474,7 +475,41 @@ final class Scheduler
             $vars['partner_email'] = (string)($p['email'] ?? '');
         }
 
-        return array_merge($vars, $payload); // payload (agent_name, when, deadline...) wins
+        $vars = array_merge($vars, $payload); // payload (agent_name, when, deadline...) wins
+
+        return $vars + self::nameVars($vars, $res);
+    }
+
+    /**
+     * {first_name} / {last_name} — and the customer_* pair — worked out AFTER the
+     * payload merge, so they are always the parts of the {name} that actually
+     * ends up in the message. A payload that addresses an agent ("the customer
+     * accepted") replaces name, and these follow it rather than contradicting it.
+     *
+     * The stored Nome/Cognome are used whenever the resolved customer_name is
+     * still the one being rendered; otherwise the name at hand is split on the
+     * usual first-space rule. `+` in the caller means a payload that sets these
+     * explicitly keeps the last word.
+     */
+    private static function nameVars(array $vars, array $res): array
+    {
+        $customer = (string)($vars['customer_name'] ?? '');
+        $stored   = [trim((string)($res['customer_first_name'] ?? '')),
+                     trim((string)($res['customer_last_name'] ?? ''))];
+
+        $useStored = ($stored[0] !== '' || $stored[1] !== '')
+            && $customer === (string)($res['customer_name'] ?? '');
+        [$cFirst, $cLast] = $useStored ? $stored : Contacts::splitName($customer);
+
+        $name = (string)($vars['name'] ?? '');
+        [$first, $last] = $name === $customer ? [$cFirst, $cLast] : Contacts::splitName($name);
+
+        return [
+            'first_name'          => $first,
+            'last_name'           => $last,
+            'customer_first_name' => $cFirst,
+            'customer_last_name'  => $cLast,
+        ];
     }
 
     /**

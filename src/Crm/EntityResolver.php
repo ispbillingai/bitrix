@@ -19,7 +19,8 @@ final class EntityResolver
 {
     /**
      * @return array{
-     *   customer_name:?string, customer_phone:?string, customer_email:?string,
+     *   customer_name:?string, customer_first_name:?string, customer_last_name:?string,
+     *   customer_phone:?string, customer_email:?string,
      *   lang:?string, stage_code:?string, assigned_to:?int,
      *   agent_name:?string, agent_phone:?string, agent_email:?string
      * }
@@ -27,7 +28,8 @@ final class EntityResolver
     public static function resolve(string $entityType, int $id): array
     {
         $base = [
-            'customer_name' => null, 'customer_phone' => null, 'customer_email' => null,
+            'customer_name' => null, 'customer_first_name' => null, 'customer_last_name' => null,
+            'customer_phone' => null, 'customer_email' => null,
             'lang' => null, 'stage_code' => null, 'assigned_to' => null,
             'agent_name' => null, 'agent_phone' => null, 'agent_email' => null,
         ];
@@ -46,6 +48,16 @@ final class EntityResolver
         $base['customer_email'] = $row['customer_email'] ?? $row['email'] ?? null;
         $base['lang']           = $row['lang'] ?? null;
         $base['stage_code']     = $row['stage_code'] ?? null;
+
+        // Nome and Cognome, for the {first_name}/{last_name} placeholders. A
+        // contact row carries them as columns; a lead/deal/appointment only
+        // denormalises the joined customer_name, so reach through contact_id for
+        // the real parts and split the joined name only when there is no contact
+        // to ask (a Sibill debtor, a SmallPay contract, a lead typed before the
+        // customer became a contact).
+        [$first, $last] = self::nameParts($row, (string)($base['customer_name'] ?? ''));
+        $base['customer_first_name'] = $first;
+        $base['customer_last_name']  = $last;
 
         // Assigned agent: leads/deals use assigned_to, appointments use agent_id.
         $agentId = (int)($row['assigned_to'] ?? $row['agent_id'] ?? 0);
@@ -127,6 +139,38 @@ final class EntityResolver
         $stmt = Db::pdo()->prepare("SELECT * FROM $table WHERE id = ?");
         $stmt->execute([$id]);
         return $stmt->fetch() ?: null;
+    }
+
+    /**
+     * The two name parts for a resolved row, best source first.
+     * @return array{0:string, 1:string}
+     */
+    private static function nameParts(array $row, string $fullName): array
+    {
+        $first = trim((string)($row['first_name'] ?? ''));
+        $last  = trim((string)($row['last_name'] ?? ''));
+        if ($first !== '' || $last !== '') {
+            return [$first, $last];
+        }
+
+        $contactId = (int)($row['contact_id'] ?? 0);
+        if ($contactId > 0) {
+            $stmt = Db::pdo()->prepare('SELECT first_name, last_name, name FROM contacts WHERE id = ?');
+            $stmt->execute([$contactId]);
+            $c = $stmt->fetch() ?: null;
+            if ($c) {
+                $first = trim((string)($c['first_name'] ?? ''));
+                $last  = trim((string)($c['last_name'] ?? ''));
+                // Only trust the contact's parts if they are parts of the SAME
+                // name — a lead's customer_name can have been edited since.
+                if (($first !== '' || $last !== '')
+                    && mb_strtolower(Contacts::fullName($first, $last)) === mb_strtolower(trim($fullName))) {
+                    return [$first, $last];
+                }
+            }
+        }
+
+        return $fullName === '' ? ['', ''] : Contacts::splitName($fullName);
     }
 
     private static function agent(int $id): ?array

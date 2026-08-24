@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Glue\Reminder;
 
 use Glue\Config;
+use Glue\Crm\Contacts;
 use Glue\Settings;
 
 /**
@@ -38,9 +39,37 @@ final class Templates
     /** Fill "{name}" style placeholders from $vars; unknown ones stay literal. */
     public static function render(string $tpl, array $vars): string
     {
+        $vars += self::nameParts($vars);
         return preg_replace_callback('/\{(\w+)\}/', static function ($m) use ($vars) {
             return array_key_exists($m[1], $vars) ? (string)$vars[$m[1]] : $m[0];
         }, $tpl) ?? $tpl;
+    }
+
+    /**
+     * Nome/Cognome for any caller that only had a whole name to give — a
+     * campaign recipient, a VAT-lock notice, the agent welcome. Without this a
+     * {last_name} written into one of those templates would go out as the
+     * literal text "{last_name}".
+     *
+     * `+=` in render() means a caller that knows the REAL stored parts (the
+     * Scheduler reads them off the contact) keeps the last word; this only ever
+     * fills a gap, by the same first-space rule used everywhere else.
+     *
+     * @return array<string,string>
+     */
+    private static function nameParts(array $vars): array
+    {
+        $out = [];
+        foreach (['name' => '', 'customer_name' => 'customer_'] as $src => $prefix) {
+            $full = trim((string)($vars[$src] ?? ''));
+            if ($full === '') {
+                continue;
+            }
+            [$first, $last] = Contacts::splitName($full);
+            $out[$prefix . 'first_name'] = $first;
+            $out[$prefix . 'last_name']  = $last;
+        }
+        return $out;
     }
 
     /** WhatsApp text for a rule_key in $lang. Dashboard override wins over the file default. */
