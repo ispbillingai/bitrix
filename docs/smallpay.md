@@ -34,17 +34,30 @@ Four identifiers, all from the SmallPay Market portal, entered in
 Identificativo del sito (definito dal chiamante)"*. It is just the container our
 paymentIds are unique within. Set once, then never changed.
 
-### The MichaelTech account (verified 2026-07-31)
+### The MichaelTech account (live since 2026-08-26)
 
-Merchant id `3050`, domain `michaeltech`, service id `00kSY00000DkYYg`. The
-first two authenticate. The third is a real service but of a type the API may
-not sell through — see **BLOCKED** below, which is the one thing still in the
-way.
+Merchant id `3050`, domain `michaeltech`, service id **`00kSY00000HeG5t`**.
+`checkSellConfigs` passes: merchant, service and gateway are all accepted.
 
-The associated service is type **Open**, duration 12, €24.90 + IVA, listed
-against a gateway named *Nexi - SDD*. The account's gateway list holds three,
-all ATTIVO: **NEXI**, **STRIPE** and **STRIPE_SDD** — so both card and SEPA
-direct-debit channels exist, and which one collects depends on the service.
+**Use the API service, not the Open one.** *Associated services* lists two, and
+only the first is drivable from here:
+
+| Crm service id | Type | Duration | Installment | Name |
+|---|---|---|---|---|
+| `00kSY00000HeG5t` | **API** | 12 | €5.00 + IVA | Chiavi API |
+| `00kSY00000DkYYg` | Open | 24 | €24.90 + IVA | Nexi - SDD |
+
+The Open one is the kind sold through the portal's own Sell screen; the API is
+refused for it (this is what blocked the integration from 2026-07-30 until
+SmallPay provisioned the API service on 2026-08-26 — see *How it was unblocked*
+below). Its €5.00 × 12 is SmallPay's own charge for API access, **not** a
+template for what customers pay: `createPosition` carries its own
+`totalAmount` / `firstPaymentAmount` / `totalRecurrences`, so a €24.90 support
+contract is filed as €24.90 against this service.
+
+The account's gateway list holds three, all ATTIVO: **NEXI**, **STRIPE** and
+**STRIPE_SDD** — so both card and SEPA direct-debit channels exist, and which
+one collects depends on the service.
 
 That is why the customer-facing copy in `lang/*.php` never names the payment
 instrument. "Your card has expired" is wrong for an SDD collection and "the
@@ -58,8 +71,7 @@ Then:
 2. Press **Test SmallPay** in Settings, or run `php bin/pay-sync.php --check`.
    This calls `checkSellConfigs` (§3.3), which validates merchant + service +
    gateway and creates nothing. It is the only SmallPay call that is safe to
-   fire at a live account out of curiosity. **On the MichaelTech account this
-   cannot pass yet — see "BLOCKED" below; the service is of the wrong type.**
+   fire at a live account out of curiosity.
 3. Switch **Enable** on and rehearse a full contract on staging.
 4. Only then move Environment to *Live*.
 
@@ -172,16 +184,25 @@ first transaction — which is unambiguous for a fixed plan (`first + amount × 
 but says nothing about the perpetual case, where there is no N.
 
 This code sends `first + one monthly quota` and expects SmallPay to repeat that
-quota for as long as the mandate lives (`Contracts::file()`). **Confirm this
-against a real merchant account before going live**, and check the first
-month's collected amount against what was intended. If FlexPay turns out not to
-be enabled on the account at all, sell the support contract as `installments`
-with 12 / 24 / 36 rates instead — that path is unambiguous in the spec and needs
-no code change.
+quota for as long as the mandate lives (`Contracts::file()`). **Still unanswered
+as of 2026-08-26** — it could not be tested while the account had no API service,
+and no position has been filed since. So: file the first real contract, then
+`php bin/pay-sync.php --id=N` and read the planned schedule back before letting
+a customer near it. If FlexPay turns out not to be enabled on the account at
+all, sell the support contract as `installments` with 12 / 24 / 36 rates
+instead — that path is unambiguous in the spec and needs no code change.
 
-## BLOCKED: the account has no service the API may drive
+The same first position answers a second unknown: the API service carries
+**duration 12**, and it is not documented whether that caps the rate count of
+positions filed against it. A 24- or 36-month plan may be refused. Nothing to
+do about it until a position proves it either way.
 
-Tested live on 2026-07-31 with the correct service id `00kSY00000DkYYg`:
+## How it was unblocked (2026-07-30 → 2026-08-26)
+
+For four weeks every sale call bounced. The credentials were right the whole
+time; the account simply had nothing the API was allowed to sell through.
+Tested live on 2026-07-31 against the only service then associated,
+`00kSY00000DkYYg`:
 
 | Call | SmallPay's answer |
 |---|---|
@@ -190,33 +211,23 @@ Tested live on 2026-07-31 with the correct service id `00kSY00000DkYYg`:
 | §3.1 create position, 12 rates | `400 — serviceSmallpay type not accepted` |
 
 The spec's own error table explains it: *"Il serviceSmallpay in request deve
-essere uno dei seguenti tipi: **API, UComm, Ecommerce**"*. The service on this
-account is type **Open** — the kind sold through the portal's own Sell screen,
-not through an integration. So the credentials are right and the code reaches
-SmallPay cleanly; there is simply nothing on the account the API is allowed to
-sell through.
+essere uno dei seguenti tipi: **API, UComm, Ecommerce**"*. That service is type
+**Open** — the kind sold through the portal's own Sell screen, not through an
+integration.
 
-**Only SmallPay can unblock it.** Every self-service route in the portal was
-checked on 2026-07-31 and none of them can create one:
+Nothing in the portal could fix it: *Services → Available services* was empty,
+*SmallPay Integration* is only the JS button configurator plus the WooCommerce
+and PrestaShop plugins, and the API's nine operations are all payment
+operations — none creates a service. Only SmallPay could, and did: asked
+through *Require support*, they provisioned **Chiavi API** (type API, 12 ×
+€5.00 + IVA) on **2026-08-26**, announced in the portal as *"The API service has
+been activated. The invoice will be visible within the next 48 hours."*
 
-- **Services → Available services** is *empty* ("The search did not return any
-  results"), so there is nothing to buy or switch on.
-- **SmallPay Integration** is only the JS button configurator plus the
-  WooCommerce and PrestaShop plugins — no API toggle.
-- **Manage gateways** already lists NEXI, STRIPE and STRIPE_SDD, all ATTIVO, so
-  the gateway half of `checkSellConfigs` is satisfied. Gateways are not the
-  problem.
-- The API itself has no endpoint that creates a service — the spec's nine
-  operations are all payment operations.
-
-So: ask SmallPay (*Require support* in the portal, or smallpay@lynxspa.com) to
-provision a service of type **API** for merchant 3050, mirroring the existing
-one's terms (12 × €24.90 + IVA). Put its *Crm service id* into Settings →
-SmallPay and the connection test should go green.
-
-Everything else is already proven: merchant id, unique id and domain all
-authenticate, and the two refusals above are business rejections from
-SmallPay's application layer, not transport, signature or routing errors.
+The lesson, if this recurs on another merchant: the activation creates a
+**second, separate row** in *Associated services* with its own *Crm service id*.
+It does not convert the existing service, and nothing changes on our side until
+that new id is pasted into Settings → SmallPay. `checkSellConfigs` went green
+the moment it was.
 
 ### An earlier wrong conclusion, for the record
 
@@ -249,7 +260,7 @@ bin/pay-sync.php                   --check / --id=N / full refresh
 | Symptom | Cause |
 |---|---|
 | `Unauthorized: Hash generation error` | `unique_id` wrong, or the wrong per-endpoint hash fields |
-| `serviceSmallpay type not accepted` | the service is not type API / UComm / Ecommerce — see BLOCKED above |
+| `serviceSmallpay type not accepted` | the service is not type API / UComm / Ecommerce — you are pointed at the Open service, not the API one |
 | `serviceSmallpay not accepted for merchant: N` | same cause, as §3.3 words it |
 | `500 For input string: "<service id>"` | the service id does not exist — check for `o` vs `0` |
 | `Payment number … already exists` | that reference was filed before; the code adopts the existing position instead of opening a second |
