@@ -391,6 +391,14 @@ final class Scheduler
         if ($everyH <= 0) {
             return;
         }
+        // The uncontacted-lead nudges follow the Settings cadence, so read the
+        // CURRENT value rather than copying the row's. Each row used to carry the
+        // interval forward, which froze every in-flight chain at whatever the
+        // setting was when the lead came in — raising it in Settings changed
+        // nothing for leads already being nudged (still twice a day at 360h).
+        if (self::isLeadNudge($r)) {
+            $everyH = self::leadNudgeHours();
+        }
         // Deterministic occurrence time: step the ROW's due_at forward by whole
         // intervals until it lands in the future. Using time() here made the
         // dedupe key differ between two racing dispatchers (1s apart), forking
@@ -417,6 +425,53 @@ final class Scheduler
             'lang'           => $r['lang'] ?? null,
             'dedupe_key'     => $base . ':@' . $nextTs,
         ], false); // pure-queue: never send inline from the dispatcher
+    }
+
+    /** Rules whose repeat interval is reminders.lead_nudge_repeat_hours. */
+    public const LEAD_NUDGE_RULES = ['lead_inactivity', 'lead_uncontacted_customer'];
+
+    private static function isLeadNudge(array $r): bool
+    {
+        return ($r['entity_type'] ?? '') === 'lead'
+            && in_array((string)($r['rule_key'] ?? ''), self::LEAD_NUDGE_RULES, true);
+    }
+
+    public static function leadNudgeHours(): int
+    {
+        return max(1, (int)Config::get('reminders.lead_nudge_repeat_hours', 12));
+    }
+
+    /**
+     * Apply a new lead-nudge cadence to the chains already in flight. Every chain
+     * has exactly one pending row, timed one OLD interval after its last send;
+     * move it to one NEW interval after that send instead, so a longer cadence
+     * takes effect now — not after one more nudge at the old pace. A shorter
+     * cadence can land the row in the past, which just makes it due now.
+     * Returns the number of rows re-timed.
+     */
+    public function retimeLeadNudges(int $newHours): int
+    {
+        $newHours = max(1, $newHours);
+        $in = "'" . implode("','", self::LEAD_NUDGE_RULES) . "'";
+        $stmt = $this->db->prepare(
+            "UPDATE reminders
+                SET due_at = DATE_ADD(DATE_SUB(due_at, INTERVAL COALESCE(repeat_every_hours, :old_default) HOUR),
+                                      INTERVAL :new_hours HOUR),
+                    repeat_every_hours = :new_hours2
+              WHERE status = 'pending' AND entity_type = 'lead' AND rule_key IN ($in)
+                AND COALESCE(repeat_every_hours, 0) <> :new_hours3"
+        );
+        $stmt->execute([
+            ':old_default' => $newHours,
+            ':new_hours'   => $newHours,
+            ':new_hours2'  => $newHours,
+            ':new_hours3'  => $newHours,
+        ]);
+        $n = $stmt->rowCount();
+        if ($n > 0) {
+            Log::write('scheduler', 'lead_nudges_retimed', 'setting', 0, ['hours' => $newHours, 'rows' => $n]);
+        }
+        return $n;
     }
 
     /**

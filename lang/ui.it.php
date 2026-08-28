@@ -44,6 +44,7 @@ return [
     'save'           => 'Salva',
     'saved'          => 'Salvato.',
     'settings_saved_n' => 'campi salvati',
+    'lead_nudges_retimed' => '%d solleciti lead in coda spostati alla nuova cadenza',
     'not_allowed'    => 'Non hai i permessi per questa azione.',
     'configured'     => 'Configurato',
     'not_configured' => 'Non configurato',

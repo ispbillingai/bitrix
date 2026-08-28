@@ -362,11 +362,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $pairs[$lk] = $nums ? json_encode($nums) : '';
                     }
                 }
+                $prevNudgeH = Scheduler::leadNudgeHours();
                 Settings::setMany($pairs);
                 // Config was overlaid once at boot; re-apply so the form below this
                 // request reflects the values we just saved (not the pre-save snapshot).
                 Config::applyOverlay(Settings::nested());
                 $flash = $t('saved') . ' · ' . count($pairs) . ' ' . $t('settings_saved_n');
+                // A new lead-nudge cadence must reach the chains already running,
+                // or the leads being nudged today keep their old pace for good.
+                if (Scheduler::leadNudgeHours() !== $prevNudgeH) {
+                    $retimed = (new Scheduler())->retimeLeadNudges(Scheduler::leadNudgeHours());
+                    if ($retimed > 0) {
+                        $flash .= ' · ' . sprintf($t('lead_nudges_retimed'), $retimed);
+                    }
+                }
                 $tab = 'settings';
                 break;
 

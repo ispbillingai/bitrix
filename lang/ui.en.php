@@ -44,6 +44,7 @@ return [
     'save'           => 'Save',
     'saved'          => 'Saved.',
     'settings_saved_n' => 'fields saved',
+    'lead_nudges_retimed' => '%d pending lead nudges moved to the new cadence',
     'not_allowed'    => 'You do not have permission for that action.',
     'configured'     => 'Configured',
     'not_configured' => 'Not configured',
