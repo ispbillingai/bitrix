@@ -104,6 +104,89 @@ final class Forwards
         return self::RESERVED_PORTS;
     }
 
+    /**
+     * Ports one router's OWN dst-nat rules already answer on — read-only.
+     *
+     * The customers' routers came with hand-made forwards (Cisbu Mugnano was
+     * already using 81, La Scogliera a dozen more), so a port that looks free
+     * in our table is often taken on the box. The form asks for this before
+     * suggesting one; a router we cannot reach just falls back to our own
+     * records, and the save-time check still guards it.
+     *
+     * @return array{ok:bool,ports:int[],error?:string}
+     */
+    public static function routerPorts(int $areaId): array
+    {
+        $stmt = Db::pdo()->prepare("SELECT * FROM network_areas WHERE id = ?");
+        $stmt->execute([$areaId]);
+        $area = $stmt->fetch();
+        if (!$area) {
+            return ['ok' => false, 'ports' => [], 'error' => 'not_found'];
+        }
+
+        try {
+            $api = Monitor::connect([
+                'host' => (string)$area['host'], 'port' => (int)$area['api_port'],
+                'user' => (string)$area['api_user'], 'pass' => (string)$area['api_pass'],
+            ]);
+            try {
+                $rules = $api->command('/ip/firewall/nat/print');
+            } finally {
+                $api->close();
+            }
+        } catch (Throwable $e) {
+            return ['ok' => false, 'ports' => [], 'error' => $e->getMessage()];
+        }
+
+        $iface = self::iface(['vpn_interface' => $area['vpn_interface'] ?? '']);
+        $ports = [];
+        foreach ($rules as $rule) {
+            if (($rule['chain'] ?? '') !== 'dstnat' || ($rule['disabled'] ?? 'false') === 'true') {
+                continue;
+            }
+            $ruleIface = (string)($rule['in-interface'] ?? '');
+            if ($ruleIface !== '' && $ruleIface !== $iface) {
+                continue; // arrives somewhere else entirely — not our lane
+            }
+            foreach (self::expandPorts((string)($rule['dst-port'] ?? '')) as $p) {
+                $ports[$p] = true;
+            }
+        }
+        ksort($ports);
+        return ['ok' => true, 'ports' => array_keys($ports)];
+    }
+
+    /**
+     * RouterOS writes dst-port as a single port, a comma list, or a range
+     * ("81", "81,90", "8000-8010"). Expand to the ports it actually covers.
+     * Ranges are capped so a "1-65535" rule cannot blow up memory.
+     *
+     * @return int[]
+     */
+    private static function expandPorts(string $spec): array
+    {
+        $out = [];
+        foreach (explode(',', $spec) as $part) {
+            $part = trim($part);
+            if ($part === '') {
+                continue;
+            }
+            if (strpos($part, '-') !== false) {
+                [$from, $to] = array_map('intval', explode('-', $part, 2));
+                if ($from > $to) {
+                    [$from, $to] = [$to, $from];
+                }
+                $to = min($to, $from + 4096);
+                for ($p = max(1, $from); $p <= $to && $p <= 65535; $p++) {
+                    $out[] = $p;
+                }
+            } elseif (ctype_digit($part)) {
+                $out[] = (int)$part;
+            }
+        }
+        return $out;
+    }
+
     /** http://<router VPN address>:<port><path> — the link a technician clicks. */
     public static function url(array $row): string
     {
@@ -366,7 +449,8 @@ final class Forwards
             if (($rule['chain'] ?? '') !== 'dstnat' || ($rule['disabled'] ?? 'false') === 'true') {
                 continue;
             }
-            if ((string)($rule['dst-port'] ?? '') !== (string)$port) {
+            // dst-port may be a list or a range, not just a single number.
+            if (!in_array($port, self::expandPorts((string)($rule['dst-port'] ?? '')), true)) {
                 continue;
             }
             // A rule with no in-interface matches every interface, ours included.

@@ -102,7 +102,8 @@ $statusPill = static function (string $s) use ($t): array {
       <label class="fld"><span><?= $h($t('ra_port')) ?></span><input id="ra_port" type="number" min="1" max="65535" oninput="raPreview()"></label>
       <label class="fld"><span><?= $h($t('ra_to_port')) ?></span><input id="ra_to_port" type="number" min="1" max="65535" value="80" oninput="raPreview()"></label>
     </div>
-    <p class="muted small" style="margin:-6px 0 10px"><?= $h($t('ra_port_hint')) ?></p>
+    <p class="muted small" style="margin:-6px 0 4px"><?= $h($t('ra_port_hint')) ?></p>
+    <p class="muted small" id="ra_taken" style="margin:0 0 10px"></p>
     <label class="fld"><span><?= $h($t('ra_path')) ?></span><input id="ra_path" placeholder="<?= $h(Forwards::CASHMATIC_PATH) ?>" oninput="raPreview()"></label>
     <p class="muted small" style="margin:-6px 0 10px"><?= $h($t('ra_path_hint')) ?></p>
     <div class="ra-preview">
@@ -149,6 +150,7 @@ var RA = {
   devices:  <?= json_encode($devByArea, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>,
   hosts:    <?= json_encode($hostByArea, JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>,
   used:     <?= json_encode(Forwards::usedPorts()) ?>,
+  routerPorts: {},
   reserved: <?= json_encode(Forwards::reservedPorts()) ?>,
   portMin:  <?= (int)Forwards::PORT_MIN ?>,
   cashPath: <?= json_encode(Forwards::CASHMATIC_PATH) ?>,
@@ -157,6 +159,10 @@ var RA = {
   edit:     <?= json_encode($t('ra_edit_title')) ?>,
   pick:     <?= json_encode($t('ra_pick_customer')) ?>,
   noDev:    <?= json_encode($t('ra_no_devices')) ?>,
+  taken:    <?= json_encode($t('ra_ports_taken')) ?>,
+  takenNone:<?= json_encode($t('ra_ports_free')) ?>,
+  takenErr: <?= json_encode($t('ra_ports_unknown')) ?>,
+  checking: <?= json_encode($t('ra_ports_checking')) ?>,
   delConfirm: <?= json_encode($t('ra_delete_confirm')) ?>,
   delForce:   <?= json_encode($t('ra_delete_force')) ?>,
   applied:    <?= json_encode($t('ra_applied')) ?>,
@@ -196,16 +202,50 @@ function raFillDevices(keepDevice){
     sel.appendChild(o);
   });
   if(keepDevice){ sel.value = String(keepDevice); }
-  if(!raEl('ra_port').value){ raEl('ra_port').value = raSuggestPort(area); }
+  if(!raEl('ra_port').value){ raSetSuggestion(area); }
+  raLoadRouterPorts(area);
   raPreview();
 }
 
-// Lowest port from 81 up that is neither a router service nor already taken on
-// this router. Editable — the technician can still type their own.
+// These customers' routers came with hand-made forwards, so a port that is free
+// in our table is often taken on the box. Ask the router, then re-suggest. A
+// router we cannot reach just leaves the CRM-only suggestion standing.
+var raPortsSeq = 0;
+function raLoadRouterPorts(area){
+  var out = raEl('ra_taken');
+  raPortsSeq++;
+  var seq = raPortsSeq;
+  if(!area){ out.textContent = ''; return; }
+  out.textContent = RA.checking;
+  fetch('device-api.php?what=router_ports&area_id=' + encodeURIComponent(area), {headers:{'Accept':'application/json'}})
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      if(seq !== raPortsSeq){ return; } // a later customer choice won
+      if(!j || !j.ok){ out.textContent = RA.takenErr; return; }
+      RA.routerPorts[area] = j.ports || [];
+      out.textContent = j.ports.length ? (RA.taken + ' ' + j.ports.join(', ')) : RA.takenNone;
+      // Only correct a port we suggested ourselves, never one that was typed.
+      if(raEl('ra_port').value && String(raEl('ra_port').value) === String(raEl('ra_port').dataset.suggested)){
+        raSetSuggestion(area);
+      }
+    })
+    .catch(function(){ if(seq === raPortsSeq){ out.textContent = RA.takenErr; } });
+}
+
+function raSetSuggestion(area){
+  var p = raSuggestPort(area);
+  raEl('ra_port').value = p;
+  raEl('ra_port').dataset.suggested = String(p);
+  raPreview();
+}
+
+// Lowest port from 81 up that is neither a router service, nor already used by
+// another access, nor already forwarded by the customer themselves.
 function raSuggestPort(area){
   var used = (area && RA.used[area]) ? RA.used[area] : [];
+  var onBox = (area && RA.routerPorts[area]) ? RA.routerPorts[area] : [];
   for(var p = RA.portMin; p <= 65535; p++){
-    if(RA.reserved.indexOf(p) === -1 && used.indexOf(p) === -1){ return p; }
+    if(RA.reserved.indexOf(p) === -1 && used.indexOf(p) === -1 && onBox.indexOf(p) === -1){ return p; }
   }
   return RA.portMin;
 }
@@ -236,6 +276,7 @@ function raPreview(){
 function raOpen(area, device){
   raEl('raModalTitle').textContent = RA.add;
   raEl('ra_id').value = ''; raEl('ra_port').value = ''; raEl('ra_to_port').value = 80; raEl('ra_path').value = '';
+  delete raEl('ra_port').dataset.suggested; raEl('ra_taken').textContent = '';
   raEl('ra_area').value = area ? String(area) : '';
   raFillDevices(device);
   raEl('raModalBg').classList.add('show');
@@ -244,6 +285,7 @@ function raEdit(f){
   raEl('raModalTitle').textContent = RA.edit;
   raEl('ra_id').value = f.id; raEl('ra_area').value = String(f.area_id);
   raEl('ra_port').value = f.dst_port; raEl('ra_to_port').value = f.to_port; raEl('ra_path').value = f.url_path || '';
+  delete raEl('ra_port').dataset.suggested; // this port was chosen, not suggested
   raFillDevices(f.device_id);
   raEl('raModalBg').classList.add('show');
 }

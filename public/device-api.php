@@ -9,6 +9,7 @@ declare(strict_types=1);
  *   POST {action:"poll"}      -> poll all routers now, then return status
  *   POST {action:"test", area_id:N} -> test-connect one router
  *   GET  ?what=forwards       -> remote-access NAT rules, with their links
+ *   GET  ?what=router_ports&area_id=N -> ports that router's own rules use (admin)
  *   POST {action:"save_area", ...}  -> add/edit a router (admin only)
  *   POST {action:"delete_area", id:N} -> remove a router (admin only)
  *   POST {action:"save_forward", ...}   -> add/edit a NAT rule + push it (admin only)
@@ -72,6 +73,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
     }
     if ($what === 'forwards') {
         echo json_encode(['ok' => true, 'forwards' => Forwards::all()]);
+        exit;
+    }
+    // Ports one router's own rules already use, so the form can suggest a free
+    // one. Reads the customer's router, so it stays with the admin.
+    if ($what === 'router_ports') {
+        if (!$isAdmin) {
+            http_response_code(403);
+            echo json_encode(['ok' => false, 'error' => 'forbidden']);
+            exit;
+        }
+        echo json_encode(Forwards::routerPorts((int)($_GET['area_id'] ?? 0)));
         exit;
     }
     echo json_encode(['ok' => true, 'devices' => $statusRows(), 'timestamp' => time()]);
