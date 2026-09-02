@@ -353,8 +353,7 @@ var ACC = {
     no_free_port:<?= json_encode($t('dev_acc_no_port')) ?>,
     reserved_port:<?= json_encode($t('ra_err_reserved')) ?>,
     port_taken:<?= json_encode($t('ra_err_port_taken')) ?>,
-    port_busy_on_router:<?= json_encode($t('ra_err_busy')) ?>
-  },
+    port_busy_on_router:<?= json_encode($t('ra_err_busy')) ?>,
     bad_port:<?= json_encode($t('ra_err_port')) ?>,
     bad_to_port:<?= json_encode($t('ra_err_port')) ?>,
     bad_path:<?= json_encode($t('ra_err_path')) ?>,
