@@ -516,11 +516,12 @@ return [
     'na_alert_hint'    => 'When a device here goes offline or comes back, a WhatsApp message is sent to this number. Leave blank for no alerts.',
     'na_bad_phone'     => 'Enter a valid phone number in international format (e.g. +393331234567).',
     'na_vpn_iface'     => 'VPN interface',
-    'na_vpn_iface_hint'=> 'Name of the WireGuard interface on this router. Remote-access rules only accept traffic arriving on it.',
+    'na_vpn_iface_hint'=> 'Interface the remote-access rules listen on. Detected automatically from the router address above — only set it by hand if that fails.',
 
     'ra_status_error'  => 'Not applied',
     'ra_err_no_router' => 'This device is not assigned to a router yet.',
     'ra_err_port_taken'=> 'That port is already used by another access on this router.',
+    'ra_err_iface'     => 'The CRM could not work out which VPN interface this router receives on. Set it by hand on the Network areas page.',
     'ra_err_reserved'  => 'That port is used by the router itself. Pick another one.',
     'ra_err_busy'      => 'The router already has its own NAT rule on that port. Pick another one.',
     'ra_err_unreachable'=> 'The router could not be reached, so the rule was not written. It is saved — use Re-apply once the VPN is back.',

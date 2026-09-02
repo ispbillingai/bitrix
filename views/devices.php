@@ -180,11 +180,13 @@ $ago = function (?string $ts) use ($t): string {
 .dev-down{background:var(--red-bg,rgba(229,97,110,.13));color:var(--red,#e5616e);}
 .dev-unk{background:var(--amber-bg,rgba(217,164,10,.13));color:var(--amber,#d9a40a);}
 #devTable .mono,#devLog .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
-.dev-row-actions{display:flex;gap:6px;align-items:center;justify-content:flex-end;white-space:nowrap;}
+/* No justify-content and no forced width: a right-aligned flex row inside a
+   cell narrower than its content spills out the LEFT, drawing the buttons over
+   the Last check column. Let the cell size itself to the buttons instead. */
+.dev-row-actions{display:flex;gap:6px;align-items:center;white-space:nowrap;}
 .acc-open{color:var(--accent,#5b6cff);border-color:var(--accent,#5b6cff);}
 .acc-x{padding:4px 7px;line-height:1;color:var(--muted,#8b95a7);}
 .acc-x:hover{color:var(--red,#e5616e);}
-#devTable td:last-child{width:1%;}
 #devTable td,#devTable th{padding:11px 12px;}
 #devTable .cell-seen,#devTable .cell-checked{white-space:nowrap;}
 .btn.tiny{padding:4px 9px;font-size:12px;} .btn.danger{color:var(--red,#e5616e);}
@@ -308,12 +310,14 @@ var ACC = {
     port_taken:<?= json_encode($t('ra_err_port_taken')) ?>,
     port_busy_on_router:<?= json_encode($t('ra_err_busy')) ?>
   },
+  iface:<?= json_encode($t('ra_err_iface')) ?>,
   unreachable:<?= json_encode($t('ra_err_unreachable')) ?>
 };
 function accMsg(code){
   if(!code){ return 'error'; }
   if(ACC.errs[code]){ return ACC.errs[code]; }
   if(code.indexOf('router_unreachable') === 0){ return ACC.unreachable + '\n\n' + code; }
+  if(code.indexOf('vpn_interface_not_found') === 0){ return ACC.iface + '\n\n' + code; }
   return code;
 }
 function accPost(body, btn, done){

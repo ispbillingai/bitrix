@@ -516,11 +516,12 @@ return [
     'na_alert_hint'    => 'Quando un dispositivo va offline o torna online, viene inviato un messaggio WhatsApp a questo numero. Lascia vuoto per non ricevere avvisi.',
     'na_bad_phone'     => 'Inserisci un numero valido in formato internazionale (es. +393331234567).',
     'na_vpn_iface'     => 'Interfaccia VPN',
-    'na_vpn_iface_hint'=> 'Nome dell’interfaccia WireGuard su questo router. Le regole di accesso remoto accettano solo il traffico che arriva da lì.',
+    'na_vpn_iface_hint'=> 'Interfaccia su cui ascoltano le regole di accesso remoto. Rilevata da sola dall’indirizzo del router qui sopra: impostala a mano solo se il rilevamento fallisce.',
 
     'ra_status_error'  => 'Non applicata',
     'ra_err_no_router' => 'Questo dispositivo non è ancora assegnato a un router.',
     'ra_err_port_taken'=> 'Quella porta è già usata da un altro accesso su questo router.',
+    'ra_err_iface'     => 'Il CRM non ha capito su quale interfaccia VPN riceve questo router. Impostala a mano nella pagina Aree di rete.',
     'ra_err_reserved'  => 'Quella porta è usata dal router stesso. Scegline un’altra.',
     'ra_err_busy'      => 'Il router ha già una sua regola NAT su quella porta. Scegline un’altra.',
     'ra_err_unreachable'=> 'Il router non è raggiungibile, quindi la regola non è stata scritta. È salvata: usa Riapplica quando la VPN torna.',

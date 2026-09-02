@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Glue\Devices;
 
 use Glue\Db;
+use RuntimeException;
 use Throwable;
 
 /**
@@ -130,6 +131,9 @@ final class Forwards
                 'user' => (string)$area['api_user'], 'pass' => (string)$area['api_pass'],
             ]);
             try {
+                $configured = self::iface(['vpn_interface' => $area['vpn_interface'] ?? '']);
+                $iface = self::resolveInterface($api, (string)$area['host'], $configured);
+                self::rememberInterface($areaId, $iface, $configured);
                 $rules = $api->command('/ip/firewall/nat/print');
             } finally {
                 $api->close();
@@ -138,7 +142,6 @@ final class Forwards
             return ['ok' => false, 'ports' => [], 'error' => $e->getMessage()];
         }
 
-        $iface = self::iface(['vpn_interface' => $area['vpn_interface'] ?? '']);
         $ports = [];
         foreach ($rules as $rule) {
             if (($rule['chain'] ?? '') !== 'dstnat' || ($rule['disabled'] ?? 'false') === 'true') {
@@ -372,9 +375,11 @@ final class Forwards
             return self::fail($id, 'router_unreachable: ' . $e->getMessage());
         }
 
-        $tag   = self::tag($id);
-        $iface = self::iface($row);
+        $tag = self::tag($id);
         try {
+            $iface = self::resolveInterface($api, (string)$row['area_host'], self::iface($row));
+            self::rememberInterface((int)$row['area_id'], $iface, self::iface($row));
+
             self::dropOurRules($api, $tag);
 
             // Someone else's rule already owns this port on this interface: two
@@ -493,6 +498,64 @@ final class Forwards
     {
         $iface = trim((string)($row['vpn_interface'] ?? ''));
         return $iface !== '' ? $iface : self::DEFAULT_INTERFACE;
+    }
+
+    /**
+     * The interface our traffic actually arrives on: whichever one holds the
+     * address the CRM dials. Not a guess — a dst-nat rule matching any other
+     * interface simply never fires.
+     *
+     * The name is not "WIREGUARD" everywhere. Of the six routers in service,
+     * four call it WIREGUARD, La Scogliera calls it wg2 and BRADEM wg1 — and
+     * the four that do have a WIREGUARD also have a wg1 carrying a different
+     * tunnel, so picking by name would have been wrong there too. Asking the
+     * router which interface owns 192.168.200.x answers it exactly.
+     *
+     * Falls back to the configured name when the address cannot be matched (a
+     * hostname rather than an IP, say), and only if the router really has an
+     * interface by that name. Otherwise it throws, naming the candidates.
+     */
+    private static function resolveInterface(RouterOsApi $api, string $host, string $configured): string
+    {
+        $host = trim($host);
+        foreach ($api->command('/ip/address/print') as $a) {
+            if (($a['disabled'] ?? 'false') === 'true') {
+                continue;
+            }
+            $addr = explode('/', (string)($a['address'] ?? ''))[0];
+            if ($addr !== '' && $addr === $host) {
+                $iface = trim((string)($a['interface'] ?? ''));
+                if ($iface !== '') {
+                    return $iface;
+                }
+            }
+        }
+
+        $names = [];
+        foreach ($api->command('/interface/print') as $i) {
+            $name = (string)($i['name'] ?? '');
+            if ($name === $configured) {
+                return $configured;
+            }
+            if (($i['type'] ?? '') === 'wg') {
+                $names[] = $name;
+            }
+        }
+        throw new RuntimeException(sprintf(
+            'vpn_interface_not_found: this router has no interface "%s"%s',
+            $configured,
+            $names ? ' — its VPN interfaces are: ' . implode(', ', $names) : ''
+        ));
+    }
+
+    /** Remember the resolved name so the router page shows what is really used. */
+    private static function rememberInterface(int $areaId, string $iface, string $was): void
+    {
+        if ($iface === $was || $areaId <= 0) {
+            return;
+        }
+        Db::pdo()->prepare("UPDATE network_areas SET vpn_interface = ? WHERE id = ?")
+            ->execute([$iface, $areaId]);
     }
 
     /** Is an enabled dstnat rule we don't own already listening on this port? */
