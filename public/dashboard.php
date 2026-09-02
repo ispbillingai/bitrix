@@ -1216,7 +1216,7 @@ $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_forma
 
 $views = ['overview', 'leads', 'deals', 'contacts', 'appointments', 'tasks', 'tickets', 'documents',
           'invoices', 'payments', 'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents',
-          'partners', 'devices', 'network_areas', 'settings', 'instructions'];
+          'partners', 'devices', 'network_areas', 'remote_access', 'settings', 'instructions'];
 $view = in_array($tab, $views, true) ? $tab : 'overview';
 // Agents can't reach admin views, even by typing the URL.
 if ($isAgent && !in_array($view, $agentViews, true)) {
@@ -1229,8 +1229,9 @@ if ($isTech) {
         $view = 'devices';
         $tab  = 'devices';
     }
-    // network_areas edits credentials — keep it admin-only even for tech.
-    if ($view === 'network_areas') {
+    // network_areas edits credentials and remote_access rewrites the customer's
+    // router config — both stay admin-only even for tech.
+    if ($view === 'network_areas' || $view === 'remote_access') {
         $view = 'devices';
         $tab  = 'devices';
     }
@@ -1272,6 +1273,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
         'campaigns' => 'nav_campaigns', 'messages' => 'nav_messages', 'outbound' => 'nav_outbound',
         'reminders' => 'nav_reminders', 'templates' => 'nav_templates',
         'devices' => 'nav_devices', 'network_areas' => 'nav_network_areas',
+        'remote_access' => 'nav_remote_access',
         'events' => 'nav_events', 'agents' => 'nav_agents', 'partners' => 'nav_partners', 'instructions' => 'nav_instr', 'settings' => 'nav_settings',
     ];
     if ($isAgent) { // agents only see their own work

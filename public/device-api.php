@@ -8,16 +8,22 @@ declare(strict_types=1);
  *   GET  ?what=log&limit=100  -> disconnection log (device_events, newest first)
  *   POST {action:"poll"}      -> poll all routers now, then return status
  *   POST {action:"test", area_id:N} -> test-connect one router
+ *   GET  ?what=forwards       -> remote-access NAT rules, with their links
  *   POST {action:"save_area", ...}  -> add/edit a router (admin only)
  *   POST {action:"delete_area", id:N} -> remove a router (admin only)
+ *   POST {action:"save_forward", ...}   -> add/edit a NAT rule + push it (admin only)
+ *   POST {action:"apply_forward", id:N} -> re-push one NAT rule (admin only)
+ *   POST {action:"delete_forward", id:N, force:0|1} -> remove it (admin only)
  *
  * Auth: reuses the dashboard session. Read + poll/test are open to admin and
- * tech roles; area create/edit/delete are admin-only.
+ * tech roles; area, device and NAT-rule writes are admin-only — a NAT rule
+ * changes the customer's router config, so it stays with the admin.
  */
 require __DIR__ . '/../src/Bootstrap.php';
 
 use Glue\Bootstrap;
 use Glue\Db;
+use Glue\Devices\Forwards;
 use Glue\Devices\Monitor;
 
 Bootstrap::init();
@@ -62,6 +68,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET') {
               ORDER BY e.id DESC LIMIT $limit"
         )->fetchAll();
         echo json_encode(['ok' => true, 'log' => $rows]);
+        exit;
+    }
+    if ($what === 'forwards') {
+        echo json_encode(['ok' => true, 'forwards' => Forwards::all()]);
         exit;
     }
     echo json_encode(['ok' => true, 'devices' => $statusRows(), 'timestamp' => time()]);
@@ -122,6 +132,8 @@ if ($action === 'save_area') {
     $sort  = (int)($input['sort_order'] ?? 0);
     $active = !empty($input['active']) ? 1 : 0;
     $alertPhone = trim((string)($input['alert_phone'] ?? ''));
+    // WireGuard interface name the remote-access NAT rules match on.
+    $iface = trim((string)($input['vpn_interface'] ?? '')) ?: Forwards::DEFAULT_INTERFACE;
 
     if ($name === '' || $host === '') {
         echo json_encode(['ok' => false, 'error' => 'required']);
@@ -138,15 +150,15 @@ if ($action === 'save_area') {
 
     if ($id > 0) {
         if ($pass === '') { // keep stored password when left blank
-            $pdo->prepare("UPDATE network_areas SET name=?, host=?, api_port=?, api_user=?, ping_count=?, active=?, sort_order=?, alert_phone=? WHERE id=?")
-                ->execute([$name, $host, $port, $userN, $count, $active, $sort, $alertPhone, $id]);
+            $pdo->prepare("UPDATE network_areas SET name=?, host=?, api_port=?, api_user=?, ping_count=?, active=?, sort_order=?, alert_phone=?, vpn_interface=? WHERE id=?")
+                ->execute([$name, $host, $port, $userN, $count, $active, $sort, $alertPhone, $iface, $id]);
         } else {
-            $pdo->prepare("UPDATE network_areas SET name=?, host=?, api_port=?, api_user=?, api_pass=?, ping_count=?, active=?, sort_order=?, alert_phone=? WHERE id=?")
-                ->execute([$name, $host, $port, $userN, $pass, $count, $active, $sort, $alertPhone, $id]);
+            $pdo->prepare("UPDATE network_areas SET name=?, host=?, api_port=?, api_user=?, api_pass=?, ping_count=?, active=?, sort_order=?, alert_phone=?, vpn_interface=? WHERE id=?")
+                ->execute([$name, $host, $port, $userN, $pass, $count, $active, $sort, $alertPhone, $iface, $id]);
         }
     } else {
-        $pdo->prepare("INSERT INTO network_areas (name, host, api_port, api_user, api_pass, ping_count, active, sort_order, alert_phone) VALUES (?,?,?,?,?,?,?,?,?)")
-            ->execute([$name, $host, $port, $userN, $pass, $count, $active, $sort, $alertPhone]);
+        $pdo->prepare("INSERT INTO network_areas (name, host, api_port, api_user, api_pass, ping_count, active, sort_order, alert_phone, vpn_interface) VALUES (?,?,?,?,?,?,?,?,?,?)")
+            ->execute([$name, $host, $port, $userN, $pass, $count, $active, $sort, $alertPhone, $iface]);
         $id = (int)$pdo->lastInsertId();
     }
     echo json_encode(['ok' => true, 'id' => $id]);
@@ -155,6 +167,8 @@ if ($action === 'save_area') {
 
 if ($action === 'delete_area') {
     $id = (int)($input['id'] ?? 0);
+    // Its remote-access rules go with it: they name a router that will not exist.
+    $pdo->prepare("DELETE FROM device_forwards WHERE area_id = ?")->execute([$id]);
     $pdo->prepare("UPDATE devices SET area_id = NULL WHERE area_id = ?")->execute([$id]);
     $pdo->prepare("DELETE FROM network_areas WHERE id = ?")->execute([$id]);
     echo json_encode(['ok' => true]);
@@ -228,10 +242,36 @@ if ($action === 'save_device') {
 
 if ($action === 'delete_device') {
     $id = (int)($input['id'] ?? 0);
+    // Pull its NAT rules off the router first — a rule left pointing at a LAN
+    // address nobody monitors is exactly the kind of thing nobody finds again.
+    Forwards::deleteForDevice($id);
     // Remove its disconnection-log history too so no orphan rows are left.
     $pdo->prepare("DELETE FROM device_events WHERE device_id = ?")->execute([$id]);
     $pdo->prepare("DELETE FROM devices WHERE id = ?")->execute([$id]);
     echo json_encode(['ok' => true]);
+    exit;
+}
+
+// ---- admin-only: remote-access NAT rules ----
+if ($action === 'save_forward') {
+    echo json_encode(Forwards::save([
+        'id'        => (int)($input['id'] ?? 0),
+        'device_id' => (int)($input['device_id'] ?? 0),
+        'dst_port'  => (int)($input['dst_port'] ?? 0),
+        'to_port'   => (int)($input['to_port'] ?? Forwards::DEFAULT_TO_PORT),
+        'url_path'  => (string)($input['url_path'] ?? ''),
+    ]));
+    exit;
+}
+
+if ($action === 'apply_forward') {
+    echo json_encode(Forwards::apply((int)($input['id'] ?? 0)));
+    exit;
+}
+
+if ($action === 'delete_forward') {
+    // force = drop our record even if the router can't be reached to clean up.
+    echo json_encode(Forwards::delete((int)($input['id'] ?? 0), !empty($input['force'])));
     exit;
 }
 

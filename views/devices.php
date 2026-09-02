@@ -3,7 +3,14 @@
  * Devices — live up/down status of the shop devices + disconnection log.
  * Polled from the routers by bin/poll-devices.php; refreshed here via
  * public/device-api.php. In scope: $t, $h, $pdo. Visible to admin + tech.
+ *
+ * The Access column carries the remote-access links: where a NAT rule exists
+ * (built on the Remote access tab) the device's own web page opens in one click
+ * for anyone on the VPN.
  */
+
+use Glue\Devices\Forwards;
+
 $rows = $pdo->query(
     "SELECT d.id, d.name, d.ip, d.status, d.latency_ms, d.last_seen_at, d.last_checked_at, d.area_id, d.sort_order, d.active, a.name AS area_name
        FROM devices d LEFT JOIN network_areas a ON a.id = d.area_id
@@ -21,6 +28,12 @@ $log = $pdo->query(
 
 // Customers = network areas (each router is one customer site). Used by the filter.
 $areas = $pdo->query("SELECT id, name FROM network_areas ORDER BY sort_order, id")->fetchAll();
+
+// Remote-access rules keyed by device, for the Access column.
+$forwards = Forwards::byDevice();
+// Column count for the "nothing here" placeholder rows (kept in sync with the
+// header below, and handed to the filter script so it can rebuild them).
+$devCols = $canManage ? 9 : 8;
 
 $staleAfter = 180;
 $ago = function (?string $ts) use ($t): string {
@@ -60,9 +73,10 @@ $ago = function (?string $ts) use ($t): string {
   <th><?= $h($t('dev_th_area')) ?></th><th><?= $h($t('dev_th_status')) ?></th>
   <th><?= $h($t('dev_th_latency')) ?></th><th><?= $h($t('dev_th_seen')) ?></th>
   <th><?= $h($t('dev_th_checked')) ?></th>
+  <th><?= $h($t('dev_th_access')) ?></th>
   <?php if ($canManage): ?><th></th><?php endif; ?>
 </tr></thead><tbody>
-<?php if (!$rows): ?><tr><td colspan="<?= $canManage ? 8 : 7 ?>" class="muted"><?= $h($t('none_yet')) ?></td></tr><?php endif; ?>
+<?php if (!$rows): ?><tr><td colspan="<?= (int)$devCols ?>" class="muted"><?= $h($t('none_yet')) ?></td></tr><?php endif; ?>
 <?php foreach ($rows as $r):
     $stale = !$r['last_checked_at'] || (time() - strtotime($r['last_checked_at']) > $staleAfter);
     $st = $stale ? 'unknown' : $r['status'];
@@ -76,6 +90,17 @@ $ago = function (?string $ts) use ($t): string {
     <td class="cell-latency small"><?= ($st === 'up' && $r['latency_ms'] !== null) ? $h(number_format((float)$r['latency_ms'], 1)) . ' ms' : '<span class="muted">—</span>' ?></td>
     <td class="cell-seen small muted"><?= $h($ago($r['last_seen_at'])) ?></td>
     <td class="cell-checked small muted"><?= $h($ago($r['last_checked_at'])) ?></td>
+    <td class="dev-access">
+      <?php foreach ($forwards[(int)$r['id']] ?? [] as $f): ?>
+        <a class="btn ghost tiny" href="<?= $h($f['url']) ?>" target="_blank" rel="noopener noreferrer"
+           title="<?= $h($f['url']) ?>"><?= $h($t('dev_open')) ?><span class="muted"> :<?= (int)$f['dst_port'] ?></span></a>
+      <?php endforeach; ?>
+      <?php if (empty($forwards[(int)$r['id']])): ?>
+        <?php if ($canManage): ?>
+          <a class="btn ghost tiny" href="?tab=remote_access&amp;device=<?= (int)$r['id'] ?>"><?= $h($t('dev_access_add')) ?></a>
+        <?php else: ?><span class="muted">&mdash;</span><?php endif; ?>
+      <?php endif; ?>
+    </td>
     <?php if ($canManage): ?>
     <td class="dev-row-actions">
       <button class="btn ghost tiny" onclick='devEdit(<?= json_encode([
@@ -145,6 +170,7 @@ $ago = function (?string $ts) use ($t): string {
 .dev-unk{background:var(--amber-bg,rgba(217,164,10,.13));color:var(--amber,#d9a40a);}
 #devTable .mono,#devLog .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
 .dev-row-actions{display:flex;gap:6px;white-space:nowrap;}
+.dev-access{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
 .btn.tiny{padding:4px 9px;font-size:12px;} .btn.danger{color:var(--red,#e5616e);}
 .na-modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:60;align-items:center;justify-content:center;}
 .na-modal-bg.show{display:flex;}
@@ -209,7 +235,7 @@ $ago = function (?string $ts) use ($t): string {
         row.style.display = match ? '' : 'none';
         if (match) { shownDev++; }
       });
-      toggleEmpty('devTable', shownDev, 7);
+      toggleEmpty('devTable', shownDev, <?= (int)$devCols ?>);
       // Log rows
       var logRows = document.querySelectorAll('#devLog tbody tr[data-area]');
       var shownLog = 0;

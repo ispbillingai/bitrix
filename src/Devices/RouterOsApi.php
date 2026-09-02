@@ -7,14 +7,18 @@ use RuntimeException;
 
 /**
  * Minimal RouterOS API client (raw socket, no extensions). Connects to a
- * MikroTik's API port, logs in, and runs /ping. Dependency-free so the poller
- * works from CLI/cron. Throws on connect/login failure so callers can tell
- * "router unreachable" apart from "device down".
+ * MikroTik's API port, logs in, and runs /ping or any other command (the NAT
+ * rules behind remote device access go through command()). Dependency-free so
+ * the poller works from CLI/cron. Throws on connect/login failure so callers can
+ * tell "router unreachable" apart from "device down".
  */
 final class RouterOsApi
 {
     /** @var resource */
     private $sock;
+
+    /** "ret" attribute of the last !done reply (the new .id after an /add). */
+    private ?string $lastRet = null;
 
     public function __construct(string $host, int $port, float $timeout = 5.0)
     {
@@ -68,6 +72,63 @@ final class RouterOsApi
             }
         }
         return [$received > 0, $minMs];
+    }
+
+    /**
+     * Run one command and collect its !re replies.
+     *
+     * Words are built the RouterOS way: query words ("?comment=x") filter, then
+     * attribute words ("=chain=dstnat") set values. A !trap reply becomes an
+     * exception carrying the router's own message, so a rejected rule reads as
+     * "action=dst-nat requires ..." rather than a silent no-op.
+     *
+     * @param array<string,string> $attrs   attribute name => value
+     * @param string[]             $queries raw query words, e.g. '?comment=CRM-NAT-4'
+     * @return array<int,array<string,string>> one row per !re reply
+     */
+    public function command(string $cmd, array $attrs = [], array $queries = []): array
+    {
+        $words = [$cmd];
+        foreach ($queries as $q) {
+            $words[] = $q;
+        }
+        foreach ($attrs as $k => $v) {
+            $words[] = '=' . $k . '=' . $v;
+        }
+        $this->writeSentence($words);
+
+        $this->lastRet = null;
+        $rows = [];
+        $trap = null;
+        while (true) {
+            $sentence = $this->readSentence();
+            if (!$sentence) {
+                break;
+            }
+            $type = $sentence[0];
+            if ($type === '!re') {
+                $rows[] = $this->parseAttrs($sentence);
+            } elseif ($type === '!trap' || $type === '!fatal') {
+                $attrsIn = $this->parseAttrs($sentence);
+                $trap = $attrsIn['message'] ?? ($sentence[1] ?? 'router refused the command');
+            } elseif ($type === '!done') {
+                $attrsIn = $this->parseAttrs($sentence);
+                if (isset($attrsIn['ret'])) {
+                    $this->lastRet = $attrsIn['ret'];
+                }
+                break;
+            }
+        }
+        if ($trap !== null) {
+            throw new RuntimeException($trap);
+        }
+        return $rows;
+    }
+
+    /** The "ret" value of the last command — /add returns the new rule's .id there. */
+    public function lastRet(): ?string
+    {
+        return $this->lastRet;
     }
 
     public function close(): void

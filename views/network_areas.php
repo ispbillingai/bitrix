@@ -34,6 +34,7 @@ foreach ($pdo->query("SELECT area_id, COUNT(*) c FROM devices WHERE area_id IS N
           "api_port" => (int)$a["api_port"], "api_user" => $a["api_user"],
           "ping_count" => (int)$a["ping_count"], "active" => (int)$a["active"],
           "sort_order" => (int)$a["sort_order"], "alert_phone" => $a["alert_phone"] ?? "",
+          "vpn_interface" => $a["vpn_interface"] ?? \Glue\Devices\Forwards::DEFAULT_INTERFACE,
       ], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>)'><?= $h($t('na_edit')) ?></button>
       <button class="btn ghost tiny" onclick="naTest(<?= (int)$a['id'] ?>, this)"><?= $h($t('na_test')) ?></button>
       <span class="na-test-out" data-for="<?= (int)$a['id'] ?>"></span>
@@ -57,6 +58,8 @@ foreach ($pdo->query("SELECT area_id, COUNT(*) c FROM devices WHERE area_id IS N
       <label class="fld"><span><?= $h($t('na_user')) ?></span><input id="na_user" value="admin"></label>
       <label class="fld"><span><?= $h($t('na_pass')) ?></span><input id="na_pass" type="password" autocomplete="new-password"></label>
     </div>
+    <label class="fld"><span><?= $h($t('na_vpn_iface')) ?></span><input id="na_iface" value="<?= $h(\Glue\Devices\Forwards::DEFAULT_INTERFACE) ?>"></label>
+    <p class="muted small" style="margin:-6px 0 8px"><?= $h($t('na_vpn_iface_hint')) ?></p>
     <div class="na-row">
       <label class="fld"><span><?= $h($t('na_pings')) ?></span><input id="na_count" type="number" value="2" min="1" max="10"></label>
       <label class="fld"><span><?= $h($t('na_sort')) ?></span><input id="na_sort" type="number" value="0"></label>
@@ -96,20 +99,23 @@ var NA = {
   phoneErr:<?= json_encode($t('na_bad_phone')) ?>
 };
 function $(id){return document.getElementById(id);}
+var NA_IFACE = <?= json_encode(\Glue\Devices\Forwards::DEFAULT_INTERFACE) ?>;
 function naOpen(){ $('naModalTitle').textContent=NA.add; $('na_id').value=''; $('na_name').value=''; $('na_host').value='';
   $('na_port').value=8728; $('na_user').value='admin'; $('na_pass').value=''; $('na_pass').placeholder=NA.passNew;
-  $('na_count').value=2; $('na_sort').value=0; $('na_active').checked=true; $('na_alert').value=''; $('naModalBg').classList.add('show'); }
+  $('na_count').value=2; $('na_sort').value=0; $('na_active').checked=true; $('na_alert').value='';
+  $('na_iface').value=NA_IFACE; $('naModalBg').classList.add('show'); }
 function naEdit(a){ $('naModalTitle').textContent=NA.edit; $('na_id').value=a.id; $('na_name').value=a.name||'';
   $('na_host').value=a.host||''; $('na_port').value=a.api_port||8728; $('na_user').value=a.api_user||'admin';
   $('na_pass').value=''; $('na_pass').placeholder=NA.passKeep; $('na_count').value=a.ping_count||2;
-  $('na_sort').value=a.sort_order||0; $('na_active').checked=(a.active==1); $('na_alert').value=a.alert_phone||''; $('naModalBg').classList.add('show'); }
+  $('na_sort').value=a.sort_order||0; $('na_active').checked=(a.active==1); $('na_alert').value=a.alert_phone||'';
+  $('na_iface').value=a.vpn_interface||NA_IFACE; $('naModalBg').classList.add('show'); }
 function naClose(){ $('naModalBg').classList.remove('show'); }
 function naSave(btn){
   var body={ action:'save_area', id:parseInt($('na_id').value||'0',10), name:$('na_name').value.trim(),
     host:$('na_host').value.trim(), api_port:parseInt($('na_port').value||'8728',10), api_user:$('na_user').value.trim(),
     api_pass:$('na_pass').value, ping_count:parseInt($('na_count').value||'2',10),
     sort_order:parseInt($('na_sort').value||'0',10), active:$('na_active').checked?1:0,
-    alert_phone:$('na_alert').value.trim() };
+    alert_phone:$('na_alert').value.trim(), vpn_interface:$('na_iface').value.trim() };
   if(!body.name||!body.host){ alert(NA.reqErr); return; }
   btn.disabled=true;
   fetch('device-api.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)})
