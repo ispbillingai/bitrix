@@ -69,6 +69,7 @@ $ago = function (?string $ts) use ($t): string {
 </div>
 <p class="muted small" style="margin:-6px 0 14px"><?= $h($t('dev_sub')) ?></p>
 
+<div class="table-wrap">
 <table id="devTable"><thead><tr>
   <th><?= $h($t('dev_th_device')) ?></th><th><?= $h($t('dev_th_ip')) ?></th>
   <th><?= $h($t('dev_th_area')) ?></th><th><?= $h($t('dev_th_status')) ?></th>
@@ -120,6 +121,7 @@ $ago = function (?string $ts) use ($t): string {
   </tr>
 <?php endforeach; ?>
 </tbody></table>
+</div>
 
 <?php if ($canManage): ?>
 <div class="na-modal-bg" id="devModalBg" onclick="if(event.target===this)devClose()">
@@ -150,6 +152,7 @@ $ago = function (?string $ts) use ($t): string {
 
 <h3 style="margin-top:26px"><?= $h($t('dev_log_title')) ?></h3>
 <p class="muted small" style="margin:-4px 0 12px"><?= $h($t('dev_log_sub')) ?></p>
+<div class="table-wrap">
 <table id="devLog"><thead><tr>
   <th><?= $h($t('dev_th_time')) ?></th><th><?= $h($t('dev_th_device')) ?></th><th><?= $h($t('dev_th_event')) ?></th>
 </tr></thead><tbody>
@@ -164,6 +167,7 @@ $ago = function (?string $ts) use ($t): string {
   </tr>
 <?php endforeach; ?>
 </tbody></table>
+</div>
 
 <style>
 .dev-head{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;}
@@ -181,6 +185,8 @@ $ago = function (?string $ts) use ($t): string {
 .acc-x{padding:4px 7px;line-height:1;color:var(--muted,#8b95a7);}
 .acc-x:hover{color:var(--red,#e5616e);}
 #devTable td:last-child{width:1%;}
+#devTable td,#devTable th{padding:11px 12px;}
+#devTable .cell-seen,#devTable .cell-checked{white-space:nowrap;}
 .btn.tiny{padding:4px 9px;font-size:12px;} .btn.danger{color:var(--red,#e5616e);}
 .na-modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:60;align-items:center;justify-content:center;}
 .na-modal-bg.show{display:flex;}
