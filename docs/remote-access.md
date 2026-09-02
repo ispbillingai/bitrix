@@ -11,13 +11,32 @@ only addressable *through its own router*. The **Devices** tab does the rest.
 
 It lives in the device's own row on the Devices tab — there is no separate page.
 
-- **+ Access** — one click. The CRM picks the first free port on that customer's
-  router, writes the `dst-nat` rule, and the button becomes **Open :81**.
 - **Open :81** — opens `http://<router VPN address>:81` in a new tab. **You must
   be on the VPN**: the CRM writes the rule, your browser makes the connection.
-- **×** — removes the access and deletes the rule from the router.
+- **×** — removes that access and deletes its rule from the router.
 - **Retry** — appears instead of Open when the rule could not be written (VPN
   blip, wrong password). Hover it for the router's own message.
+- **+ Access** / **Accesses** — opens the access dialog for that device.
+
+### The access dialog
+
+One row per access, all three values editable, plus a blank row to add another:
+
+| Port on the router | Port on the device | Path |
+|---|---|---|
+| 81 | 80 | |
+| 8080 | 8080 | |
+
+- **The port is yours to choose.** The new row arrives pre-filled with the first
+  port free on that router, so accepting it is still one click — but type over it
+  and that port is used instead.
+- **A device can hold several accesses**, one per port. That is how you reach
+  more than one service on the same machine: its web page on one port, a second
+  service on the next. Each has its own device-side port, so `:8080 → 8080` and
+  `:81 → 80` can sit side by side on one device.
+- The dialog lists what the router already uses, so you can see what to avoid.
+- Leaving **Path** empty means no path — even on a Cashmatic, if you want the
+  bare link.
 
 The rule it writes:
 
@@ -32,10 +51,11 @@ areas → Edit), `WIREGUARD` by default.
 
 ## What it works out for you
 
-- **The port.** The first one free from 81 up — skipping router service ports,
-  ports another access already uses, and ports the customer forwards themselves.
-  It reads the router's live NAT table to know the last one, because these boxes
-  came with hand-made forwards (Cisbu Mugnano was already using 81).
+- **The port**, unless you type one. The first free from 81 up — skipping router
+  service ports, ports another access already uses, and ports the customer
+  forwards themselves. It reads the router's live NAT table to know the last one,
+  because these boxes came with hand-made forwards (Cisbu Mugnano was already
+  using 81).
 - **The Cashmatic path.** A device whose name looks like a Cashmatic gets
   `/cws/loginform.php` appended, since those answer on 80 but only open there.
 - **The device port**, 80 unless told otherwise.
@@ -74,10 +94,11 @@ Deleting a device takes its accesses with it, rules included.
 
 | Action | Body |
 |---|---|
-| Create | `{action:"save_forward", device_id:N}` — omit `dst_port` to auto-pick; `url_path:"-"` forces no path |
+| Create | `{action:"save_forward", device_id:N}` — omit `dst_port` to auto-pick, or pass one; `url_path:"-"` forces no path. Call it again with another port to give the device a second access |
 | Change | `{action:"save_forward", id:N, device_id:N, dst_port:P, to_port:80, url_path:"/x"}` |
 | Re-apply | `{action:"apply_forward", id:N}` |
 | Remove | `{action:"delete_forward", id:N, force:0\|1}` |
+| Free port | `GET ?what=suggest_port&area_id=N` → `{port, taken:[…]}` |
 
 ## Where it lives
 

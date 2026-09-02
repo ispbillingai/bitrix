@@ -4,9 +4,10 @@
  * Polled from the routers by bin/poll-devices.php; refreshed here via
  * public/device-api.php. In scope: $t, $h, $pdo. Visible to admin + tech.
  *
- * The actions cell also carries remote access: "+ Access" writes the dst-nat
- * rule on that customer's router — picking a free port itself — and turns into
- * an Open link to the device's own web page, for anyone on the VPN.
+ * The actions cell also carries remote access: each access is an Open link to
+ * one port on the device, and the Access dialog adds, re-ports and removes them.
+ * A device can hold several — its web page on one port, another service on the
+ * next — which is why the ports are per access rather than per device.
  */
 
 use Glue\Devices\Forwards;
@@ -107,8 +108,9 @@ $ago = function (?string $ts) use ($t): string {
                   onclick="accRemove(<?= (int)$f['id'] ?>, this)">&times;</button>
         <?php endif; ?>
       <?php endforeach; ?>
-      <?php if ($canManage && empty($forwards[(int)$r['id']]) && !empty($r['area_id'])): ?>
-        <button class="btn ghost tiny" onclick="accAdd(<?= (int)$r['id'] ?>, this)"><?= $h($t('dev_access_add')) ?></button>
+      <?php if ($canManage && !empty($r['area_id'])): ?>
+        <button class="btn ghost tiny" onclick="accOpen(<?= (int)$r['id'] ?>)"><?=
+          $h(empty($forwards[(int)$r['id']]) ? $t('dev_access_add') : $t('dev_acc_manage')) ?></button>
       <?php endif; ?>
       <?php if ($canManage): ?>
       <button class="btn ghost tiny" onclick='devEdit(<?= json_encode([
@@ -124,6 +126,24 @@ $ago = function (?string $ts) use ($t): string {
 </div>
 
 <?php if ($canManage): ?>
+<div class="na-modal-bg" id="accModalBg" onclick="if(event.target===this)accClose()">
+  <div class="na-modal acc-modal">
+    <h3><?= $h($t('dev_acc_title')) ?></h3>
+    <p class="muted small" id="accSub" style="margin:-8px 0 12px"></p>
+    <table class="acc-tbl"><thead><tr>
+      <th><?= $h($t('dev_acc_th_port')) ?></th>
+      <th><?= $h($t('dev_acc_th_toport')) ?></th>
+      <th><?= $h($t('dev_acc_th_path')) ?></th>
+      <th></th>
+    </tr></thead><tbody id="accRows"></tbody></table>
+    <p class="muted small" id="accTaken" style="margin:10px 0 0"></p>
+    <p class="muted small" style="margin:6px 0 0"><?= $h($t('dev_acc_hint')) ?></p>
+    <div class="na-modal-foot">
+      <button class="btn ghost" onclick="accClose()"><?= $h($t('dev_acc_close')) ?></button>
+    </div>
+  </div>
+</div>
+
 <div class="na-modal-bg" id="devModalBg" onclick="if(event.target===this)devClose()">
   <div class="na-modal">
     <h3 id="devModalTitle"><?= $h($t('dev_add')) ?></h3>
@@ -187,6 +207,19 @@ $ago = function (?string $ts) use ($t): string {
 .acc-open{color:var(--accent,#5b6cff);border-color:var(--accent,#5b6cff);}
 .acc-x{padding:4px 7px;line-height:1;color:var(--muted,#8b95a7);}
 .acc-x:hover{color:var(--red,#e5616e);}
+.acc-modal{width:min(680px,94vw);}
+.acc-tbl{width:100%;border:none;background:none;}
+.acc-tbl th{background:none;padding:0 8px 6px 0;border-bottom:1px solid var(--line,#28303f);}
+.acc-tbl td{padding:7px 8px 7px 0;border-bottom:1px solid var(--line,#28303f);vertical-align:middle;}
+.acc-tbl tr:last-child td{border-bottom:none;}
+.acc-tbl input{width:100%;padding:6px 8px;border-radius:7px;border:1px solid var(--line,#28303f);
+  background:var(--surface2,#1c2533);color:var(--txt,#e7ecf4);font-size:13px;}
+.acc-tbl td:nth-child(1),.acc-tbl th:nth-child(1){width:120px;}
+.acc-tbl td:nth-child(2),.acc-tbl th:nth-child(2){width:130px;}
+.acc-tbl td:last-child{width:1%;white-space:nowrap;}
+.acc-tbl .acc-cell-actions{display:flex;gap:5px;}
+.acc-new td{border-top:1px solid var(--line2,#39435a);}
+.acc-err{color:var(--red,#e5616e);}
 #devTable td,#devTable th{padding:11px 12px;}
 #devTable .cell-seen,#devTable .cell-checked{white-space:nowrap;}
 .btn.tiny{padding:4px 9px;font-size:12px;} .btn.danger{color:var(--red,#e5616e);}
@@ -295,11 +328,23 @@ $ago = function (?string $ts) use ($t): string {
 
 <?php if ($canManage): ?>
 <script>
-// Remote access, straight from the row. "+ Access" sends no port: the server
-// picks the first one free on that customer's router (and gives a Cashmatic its
-// login path), writes the dst-nat rule, and the row comes back with an Open
-// link. A round trip to the router takes a moment, so the button says so.
+// Remote access, straight from the row. The dialog lists every access a device
+// has — a device can hold several, one per port — and each one's ports are
+// editable, so they can be chosen by hand instead of taken from the suggestion.
+// The new-access row arrives pre-filled with the first port free on that
+// customer's router, so leaving it alone is still the one-click case.
 var ACC = {
+  devices: <?= json_encode(array_map(static fn($r) => [
+      'id' => (int)$r['id'], 'name' => $r['name'], 'ip' => $r['ip'],
+      'area_id' => (int)($r['area_id'] ?? 0), 'area' => $r['area_name'] ?? '',
+  ], array_values(array_filter($rows, static fn($r) => !empty($r['area_id'])))),
+      JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>,
+  byDevice: <?= json_encode(array_map(static fn($list) => array_map(static fn($f) => [
+      'id' => (int)$f['id'], 'dst_port' => (int)$f['dst_port'], 'to_port' => (int)$f['to_port'],
+      'url_path' => $f['url_path'], 'status' => $f['status'], 'url' => $f['url'],
+      'last_error' => $f['last_error'],
+  ], $list), $forwards), JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>,
+  cashPath: <?= json_encode(\Glue\Devices\Forwards::CASHMATIC_PATH) ?>,
   working:<?= json_encode($t('dev_acc_working')) ?>,
   removeConfirm:<?= json_encode($t('dev_acc_remove_confirm')) ?>,
   forceConfirm:<?= json_encode($t('dev_acc_force_confirm')) ?>,
@@ -310,8 +355,24 @@ var ACC = {
     port_taken:<?= json_encode($t('ra_err_port_taken')) ?>,
     port_busy_on_router:<?= json_encode($t('ra_err_busy')) ?>
   },
+    bad_port:<?= json_encode($t('ra_err_port')) ?>,
+    bad_to_port:<?= json_encode($t('ra_err_port')) ?>,
+    bad_path:<?= json_encode($t('ra_err_path')) ?>,
+    device_not_found:<?= json_encode($t('ra_err_device')) ?>
+  },
   iface:<?= json_encode($t('ra_err_iface')) ?>,
-  unreachable:<?= json_encode($t('ra_err_unreachable')) ?>
+  unreachable:<?= json_encode($t('ra_err_unreachable')) ?>,
+  open:<?= json_encode($t('dev_open')) ?>,
+  add:<?= json_encode($t('dev_acc_add_btn')) ?>,
+  save:<?= json_encode($t('save')) ?>,
+  del:<?= json_encode($t('dev_delete')) ?>,
+  retry:<?= json_encode($t('dev_acc_retry')) ?>,
+  none:<?= json_encode($t('dev_acc_none')) ?>,
+  suggesting:<?= json_encode($t('dev_acc_suggesting')) ?>,
+  taken:<?= json_encode($t('dev_acc_taken')) ?>,
+  takenNone:<?= json_encode($t('dev_acc_taken_none')) ?>,
+  takenErr:<?= json_encode($t('dev_acc_taken_unknown')) ?>,
+  pathPh:<?= json_encode($t('dev_acc_path_ph')) ?>
 };
 function accMsg(code){
   if(!code){ return 'error'; }
@@ -328,11 +389,102 @@ function accPost(body, btn, done){
     .then(function(j){ done(j, label); })
     .catch(function(e){ alert(e.message); btn.disabled = false; btn.innerHTML = label; });
 }
-function accAdd(deviceId, btn){
-  accPost({action:'save_forward', device_id:deviceId}, btn, function(j, label){
+// ---- the per-device access dialog ----
+var accDev = null;          // device currently open
+var accSeq = 0;             // guards a slow suggestion against a newer open
+
+function accEl(id){ return document.getElementById(id); }
+function accDevice(id){
+  for(var i = 0; i < ACC.devices.length; i++){ if(ACC.devices[i].id === id){ return ACC.devices[i]; } }
+  return null;
+}
+function accClose(){ accEl('accModalBg').classList.remove('show'); accDev = null; }
+
+function accOpen(deviceId){
+  accDev = accDevice(deviceId);
+  if(!accDev){ return; }
+  accEl('accSub').textContent = accDev.name + ' — ' + accDev.ip + ' (' + accDev.area + ')';
+  accEl('accTaken').textContent = ACC.suggesting;
+  accRender();
+  accEl('accModalBg').classList.add('show');
+
+  // Ask the router which ports are free, then pre-fill the new row.
+  accSeq++;
+  var seq = accSeq;
+  fetch('device-api.php?what=suggest_port&area_id=' + encodeURIComponent(accDev.area_id),
+        {headers:{'Accept':'application/json'}})
+    .then(function(r){ return r.json(); })
+    .then(function(j){
+      if(seq !== accSeq || !accDev){ return; }
+      if(!j || !j.ok){ accEl('accTaken').textContent = ACC.takenErr; return; }
+      accEl('accTaken').textContent = j.router_read
+        ? (j.taken.length ? ACC.taken + ' ' + j.taken.join(', ') : ACC.takenNone)
+        : ACC.takenErr;
+      var np = accEl('acc_new_port');
+      if(np && !np.value){ np.value = j.port; }
+    })
+    .catch(function(){ if(seq === accSeq){ accEl('accTaken').textContent = ACC.takenErr; } });
+}
+
+function accCell(value, id, type, ph){
+  return '<input id="' + id + '" ' + (type ? 'type="' + type + '" min="1" max="65535" ' : '') +
+         'value="' + String(value === null || value === undefined ? '' : value).replace(/"/g, '&quot;') + '"' +
+         (ph ? ' placeholder="' + ph + '"' : '') + '>';
+}
+
+function accRender(){
+  var list = (ACC.byDevice[accDev.id] || []);
+  var html = '';
+  list.forEach(function(f){
+    var right = f.status === 'active'
+      ? '<a class="btn ghost tiny acc-open" href="' + f.url + '" target="_blank" rel="noopener noreferrer">' + ACC.open + '</a>'
+      : '<button class="btn ghost tiny danger" title="' + (f.last_error || '') + '" onclick="accRetry(' + f.id + ', this)">' + ACC.retry + '</button>';
+    html += '<tr>' +
+      '<td>' + accCell(f.dst_port, 'acc_p_' + f.id, 'number') + '</td>' +
+      '<td>' + accCell(f.to_port, 'acc_t_' + f.id, 'number') + '</td>' +
+      '<td>' + accCell(f.url_path, 'acc_u_' + f.id, '', ACC.pathPh) + '</td>' +
+      '<td><div class="acc-cell-actions">' + right +
+        '<button class="btn ghost tiny" onclick="accSaveRow(' + f.id + ', this)">' + ACC.save + '</button>' +
+        '<button class="btn ghost tiny danger" onclick="accRemove(' + f.id + ', this)">' + ACC.del + '</button>' +
+      '</div></td></tr>';
+  });
+  if(!list.length){
+    html += '<tr><td colspan="4" class="muted small">' + ACC.none + '</td></tr>';
+  }
+  // The add row: port pre-filled from the router, device port 80, and the
+  // Cashmatic path offered where the name says so.
+  var suggestPath = /cash\s*matic/i.test(accDev.name) ? ACC.cashPath : '';
+  html += '<tr class="acc-new">' +
+    '<td>' + accCell('', 'acc_new_port', 'number') + '</td>' +
+    '<td>' + accCell(80, 'acc_new_toport', 'number') + '</td>' +
+    '<td>' + accCell(suggestPath, 'acc_new_path', '', ACC.pathPh) + '</td>' +
+    '<td><button class="btn primary tiny" onclick="accAddRow(this)">' + ACC.add + '</button></td></tr>';
+  accEl('accRows').innerHTML = html;
+}
+
+function accAddRow(btn){
+  var port = parseInt(accEl('acc_new_port').value || '0', 10);
+  var to   = parseInt(accEl('acc_new_toport').value || '80', 10);
+  // An empty path must stay empty even for a Cashmatic: '-' is the "no path"
+  // signal the server understands.
+  var path = accEl('acc_new_path').value.trim();
+  accPost({action:'save_forward', device_id:accDev.id, dst_port:port, to_port:to,
+           url_path:path === '' ? '-' : path}, btn, function(j, label){
     if(j && j.ok){ location.reload(); return; }
     alert(accMsg(j && j.error));
-    location.reload(); // the row is saved either way, with a Retry button on it
+    btn.disabled = false; btn.innerHTML = label;
+  });
+}
+
+function accSaveRow(id, btn){
+  var port = parseInt(accEl('acc_p_' + id).value || '0', 10);
+  var to   = parseInt(accEl('acc_t_' + id).value || '80', 10);
+  var path = accEl('acc_u_' + id).value.trim();
+  accPost({action:'save_forward', id:id, device_id:accDev.id, dst_port:port, to_port:to,
+           url_path:path === '' ? '-' : path}, btn, function(j, label){
+    if(j && j.ok){ location.reload(); return; }
+    alert(accMsg(j && j.error));
+    btn.disabled = false; btn.innerHTML = label;
   });
 }
 function accRetry(id, btn){
