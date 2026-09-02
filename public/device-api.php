@@ -255,13 +255,9 @@ if ($action === 'delete_device') {
 
 // ---- admin-only: remote-access NAT rules ----
 if ($action === 'save_forward') {
-    echo json_encode(Forwards::save([
-        'id'        => (int)($input['id'] ?? 0),
-        'device_id' => (int)($input['device_id'] ?? 0),
-        'dst_port'  => (int)($input['dst_port'] ?? 0),
-        'to_port'   => (int)($input['to_port'] ?? Forwards::DEFAULT_TO_PORT),
-        'url_path'  => (string)($input['url_path'] ?? ''),
-    ]));
+    // Forwards::fromRequest keeps "no url_path sent" distinguishable from an
+    // empty one — that is what lets a Cashmatic get its login path.
+    echo json_encode(Forwards::save(Forwards::fromRequest($input)));
     exit;
 }
 

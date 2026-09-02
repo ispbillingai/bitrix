@@ -242,6 +242,31 @@ final class Forwards
     // ---- writes --------------------------------------------------------
 
     /**
+     * Normalise one save_forward request body.
+     *
+     * url_path is deliberately left OUT when the caller did not send one: its
+     * absence is how save() knows it may fill in a Cashmatic's login path. This
+     * lived in the endpoint and quietly defaulted it to '', which meant every
+     * request looked like "path supplied, and it is empty" and no Cashmatic ever
+     * got its path. Keeping the mapping here keeps it testable.
+     *
+     * @param array<string,mixed> $input decoded request body
+     */
+    public static function fromRequest(array $input): array
+    {
+        $in = [
+            'id'        => (int)($input['id'] ?? 0),
+            'device_id' => (int)($input['device_id'] ?? 0),
+            'dst_port'  => (int)($input['dst_port'] ?? 0),
+            'to_port'   => (int)($input['to_port'] ?? self::DEFAULT_TO_PORT),
+        ];
+        if (array_key_exists('url_path', $input) && $input['url_path'] !== null) {
+            $in['url_path'] = (string)$input['url_path'];
+        }
+        return $in;
+    }
+
+    /**
      * Create or update a forward and push it to the router.
      *
      * The row is written first and the rule pushed second, so a router that is
