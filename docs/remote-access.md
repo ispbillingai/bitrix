@@ -5,22 +5,21 @@ Cashmatic, POS — instead of building the NAT rule in Winbox by hand.
 
 Every customer sits behind a MikroTik the CRM already reaches over WireGuard,
 and every shop reuses the same private LAN (`192.168.100.x`), so a device is
-only addressable *through its own router*. The **Remote access** tab writes the
-`dst-nat` rule that publishes one device on a port of that router's VPN address.
+only addressable *through its own router*. The **Devices** tab does the rest.
 
 ## Using it
 
-**Remote access → Add access**
+It lives in the device's own row on the Devices tab — there is no separate page.
 
-1. **Customer** — the router (network area) the device sits behind.
-2. **Device** — its devices, with their LAN IPs.
-3. **Port on the router** — pre-filled with the lowest free one from 81 up.
-4. **Port on the device** — 80, unless the device serves its page elsewhere.
-5. **URL path** — usually blank. Cashmatic change machines answer on 80 but only
-   open at `/cws/loginform.php`; picking one fills this in for you.
+- **+ Access** — one click. The CRM picks the first free port on that customer's
+  router, writes the `dst-nat` rule, and the button becomes **Open :81**.
+- **Open :81** — opens `http://<router VPN address>:81` in a new tab. **You must
+  be on the VPN**: the CRM writes the rule, your browser makes the connection.
+- **×** — removes the access and deletes the rule from the router.
+- **Retry** — appears instead of Open when the rule could not be written (VPN
+  blip, wrong password). Hover it for the router's own message.
 
-The form shows the exact rule before you save it. On save the CRM logs into that
-router's RouterOS API and adds:
+The rule it writes:
 
 ```
 /ip firewall nat add chain=dstnat protocol=tcp in-interface=WIREGUARD \
@@ -28,13 +27,18 @@ router's RouterOS API and adds:
     comment="CRM-NAT-<id> <device name>"
 ```
 
-The link is then `http://<router VPN address>:<port><path>` — for a device
-called Preconto behind the router at `192.168.200.11`, that is
-`http://192.168.200.11:81`. It appears in the **Access** column of the Devices
-tab and on the Remote access tab. **You must be on the VPN** for it to open.
-
 The interface name comes from the router's own **VPN interface** field (Network
 areas → Edit), `WIREGUARD` by default.
+
+## What it works out for you
+
+- **The port.** The first one free from 81 up — skipping router service ports,
+  ports another access already uses, and ports the customer forwards themselves.
+  It reads the router's live NAT table to know the last one, because these boxes
+  came with hand-made forwards (Cisbu Mugnano was already using 81).
+- **The Cashmatic path.** A device whose name looks like a Cashmatic gets
+  `/cws/loginform.php` appended, since those answer on 80 but only open there.
+- **The device port**, 80 unless told otherwise.
 
 ## What it will not do
 
@@ -48,30 +52,42 @@ areas → Edit), `WIREGUARD` by default.
 - **Rules that are not ours** are never touched. We only ever remove rules whose
   comment starts with `CRM-NAT-<id>`.
 
+`dst-port` is read as RouterOS writes it — `81`, `90,92` and `8000-8003` are all
+understood, so a port inside someone else's range counts as taken. A rule on a
+different interface is not in our lane and does not count; nor is a disabled one.
+
 ## When the router is unreachable
 
-The row is saved anyway and marked **Not applied**, with the router's own error
-next to it. Fix the VPN, then press **Re-apply** — it removes our old rule and
+The row is saved anyway and comes back with **Retry** on it, carrying the
+router's own error. Fix the VPN and press it — it removes our old rule and
 writes a fresh one, so it is safe to press at any time.
 
-**Delete** removes the rule from the router first. If the router cannot be
-reached you are asked whether to drop the CRM record regardless; the rule then
-stays on the box until someone removes it by hand.
+**×** removes the rule from the router first. If the router cannot be reached
+you are asked whether to drop the CRM record regardless; the rule then stays on
+the box until someone removes it by hand.
 
-Moving an access to a device behind a *different* router is refused while the
-old router is down — otherwise our rule would be stranded there with nothing
-left in the CRM pointing at it.
+Deleting a device takes its accesses with it, rules included.
+
+## Calling it directly
+
+`public/device-api.php`, admin session required:
+
+| Action | Body |
+|---|---|
+| Create | `{action:"save_forward", device_id:N}` — omit `dst_port` to auto-pick; `url_path:"-"` forces no path |
+| Change | `{action:"save_forward", id:N, device_id:N, dst_port:P, to_port:80, url_path:"/x"}` |
+| Re-apply | `{action:"apply_forward", id:N}` |
+| Remove | `{action:"delete_forward", id:N, force:0\|1}` |
 
 ## Where it lives
 
 | Piece | File |
 |---|---|
-| Rule logic (save / apply / delete) | `src/Devices/Forwards.php` |
+| Rule logic (save / apply / delete / port choice) | `src/Devices/Forwards.php` |
 | RouterOS API client | `src/Devices/RouterOsApi.php` |
-| Page | `views/remote_access.php` |
-| Link column | `views/devices.php` |
-| Endpoints | `public/device-api.php` (`save_forward`, `apply_forward`, `delete_forward`) |
+| Buttons in the device row | `views/devices.php` |
+| Endpoints | `public/device-api.php` |
 | Schema | `migrations/037_device_forwards.sql` |
 
-Admin-only: these rules change the customer's router configuration. Technical-area
-users see and use the links on the Devices tab but cannot create or remove them.
+Creating and removing accesses is admin-only: these rules change the customer's
+router configuration. Technical-area users see and use the **Open** links.

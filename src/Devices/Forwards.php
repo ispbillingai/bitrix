@@ -187,6 +187,41 @@ final class Forwards
         return $out;
     }
 
+    /**
+     * Lowest port from 81 up that is free on this router: not a router service,
+     * not used by another access of ours, and not already forwarded by the
+     * customer themselves. Reading the box is best-effort — an unreachable
+     * router just falls back to our own records, and apply() still refuses a
+     * clash. $exceptId lets a forward keep its own port while being edited.
+     */
+    public static function suggestPort(int $areaId, int $exceptId = 0): int
+    {
+        $taken = [];
+        $stmt = Db::pdo()->prepare("SELECT dst_port FROM device_forwards WHERE area_id = ? AND id <> ?");
+        $stmt->execute([$areaId, $exceptId]);
+        foreach ($stmt->fetchAll() ?: [] as $r) {
+            $taken[(int)$r['dst_port']] = true;
+        }
+        foreach (self::routerPorts($areaId)['ports'] as $p) {
+            $taken[$p] = true;
+        }
+        foreach (self::RESERVED_PORTS as $p) {
+            $taken[$p] = true;
+        }
+        for ($p = self::PORT_MIN; $p <= 65535; $p++) {
+            if (!isset($taken[$p])) {
+                return $p;
+            }
+        }
+        return 0;
+    }
+
+    /** Cashmatic change machines answer on 80 but only open at CASHMATIC_PATH. */
+    public static function isCashmatic(string $deviceName): bool
+    {
+        return (bool)preg_match('/cash\s*matic/i', $deviceName);
+    }
+
     /** http://<router VPN address>:<port><path> — the link a technician clicks. */
     public static function url(array $row): string
     {
@@ -220,7 +255,13 @@ final class Forwards
         $deviceId = (int)($in['device_id'] ?? 0);
         $dstPort  = (int)($in['dst_port'] ?? 0);
         $toPort   = (int)($in['to_port'] ?? self::DEFAULT_TO_PORT) ?: self::DEFAULT_TO_PORT;
-        $path     = trim((string)($in['url_path'] ?? ''));
+        // A missing path is "work it out"; an explicit '-' means "no path at all",
+        // so a Cashmatic can be given a bare link if someone really wants one.
+        $pathGiven = array_key_exists('url_path', $in);
+        $path      = trim((string)($in['url_path'] ?? ''));
+        if ($path === '-') {
+            $path = '';
+        }
 
         $stmt = $pdo->prepare("SELECT id, area_id, ip, name FROM devices WHERE id = ?");
         $stmt->execute([$deviceId]);
@@ -234,6 +275,18 @@ final class Forwards
         $areaId = (int)($device['area_id'] ?? 0);
         if ($areaId <= 0) {
             return ['ok' => false, 'error' => 'device_has_no_router'];
+        }
+
+        // One-click access from the Devices row sends no port and no path: pick
+        // a free port ourselves, and give a Cashmatic the login path it needs.
+        if ($dstPort <= 0) {
+            $dstPort = self::suggestPort($areaId, $id);
+            if ($dstPort <= 0) {
+                return ['ok' => false, 'error' => 'no_free_port'];
+            }
+        }
+        if (!$pathGiven && $path === '' && self::isCashmatic((string)$device['name'])) {
+            $path = self::CASHMATIC_PATH;
         }
 
         if ($dstPort < 1 || $dstPort > 65535) {

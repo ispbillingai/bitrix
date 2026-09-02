@@ -4,9 +4,9 @@
  * Polled from the routers by bin/poll-devices.php; refreshed here via
  * public/device-api.php. In scope: $t, $h, $pdo. Visible to admin + tech.
  *
- * The Access column carries the remote-access links: where a NAT rule exists
- * (built on the Remote access tab) the device's own web page opens in one click
- * for anyone on the VPN.
+ * The actions cell also carries remote access: "+ Access" writes the dst-nat
+ * rule on that customer's router — picking a free port itself — and turns into
+ * an Open link to the device's own web page, for anyone on the VPN.
  */
 
 use Glue\Devices\Forwards;
@@ -29,11 +29,12 @@ $log = $pdo->query(
 // Customers = network areas (each router is one customer site). Used by the filter.
 $areas = $pdo->query("SELECT id, name FROM network_areas ORDER BY sort_order, id")->fetchAll();
 
-// Remote-access rules keyed by device, for the Access column.
+// Remote-access rules keyed by device. They live in the actions cell rather
+// than a column of their own: nine columns made the table wrap on a laptop.
 $forwards = Forwards::byDevice();
 // Column count for the "nothing here" placeholder rows (kept in sync with the
 // header below, and handed to the filter script so it can rebuild them).
-$devCols = $canManage ? 9 : 8;
+$devCols = 8;
 
 $staleAfter = 180;
 $ago = function (?string $ts) use ($t): string {
@@ -73,8 +74,7 @@ $ago = function (?string $ts) use ($t): string {
   <th><?= $h($t('dev_th_area')) ?></th><th><?= $h($t('dev_th_status')) ?></th>
   <th><?= $h($t('dev_th_latency')) ?></th><th><?= $h($t('dev_th_seen')) ?></th>
   <th><?= $h($t('dev_th_checked')) ?></th>
-  <th><?= $h($t('dev_th_access')) ?></th>
-  <?php if ($canManage): ?><th></th><?php endif; ?>
+  <th></th>
 </tr></thead><tbody>
 <?php if (!$rows): ?><tr><td colspan="<?= (int)$devCols ?>" class="muted"><?= $h($t('none_yet')) ?></td></tr><?php endif; ?>
 <?php foreach ($rows as $r):
@@ -90,26 +90,33 @@ $ago = function (?string $ts) use ($t): string {
     <td class="cell-latency small"><?= ($st === 'up' && $r['latency_ms'] !== null) ? $h(number_format((float)$r['latency_ms'], 1)) . ' ms' : '<span class="muted">—</span>' ?></td>
     <td class="cell-seen small muted"><?= $h($ago($r['last_seen_at'])) ?></td>
     <td class="cell-checked small muted"><?= $h($ago($r['last_checked_at'])) ?></td>
-    <td class="dev-access">
-      <?php foreach ($forwards[(int)$r['id']] ?? [] as $f): ?>
-        <a class="btn ghost tiny" href="<?= $h($f['url']) ?>" target="_blank" rel="noopener noreferrer"
-           title="<?= $h($f['url']) ?>"><?= $h($t('dev_open')) ?><span class="muted"> :<?= (int)$f['dst_port'] ?></span></a>
-      <?php endforeach; ?>
-      <?php if (empty($forwards[(int)$r['id']])): ?>
-        <?php if ($canManage): ?>
-          <a class="btn ghost tiny" href="?tab=remote_access&amp;device=<?= (int)$r['id'] ?>"><?= $h($t('dev_access_add')) ?></a>
-        <?php else: ?><span class="muted">&mdash;</span><?php endif; ?>
-      <?php endif; ?>
-    </td>
-    <?php if ($canManage): ?>
     <td class="dev-row-actions">
+      <?php foreach ($forwards[(int)$r['id']] ?? [] as $f): ?>
+        <?php if ($f['status'] === 'active'): ?>
+          <a class="btn ghost tiny acc-open" href="<?= $h($f['url']) ?>" target="_blank" rel="noopener noreferrer"
+             title="<?= $h($f['url']) ?>"><?= $h($t('dev_open')) ?> <span class="muted">:<?= (int)$f['dst_port'] ?></span></a>
+        <?php elseif ($canManage): ?>
+          <button class="btn ghost tiny danger" title="<?= $h($f['last_error']) ?>"
+                  onclick="accRetry(<?= (int)$f['id'] ?>, this)"><?= $h($t('dev_acc_retry')) ?> <span class="muted">:<?= (int)$f['dst_port'] ?></span></button>
+        <?php else: ?>
+          <span class="small muted" title="<?= $h($f['last_error']) ?>"><?= $h($t('ra_status_error')) ?> :<?= (int)$f['dst_port'] ?></span>
+        <?php endif; ?>
+        <?php if ($canManage): ?>
+          <button class="btn ghost tiny acc-x" title="<?= $h($t('dev_acc_remove')) ?>"
+                  onclick="accRemove(<?= (int)$f['id'] ?>, this)">&times;</button>
+        <?php endif; ?>
+      <?php endforeach; ?>
+      <?php if ($canManage && empty($forwards[(int)$r['id']]) && !empty($r['area_id'])): ?>
+        <button class="btn ghost tiny" onclick="accAdd(<?= (int)$r['id'] ?>, this)"><?= $h($t('dev_access_add')) ?></button>
+      <?php endif; ?>
+      <?php if ($canManage): ?>
       <button class="btn ghost tiny" onclick='devEdit(<?= json_encode([
           "id" => (int)$r["id"], "name" => $r["name"], "ip" => $r["ip"],
           "area_id" => (int)($r["area_id"] ?? 0), "sort_order" => (int)$r["sort_order"], "active" => (int)$r["active"],
       ], JSON_HEX_TAG | JSON_HEX_APOS | JSON_HEX_QUOT | JSON_HEX_AMP) ?>)'><?= $h($t('dev_edit')) ?></button>
       <button class="btn ghost tiny danger" onclick="devDelete(<?= (int)$r['id'] ?>)"><?= $h($t('dev_delete')) ?></button>
+      <?php endif; ?>
     </td>
-    <?php endif; ?>
   </tr>
 <?php endforeach; ?>
 </tbody></table>
@@ -169,8 +176,11 @@ $ago = function (?string $ts) use ($t): string {
 .dev-down{background:var(--red-bg,rgba(229,97,110,.13));color:var(--red,#e5616e);}
 .dev-unk{background:var(--amber-bg,rgba(217,164,10,.13));color:var(--amber,#d9a40a);}
 #devTable .mono,#devLog .mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;}
-.dev-row-actions{display:flex;gap:6px;white-space:nowrap;}
-.dev-access{display:flex;gap:6px;flex-wrap:wrap;align-items:center;}
+.dev-row-actions{display:flex;gap:6px;align-items:center;justify-content:flex-end;white-space:nowrap;}
+.acc-open{color:var(--accent,#5b6cff);border-color:var(--accent,#5b6cff);}
+.acc-x{padding:4px 7px;line-height:1;color:var(--muted,#8b95a7);}
+.acc-x:hover{color:var(--red,#e5616e);}
+#devTable td:last-child{width:1%;}
 .btn.tiny{padding:4px 9px;font-size:12px;} .btn.danger{color:var(--red,#e5616e);}
 .na-modal-bg{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:60;align-items:center;justify-content:center;}
 .na-modal-bg.show{display:flex;}
@@ -277,6 +287,65 @@ $ago = function (?string $ts) use ($t): string {
 
 <?php if ($canManage): ?>
 <script>
+// Remote access, straight from the row. "+ Access" sends no port: the server
+// picks the first one free on that customer's router (and gives a Cashmatic its
+// login path), writes the dst-nat rule, and the row comes back with an Open
+// link. A round trip to the router takes a moment, so the button says so.
+var ACC = {
+  working:<?= json_encode($t('dev_acc_working')) ?>,
+  removeConfirm:<?= json_encode($t('dev_acc_remove_confirm')) ?>,
+  forceConfirm:<?= json_encode($t('dev_acc_force_confirm')) ?>,
+  errs:{
+    device_has_no_router:<?= json_encode($t('ra_err_no_router')) ?>,
+    no_free_port:<?= json_encode($t('dev_acc_no_port')) ?>,
+    reserved_port:<?= json_encode($t('ra_err_reserved')) ?>,
+    port_taken:<?= json_encode($t('ra_err_port_taken')) ?>,
+    port_busy_on_router:<?= json_encode($t('ra_err_busy')) ?>
+  },
+  unreachable:<?= json_encode($t('ra_err_unreachable')) ?>
+};
+function accMsg(code){
+  if(!code){ return 'error'; }
+  if(ACC.errs[code]){ return ACC.errs[code]; }
+  if(code.indexOf('router_unreachable') === 0){ return ACC.unreachable + '\n\n' + code; }
+  return code;
+}
+function accPost(body, btn, done){
+  var label = btn.innerHTML;
+  btn.disabled = true; btn.textContent = ACC.working;
+  fetch('device-api.php', {method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(body)})
+    .then(function(r){ return r.json(); })
+    .then(function(j){ done(j, label); })
+    .catch(function(e){ alert(e.message); btn.disabled = false; btn.innerHTML = label; });
+}
+function accAdd(deviceId, btn){
+  accPost({action:'save_forward', device_id:deviceId}, btn, function(j, label){
+    if(j && j.ok){ location.reload(); return; }
+    alert(accMsg(j && j.error));
+    location.reload(); // the row is saved either way, with a Retry button on it
+  });
+}
+function accRetry(id, btn){
+  accPost({action:'apply_forward', id:id}, btn, function(j, label){
+    if(j && j.ok){ location.reload(); return; }
+    alert(accMsg(j && j.error));
+    btn.disabled = false; btn.innerHTML = label;
+  });
+}
+function accRemove(id, btn){
+  if(!confirm(ACC.removeConfirm)){ return; }
+  accPost({action:'delete_forward', id:id}, btn, function(j, label){
+    if(j && j.ok){ location.reload(); return; }
+    // Router unreachable: offer to drop our record and leave the rule behind.
+    if(confirm(accMsg(j && j.error) + '\n\n' + ACC.forceConfirm)){
+      fetch('device-api.php', {method:'POST', headers:{'Content-Type':'application/json'},
+        body:JSON.stringify({action:'delete_forward', id:id, force:1})}).then(function(){ location.reload(); });
+      return;
+    }
+    btn.disabled = false; btn.innerHTML = label;
+  });
+}
+
 var DV = {
   add:<?= json_encode($t('dev_add')) ?>, edit:<?= json_encode($t('dev_edit_title')) ?>,
   reqErr:<?= json_encode($t('dev_req_err')) ?>, dupErr:<?= json_encode($t('dev_dup_err')) ?>,
