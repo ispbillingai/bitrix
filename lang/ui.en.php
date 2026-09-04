@@ -1121,6 +1121,10 @@ return [
     'stt_expired'         => 'Expired',
     'stt_void'            => 'Void',
 
+    'cu_ct_active'        => 'active',
+    'cu_until'            => 'until %s',
+    'cu_expired_on'       => 'expired %s',
+    'cu_f_expired'        => 'Expired contract',
     'cu_new'              => 'New customer',
     'cu_created'          => 'Customer created.',
     'cu_code_ph'          => 'gestionale code, if any',

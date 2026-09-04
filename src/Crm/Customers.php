@@ -49,9 +49,15 @@ final class Customers
         }
 
         $state = (string)($f['state'] ?? 'all');
+        // "Support" is either kind of contract: a live SmallPay subscription or a
+        // gestionale contract whose expiry is still ahead. "Expired" is the
+        // renewal list — they had one, it lapsed, and nothing replaced it.
         $where[] = match ($state) {
             'owing'      => 'COALESCE(inv.open_amount, 0) > 0',
-            'support'    => 'COALESCE(pc.active_contracts, 0) > 0',
+            'support'    => '(COALESCE(pc.active_contracts, 0) > 0
+                              OR (c.contract_expiry IS NOT NULL AND c.contract_expiry >= CURDATE()))',
+            'expired'    => 'c.contract_expiry IS NOT NULL AND c.contract_expiry < CURDATE()
+                             AND COALESCE(pc.active_contracts, 0) = 0',
             'no_contact' => "(c.phone IS NULL OR c.phone = '') AND (c.phone2 IS NULL OR c.phone2 = '')
                              AND (c.email IS NULL OR c.email = '')",
             'expiring'   => 'c.contract_expiry IS NOT NULL AND c.contract_expiry <= DATE_ADD(CURDATE(), INTERVAL 90 DAY)',
@@ -135,12 +141,17 @@ final class Customers
         $row = $pdo->query(
             "SELECT COUNT(*) AS total,
                     SUM(CASE WHEN COALESCE(inv.open_amount, 0) > 0 THEN 1 ELSE 0 END) AS owing,
-                    SUM(CASE WHEN COALESCE(pc.active_contracts, 0) > 0 THEN 1 ELSE 0 END) AS support,
+                    SUM(CASE WHEN COALESCE(pc.active_contracts, 0) > 0
+                                  OR (c.contract_expiry IS NOT NULL AND c.contract_expiry >= CURDATE())
+                             THEN 1 ELSE 0 END) AS support,
+                    SUM(CASE WHEN c.contract_expiry IS NOT NULL AND c.contract_expiry < CURDATE()
+                                  AND COALESCE(pc.active_contracts, 0) = 0
+                             THEN 1 ELSE 0 END) AS expired,
                     SUM(CASE WHEN (c.phone IS NULL OR c.phone = '') AND (c.phone2 IS NULL OR c.phone2 = '')
                                   AND (c.email IS NULL OR c.email = '') THEN 1 ELSE 0 END) AS no_contact
              FROM contacts c $joins WHERE c.is_customer = 1"
         )->fetch();
-        return array_map('intval', $row ?: ['total' => 0, 'owing' => 0, 'support' => 0, 'no_contact' => 0]);
+        return array_map('intval', $row ?: ['total' => 0, 'owing' => 0, 'support' => 0, 'expired' => 0, 'no_contact' => 0]);
     }
 
     // ---- one customer, whole ------------------------------------------------

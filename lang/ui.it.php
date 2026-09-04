@@ -1119,6 +1119,10 @@ return [
     'stt_expired'         => 'Scaduto',
     'stt_void'            => 'Annullato',
 
+    'cu_ct_active'        => 'attivo',
+    'cu_until'            => 'fino al %s',
+    'cu_expired_on'       => 'scaduto il %s',
+    'cu_f_expired'        => 'Contratto scaduto',
     'cu_new'              => 'Nuovo cliente',
     'cu_created'          => 'Cliente creato.',
     'cu_code_ph'          => 'codice gestionale, se c\'è',

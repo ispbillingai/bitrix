@@ -39,9 +39,17 @@ if ($ov !== null):
 
 <div class="grid stats">
   <?php stat_card($h, 'invoices', $t('cu_open_invoices'), 'EUR ' . number_format($ov['owed'], 2, ',', '.'), $ov['owed'] <= 0.009); ?>
-  <?php stat_card($h, 'payments', $t('cu_support'), $activeContract
+  <?php
+  // The support tile answers from either source: a live SmallPay subscription
+  // wins; otherwise the gestionale contract speaks through its expiry date.
+  $ctExpiry = (string)($c['contract_expiry'] ?? '');
+  $ctValid  = $ctExpiry !== '' && $ctExpiry >= date('Y-m-d');
+  stat_card($h, 'payments', $t('cu_support'), $activeContract
       ? $eurC($activeContract['amount_cents'], $activeContract['currency']) . ' / ' . $t('pay_per_month')
-      : $t('cu_no_contract'), $activeContract !== null); ?>
+      : ($ctExpiry !== ''
+          ? sprintf($t($ctValid ? 'cu_until' : 'cu_expired_on'), date('d/m/Y', strtotime($ctExpiry)))
+          : $t('cu_no_contract')),
+      $activeContract !== null || $ctValid); ?>
   <?php stat_card($h, 'devices', $t('cu_routers'), count($ov['areas']) . ($routersDown ? ' (' . $routersDown . ' ⚠)' : ''), $routersDown === 0); ?>
   <?php stat_card($h, 'tickets', $t('cu_open_tickets'), (string)$openTickets, $openTickets === 0); ?>
 </div>
@@ -359,6 +367,7 @@ if ($ov !== null):
   <?= $chip('all', $t('cu_f_all'), $cnt['total']) ?>
   <?= $chip('owing', $t('cu_f_owing'), $cnt['owing']) ?>
   <?= $chip('support', $t('cu_f_support'), $cnt['support']) ?>
+  <?= $chip('expired', $t('cu_f_expired'), $cnt['expired']) ?>
   <?= $chip('no_contact', $t('cu_f_no_contact'), $cnt['no_contact']) ?>
   <form method="get" class="inline" style="margin-left:auto">
     <input type="hidden" name="tab" value="customers"><input type="hidden" name="state" value="<?= $h($state) ?>">
@@ -383,7 +392,13 @@ if ($ov !== null):
     <td><?php if ((float)$r['inv_open'] > 0): ?><b><?= $eur($r['inv_open']) ?></b>
         <?php if ((int)$r['inv_overdue'] > 0): ?><span class="pill pill-unpaid"><?= (int)$r['inv_overdue'] ?></span><?php endif; ?>
         <?php else: echo $dash; endif; ?></td>
-    <td><?= (int)$r['active_contracts'] > 0 ? '<span class="pill pill-up">✓</span>' : $dash ?></td>
+    <td><?php // either kind of support contract: SmallPay subscription or gestionale expiry
+      if ((int)$r['active_contracts'] > 0): ?><span class="pill pill-up">✓ <?= $h($t('cu_ct_active')) ?></span>
+      <?php elseif (!empty($r['contract_expiry']) && $r['contract_expiry'] >= date('Y-m-d')): ?>
+        <span class="pill pill-up"><?= $h(sprintf($t('cu_until'), date('d/m/Y', strtotime((string)$r['contract_expiry'])))) ?></span>
+      <?php elseif (!empty($r['contract_expiry'])): ?>
+        <span class="pill pill-unpaid"><?= $h(sprintf($t('cu_expired_on'), date('d/m/Y', strtotime((string)$r['contract_expiry'])))) ?></span>
+      <?php else: echo $dash; endif; ?></td>
     <td><?= (int)$r['router_count'] > 0 ? (int)$r['router_count'] : $dash ?></td>
     <td><?= (int)$r['open_tickets'] > 0 ? '<span class="pill">' . (int)$r['open_tickets'] . '</span>' : $dash ?></td>
   </tr>
