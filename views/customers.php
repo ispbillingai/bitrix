@@ -114,6 +114,14 @@ if ($ov !== null):
           <?php foreach ($tk['messages'] as $m): $mine = $m['sender_type'] !== 'customer'; ?>
             <div class="msg <?= $mine ? 'staff' : 'cust' ?>">
               <?php if ((string)$m['body'] !== ''): ?><div class="msg-b"><?= nl2br($h($m['body'])) ?></div><?php endif; ?>
+              <?php if (!empty($m['sign_document_id'])): ?>
+                <div class="msg-b">✍️ <a href="?sdl=<?= (int)$m['sign_document_id'] ?>&k=orig"><?= $h($m['sign_title'] ?: $t('dc_h_doc')) ?></a>
+                  <?= pill($h, (string)($m['sign_status'] ?? 'sent'), $t) ?>
+                  <?php if (($m['sign_status'] ?? '') === 'signed' && !empty($m['sign_signed_path'])): ?>
+                    <a href="?sdl=<?= (int)$m['sign_document_id'] ?>&k=signed"><?= $h($t('dc_dl_signed')) ?></a>
+                  <?php endif; ?>
+                </div>
+              <?php endif; ?>
               <?php if (!empty($m['attachment_path'])): ?>
                 <div class="msg-b"><a href="?dl=<?= (int)$m['id'] ?>">📎 <?= $h($m['attachment_name'] ?: $t('tk_attachment')) ?></a></div>
               <?php endif; ?>

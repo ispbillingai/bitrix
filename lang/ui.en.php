@@ -1120,4 +1120,8 @@ return [
     'stt_declined'        => 'Declined',
     'stt_expired'         => 'Expired',
     'stt_void'            => 'Void',
+
+    // ---- signature request from the chat ----
+    'tk_sign_req'         => 'Request a signature on the attached PDF',
+    'tk_sign_hint'        => 'The attached PDF will be sent for signature: the customer gets a one-time-code signing link here in the chat and by WhatsApp/email.',
 ];

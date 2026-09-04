@@ -116,6 +116,16 @@ $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
         <?php foreach ($thread as $m): $mine = $m['sender_type'] !== 'customer'; ?>
           <div class="msg <?= $mine ? 'staff' : 'cust' ?>">
             <?php if ((string)$m['body'] !== ''): ?><div class="msg-b"><?= nl2br($h($m['body'])) ?></div><?php endif; ?>
+            <?php if (!empty($m['sign_document_id'])): ?>
+              <div class="msg-b">✍️ <a href="?sdl=<?= (int)$m['sign_document_id'] ?>&k=orig"><?= $h($m['sign_title'] ?: $t('dc_h_doc')) ?></a></div>
+              <div class="msg-rcpt<?= ($m['sign_status'] ?? '') === 'signed' ? ' ok' : '' ?>">
+                <?= pill($h, (string)($m['sign_status'] ?? 'sent'), $t) ?>
+                <?php if (($m['sign_status'] ?? '') === 'signed'): ?>
+                  ✅ <?= $h(short_time($m['sign_signed_at'])) ?>
+                  <?php if (!empty($m['sign_signed_path'])): ?> · <a href="?sdl=<?= (int)$m['sign_document_id'] ?>&k=signed"><?= $h($t('dc_dl_signed')) ?></a><?php endif; ?>
+                <?php endif; ?>
+              </div>
+            <?php endif; ?>
             <?php if (!empty($m['attachment_path'])): ?>
               <div class="msg-b"><a href="?dl=<?= $h($m['id']) ?>">📎 <?= $h($m['attachment_name'] ?: $t('tk_attachment')) ?></a></div>
               <?php if ($mine): // our file — show the customer's receipts ?>
@@ -142,9 +152,15 @@ $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
             <input type="file" name="attachment"
               onchange="this.closest('form').querySelector('.tk-fn').textContent=this.files.length?this.files[0].name:''">
           </label>
+          <label class="tk-att" title="<?= $h($t('tk_sign_req')) ?>">✍️
+            <input type="checkbox" name="sign_request" value="1"
+              onchange="this.parentElement.classList.toggle('on',this.checked);
+                        this.closest('form').querySelector('.tk-sign-hint').hidden=!this.checked">
+          </label>
           <textarea name="body" rows="1" placeholder="<?= $h($t('tk_reply')) ?>…"></textarea>
           <button class="btn tiny"><?= svg('send') ?> <?= $h($t('tk_send')) ?></button>
           <div class="tk-fn small muted"></div>
+          <div class="tk-sign-hint small muted" hidden>✍️ <?= $h($t('tk_sign_hint')) ?></div>
         </form>
       <?php else: ?>
         <div class="tk-closed muted small"><?= $h($t('tk_close')) ?>d</div>
@@ -195,7 +211,9 @@ $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
 .tk-att{width:38px;height:38px;flex-shrink:0;display:flex;align-items:center;justify-content:center;border:1px solid var(--line);border-radius:9px;background:var(--surface2);cursor:pointer;font-size:15px}
 .tk-att:hover{border-color:var(--line2)}
 .tk-att input{display:none}
+.tk-att.on{border-color:var(--accent);background:var(--accent-soft)}
 .tk-fn{flex-basis:100%;padding-left:47px}.tk-fn:empty{display:none}
+.tk-sign-hint{flex-basis:100%;padding-left:47px}
 .tk-closed{padding:13px 18px;border-top:1px solid var(--line)}
 @media (max-width:900px){.tk-wrap{flex-direction:column;height:auto}.tk-list{width:100%;max-height:260px;border-right:none;border-bottom:1px solid var(--line)}}
 </style>

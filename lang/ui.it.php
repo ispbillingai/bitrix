@@ -1118,4 +1118,8 @@ return [
     'stt_declined'        => 'Rifiutato',
     'stt_expired'         => 'Scaduto',
     'stt_void'            => 'Annullato',
+
+    // ---- richiesta di firma dalla chat ----
+    'tk_sign_req'         => 'Richiedi la firma sul PDF allegato',
+    'tk_sign_hint'        => 'Il PDF allegato verrà inviato per la firma: il cliente riceve il link con codice usa-e-getta qui in chat e via WhatsApp/email.',
 ];

@@ -382,6 +382,16 @@ if ($tkCur && $page === 'support') {
       <?php foreach ($thread as $m): $mine = $m['sender_type'] === 'customer'; ?>
         <div class="msg <?= $mine ? 'me' : 'them' ?>">
           <?php if ((string)$m['body'] !== ''): ?><div><?= nl2br($h($m['body'])) ?></div><?php endif; ?>
+          <?php if (!empty($m['sign_document_id']) && !$mine): // a document sent for signature ?>
+            <div>✍️ <b><?= $h($m['sign_title'] ?: $t('sign_doc')) ?></b></div>
+            <?php if (($m['sign_status'] ?? '') === 'signed'): ?>
+              <div class="accepted">✓ <?= $h($t('sign_done')) ?><?= $m['sign_signed_at'] ? ' ' . $h(date('d/m/Y', strtotime((string)$m['sign_signed_at']))) : '' ?></div>
+            <?php elseif (in_array($m['sign_status'] ?? '', ['sent', 'viewed'], true) && !empty($m['sign_token'])): ?>
+              <div style="margin-top:6px"><a class="btn sm accept" href="sign.php?t=<?= $h(urlencode((string)$m['sign_token'])) ?>"><?= $h($t('sign_now')) ?></a></div>
+            <?php elseif (($m['sign_status'] ?? '') === 'declined'): ?>
+              <div class="muted small"><?= $h($t('sign_declined')) ?></div>
+            <?php endif; ?>
+          <?php endif; ?>
           <?php if (!empty($m['attachment_path'])): ?>
             <div><a href="?dl=<?= $h($m['id']) ?>">📎 <?= $h($m['attachment_name'] ?: $t('tk_attachment')) ?></a></div>
             <?php if (!$mine): // an offer file from us — the customer can accept it ?>
@@ -546,6 +556,8 @@ function portal_strings(string $lang): array
         'pw_saved' => 'Password saved.', 'pw_short' => 'Password must be at least 6 characters.', 'save' => 'Save',
         'support' => 'Support', 'tk_new' => '+ New request', 'tk_subject' => 'Subject', 'tk_message' => 'Message',
         'tk_send' => 'Send', 'tk_reply_ph' => 'Write a reply…', 'tk_you' => 'You',
+        'sign_doc' => 'Document to sign', 'sign_now' => 'Sign the document',
+        'sign_done' => 'Signed on', 'sign_declined' => 'Signature declined',
         'tk_attach' => 'Attach a file (optional)', 'tk_attachment' => 'Attachment',
         'tk_opened' => 'Your request has been sent. We will get back to you.', 'tk_sent' => 'Message sent.',
         'tk_closed_note' => 'This request is closed. Open a new one if you still need help.',
@@ -588,6 +600,8 @@ function portal_strings(string $lang): array
         'pw_saved' => 'Password salvata.', 'pw_short' => 'La password deve avere almeno 6 caratteri.', 'save' => 'Salva',
         'support' => 'Assistenza', 'tk_new' => '+ Nuova richiesta', 'tk_subject' => 'Oggetto', 'tk_message' => 'Messaggio',
         'tk_send' => 'Invia', 'tk_reply_ph' => 'Scrivi una risposta…', 'tk_you' => 'Tu',
+        'sign_doc' => 'Documento da firmare', 'sign_now' => 'Firma il documento',
+        'sign_done' => 'Firmato il', 'sign_declined' => 'Firma rifiutata',
         'tk_attach' => 'Allega un file (facoltativo)', 'tk_attachment' => 'Allegato',
         'tk_opened' => 'La tua richiesta è stata inviata. Ti risponderemo a breve.', 'tk_sent' => 'Messaggio inviato.',
         'tk_closed_note' => 'Questa richiesta è chiusa. Aprine una nuova se hai ancora bisogno.',

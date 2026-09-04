@@ -868,13 +868,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // ---------- tickets ----------
             case 'ticket_reply':
                 $senderName = (string)($_SESSION['glue_user']['full_name'] ?? $_SESSION['glue_user']['username'] ?? 'Staff');
-                $att = Tickets::storeUpload($_FILES['attachment'] ?? null, $attErr);
+                $att = null;
+                $attErr = null;
+                $signDocId = null;
+                if (!empty($_POST['sign_request'])) {
+                    // The attached PDF becomes a signature request: filed with the
+                    // in-house signing flow (which also messages the customer a
+                    // link), and the chat message references the document instead
+                    // of carrying its own copy of the file.
+                    $tkRow = Tickets::find((int)$_POST['id']);
+                    $tkBody = trim((string)($_POST['body'] ?? ''));
+                    $res = $tkRow ? SignDocs::create([
+                        'title'      => strtok($tkBody, "\n") ?: (string)($_FILES['attachment']['name'] ?? ''),
+                        'contact_id' => (int)$tkRow['contact_id'],
+                    ], $_FILES['attachment'] ?? null, $uid) : ['ok' => false, 'error' => 'no_contact'];
+                    if ($res['ok']) {
+                        SignDocs::send((int)$res['id'], $uid);
+                        $signDocId = (int)$res['id'];
+                    } else {
+                        $attErr = 'sign_' . (string)$res['error'];
+                    }
+                } else {
+                    $att = Tickets::storeUpload($_FILES['attachment'] ?? null, $attErr);
+                }
                 $ok = $attErr === null && Tickets::reply((int)$_POST['id'], $isAgent ? 'agent' : 'admin', $uid, $senderName,
-                    (string)($_POST['body'] ?? ''), $att);
+                    (string)($_POST['body'] ?? ''), $att, $signDocId);
                 $flash = $ok ? $t('saved')
                     : ($attErr === 'too_big' ? 'File too large (max 10 MB).'
                         : ($attErr === 'bad_type' ? 'File type not allowed.'
-                            : ($attErr === 'save_failed' ? 'Could not save the file.' : $t('test_fail'))));
+                            : (str_starts_with((string)$attErr, 'sign_')
+                                ? ($t('dc_err_' . substr($attErr, 5)) !== 'dc_err_' . substr($attErr, 5)
+                                    ? $t('dc_err_' . substr($attErr, 5)) : $t('dc_err_save_failed'))
+                                : ($attErr === 'save_failed' ? 'Could not save the file.' : $t('test_fail')))));
                 $flashType = $ok ? 'ok' : 'err';
                 // Redirect (PRG) so a browser refresh can't re-send the reply.
                 $tab = ($_POST['back'] ?? '') === 'messages' ? 'messages' : 'tickets';

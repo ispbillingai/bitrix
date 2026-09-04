@@ -93,14 +93,14 @@ final class Tickets
      * Post a reply. $senderType is customer|agent|admin. Updates the thread status
      * and notifies the other party.
      */
-    public static function reply(int $ticketId, string $senderType, ?int $senderId, string $senderName, string $body, ?array $attachment = null): bool
+    public static function reply(int $ticketId, string $senderType, ?int $senderId, string $senderName, string $body, ?array $attachment = null, ?int $signDocId = null): bool
     {
         $body = trim($body);
         $ticket = self::find($ticketId);
-        if (!$ticket || ($body === '' && $attachment === null)) {
+        if (!$ticket || ($body === '' && $attachment === null && $signDocId === null)) {
             return false;
         }
-        $messageId = self::addMessage($ticketId, $senderType, $senderId, $senderName, $body, $attachment);
+        $messageId = self::addMessage($ticketId, $senderType, $senderId, $senderName, $body, $attachment, $signDocId);
 
         // A staff reply marks the ticket pending-on-customer; a customer reply reopens it.
         $status = $senderType === 'customer' ? 'open' : 'pending';
@@ -129,14 +129,14 @@ final class Tickets
         Log::write('crm', 'ticket_status', 'ticket', $ticketId, ['status' => $status]);
     }
 
-    private static function addMessage(int $ticketId, string $type, ?int $senderId, string $name, string $body, ?array $attachment = null): int
+    private static function addMessage(int $ticketId, string $type, ?int $senderId, string $name, string $body, ?array $attachment = null, ?int $signDocId = null): int
     {
         Db::pdo()->prepare(
-            'INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, sender_name, body, attachment_path, attachment_name)
-             VALUES (?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO ticket_messages (ticket_id, sender_type, sender_id, sender_name, body, attachment_path, attachment_name, sign_document_id)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
         )->execute([
             $ticketId, $type, $senderId ?: null, trim($name) ?: null, trim($body),
-            $attachment['path'] ?? null, $attachment['name'] ?? null,
+            $attachment['path'] ?? null, $attachment['name'] ?? null, $signDocId,
         ]);
         return (int)Db::pdo()->lastInsertId();
     }
@@ -479,7 +479,17 @@ final class Tickets
 
     public static function thread(int $ticketId): array
     {
-        $stmt = Db::pdo()->prepare('SELECT * FROM ticket_messages WHERE ticket_id = ? ORDER BY id ASC');
+        // The sign_* columns ride along so a signature-request bubble can show
+        // the LIVE state (and the current link token — it changes on re-send)
+        // without a per-message lookup.
+        $stmt = Db::pdo()->prepare(
+            'SELECT m.*, d.status AS sign_status, d.title AS sign_title,
+                    d.access_token AS sign_token, d.signed_at AS sign_signed_at,
+                    d.signed_path AS sign_signed_path
+             FROM ticket_messages m
+             LEFT JOIN sign_documents d ON d.id = m.sign_document_id
+             WHERE m.ticket_id = ? ORDER BY m.id ASC'
+        );
         $stmt->execute([$ticketId]);
         return $stmt->fetchAll();
     }

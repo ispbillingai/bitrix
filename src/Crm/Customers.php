@@ -202,7 +202,11 @@ final class Customers
             $ids = array_column($tickets, 'id');
             $in  = implode(',', array_fill(0, count($ids), '?'));
             $stmt = $pdo->prepare(
-                "SELECT * FROM ticket_messages WHERE ticket_id IN ($in) ORDER BY id ASC"
+                "SELECT m.*, d.status AS sign_status, d.title AS sign_title,
+                        d.signed_at AS sign_signed_at, d.signed_path AS sign_signed_path
+                 FROM ticket_messages m
+                 LEFT JOIN sign_documents d ON d.id = m.sign_document_id
+                 WHERE m.ticket_id IN ($in) ORDER BY m.id ASC"
             );
             $stmt->execute($ids);
             $byTicket = [];
