@@ -303,6 +303,37 @@ if ($ov !== null):
   <h2 style="margin:0"><?= $h($t('nav_customers')) ?></h2>
   <span style="flex:1"></span>
   <details class="drawer">
+    <summary class="btn"><?= svg('customers') ?> <?= $h($t('cu_new')) ?></summary>
+    <div class="card" style="position:absolute;right:20px;z-index:6;width:min(640px,92vw);margin-top:8px">
+      <form method="post">
+        <input type="hidden" name="do" value="customer_create">
+        <div class="row">
+          <label class="fld"><span><?= $h($t('f_first_name')) ?></span><input name="first_name"></label>
+          <label class="fld"><span><?= $h($t('f_last_name')) ?></span><input name="last_name"></label>
+          <label class="fld"><span><?= $h($t('f_company')) ?></span><input name="company"></label>
+        </div>
+        <div class="row">
+          <label class="fld"><span><?= $h($t('cu_code')) ?></span><input name="customer_code" placeholder="<?= $h($t('cu_code_ph')) ?>"></label>
+          <label class="fld"><span><?= $h($t('cu_vat')) ?></span><input name="vat_number"></label>
+          <label class="fld"><span><?= $h($t('cu_contract_expiry')) ?></span><input type="date" name="contract_expiry"></label>
+        </div>
+        <div class="row">
+          <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone"></label>
+          <label class="fld"><span><?= $h($t('cu_phone2')) ?></span><input name="phone2"></label>
+          <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email" type="email"></label>
+        </div>
+        <div class="row">
+          <label class="fld"><span><?= $h($t('cu_address')) ?></span><input name="address"></label>
+          <label class="fld" style="max-width:160px"><span><?= $h($t('cu_city')) ?></span><input name="city"></label>
+          <label class="fld" style="max-width:80px"><span><?= $h($t('cu_prov')) ?></span><input name="province"></label>
+          <label class="fld" style="max-width:110px"><span><?= $h($t('cu_zip')) ?></span><input name="zip"></label>
+        </div>
+        <label class="fld"><span><?= $h($t('f_notes')) ?></span><textarea name="notes" rows="2"></textarea></label>
+        <button class="btn"><?= $h($t('save')) ?></button>
+      </form>
+    </div>
+  </details>
+  <details class="drawer">
     <summary class="btn ghost"><?= svg('invoices') ?> <?= $h($t('cu_import')) ?></summary>
     <div class="card" style="position:absolute;right:20px;z-index:5;width:min(460px,90vw);margin-top:8px">
       <form method="post" enctype="multipart/form-data">

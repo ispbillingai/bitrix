@@ -270,6 +270,65 @@ final class Customers
             ->execute([$contactId, $areaId]);
     }
 
+    /**
+     * A customer typed in by hand — no gestionale row, no won deal, just staff
+     * who knows this customer exists. Same identity rules as the import: the
+     * code (when given) must be free, the VAT is normalised, landlines keep
+     * their trunk zero.
+     *
+     * @return array{ok: bool, id: int, error: ?string}
+     */
+    public static function createManual(array $d, ?int $userId = null): array
+    {
+        $pdo  = Db::pdo();
+        $code = trim((string)($d['customer_code'] ?? '')) ?: null;
+        if ($code !== null) {
+            $q = $pdo->prepare('SELECT id FROM contacts WHERE customer_code = ?');
+            $q->execute([$code]);
+            if (($dupId = (int)($q->fetchColumn() ?: 0)) > 0) {
+                return ['ok' => false, 'id' => $dupId, 'error' => 'code_taken'];
+            }
+        }
+
+        $first = trim((string)($d['first_name'] ?? ''));
+        $last  = trim((string)($d['last_name'] ?? ''));
+        $co    = trim((string)($d['company'] ?? ''));
+        if ($first === '' && $last === '' && $co === '') {
+            return ['ok' => false, 'id' => 0, 'error' => 'no_name'];
+        }
+
+        $id = Contacts::create([
+            'first_name' => $first, 'last_name' => $last,
+            'name'    => ($first === '' && $last === '') ? $co : null,
+            'company' => $co ?: null,
+            'phone'   => CustomerImport::phone((string)($d['phone'] ?? '')) ?: null,
+            'email'   => trim((string)($d['email'] ?? '')) ?: null,
+            'source'  => 'manual',
+            'notes'   => trim((string)($d['notes'] ?? '')) ?: null,
+        ]);
+
+        $pdo->prepare(
+            'UPDATE contacts SET customer_code = ?, vat_number = ?, is_customer = 1,
+                    customer_since = NOW(), phone2 = ?, address = ?, city = ?, province = ?, zip = ?,
+                    contract_expiry = ?, gestionale_agent = ?
+             WHERE id = ?'
+        )->execute([
+            $code,
+            VatLock::normalize((string)($d['vat_number'] ?? '')) ?: null,
+            CustomerImport::phone((string)($d['phone2'] ?? '')) ?: null,
+            trim((string)($d['address'] ?? '')) ?: null,
+            trim((string)($d['city'] ?? '')) ?: null,
+            mb_substr(trim((string)($d['province'] ?? '')), 0, 8) ?: null,
+            trim((string)($d['zip'] ?? '')) ?: null,
+            trim((string)($d['contract_expiry'] ?? '')) ?: null,
+            trim((string)($d['gestionale_agent'] ?? '')) ?: null,
+            $id,
+        ]);
+
+        \Glue\Event\Log::write('crm', 'customer_created_manual', 'contact', $id, ['by' => $userId]);
+        return ['ok' => true, 'id' => $id, 'error' => null];
+    }
+
     // ---- becoming a customer ------------------------------------------------
 
     /**

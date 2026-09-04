@@ -1121,6 +1121,12 @@ return [
     'stt_expired'         => 'Expired',
     'stt_void'            => 'Void',
 
+    'cu_new'              => 'New customer',
+    'cu_created'          => 'Customer created.',
+    'cu_code_ph'          => 'gestionale code, if any',
+    'cu_code_taken'       => 'That code already belongs to this customer — edit it here instead of creating a duplicate.',
+    'cu_need_name'        => 'Give the customer a name or a company.',
+
     // ---- signature request from the chat ----
     'tk_sign_req'         => 'Request a signature on the attached PDF',
     'tk_sign_hint'        => 'The attached PDF will be sent for signature: the customer gets a one-time-code signing link here in the chat and by WhatsApp/email.',

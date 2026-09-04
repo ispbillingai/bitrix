@@ -1119,6 +1119,12 @@ return [
     'stt_expired'         => 'Scaduto',
     'stt_void'            => 'Annullato',
 
+    'cu_new'              => 'Nuovo cliente',
+    'cu_created'          => 'Cliente creato.',
+    'cu_code_ph'          => 'codice gestionale, se c\'è',
+    'cu_code_taken'       => 'Quel codice appartiene già a questo cliente — modificalo qui invece di creare un doppione.',
+    'cu_need_name'        => 'Inserisci un nome o una ragione sociale.',
+
     // ---- richiesta di firma dalla chat ----
     'tk_sign_req'         => 'Richiedi la firma sul PDF allegato',
     'tk_sign_hint'        => 'Il PDF allegato verrà inviato per la firma: il cliente riceve il link con codice usa-e-getta qui in chat e via WhatsApp/email.',

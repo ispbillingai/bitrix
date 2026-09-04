@@ -285,7 +285,7 @@ final class CustomerImport
      * through the same rule: international prefix respected, else +39 + digits
      * verbatim. Anything shorter than 6 digits is gestionale noise, not a number.
      */
-    private static function phone(string $raw): string
+    public static function phone(string $raw): string
     {
         $raw = trim($raw);
         $digits = preg_replace('/\D+/', '', $raw) ?? '';

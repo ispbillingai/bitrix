@@ -752,6 +752,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
 
             // ---------- customers ----------
+            case 'customer_create': {
+                $res = \Glue\Crm\Customers::createManual($_POST, $uid ?: null);
+                if ($res['ok']) {
+                    $_SESSION['dash_flash'] = [$t('cu_created'), 'ok'];
+                    header('Location: ?tab=customers&id=' . (int)$res['id']);
+                } elseif ($res['error'] === 'code_taken') {
+                    // The code names an existing customer — go look at them
+                    // instead of typing a twin.
+                    $_SESSION['dash_flash'] = [$t('cu_code_taken'), 'err'];
+                    header('Location: ?tab=customers&id=' . (int)$res['id']);
+                } else {
+                    $_SESSION['dash_flash'] = [$t('cu_need_name'), 'err'];
+                    header('Location: ?tab=customers');
+                }
+                exit;
+            }
+
             case 'customer_edit': {
                 $cuId = (int)($_POST['id'] ?? 0);
                 // Most gestionale customers are companies: first/last empty, the
