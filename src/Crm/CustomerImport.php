@@ -52,9 +52,12 @@ final class CustomerImport
         'Partita IVA'                => 'vat',
         'Email'                      => 'email',
         'Note'                       => 'notes',
+        'Note Agg.'                  => 'notes2',
         'Saldo'                      => 'balance',
         'Scad. contratto'            => 'contract_expiry',
         'Agente'                     => 'agent',
+        'Aux Check1Label'            => 'check1',
+        'Aux Check2Label'            => 'check2',
     ];
 
     /**
@@ -191,7 +194,24 @@ final class CustomerImport
             $phone2 = null;
         }
 
-        $email = filter_var($get('email'), FILTER_VALIDATE_EMAIL) ? $get('email') : null;
+        // The gestionale packs several addresses into one cell ("a@x.it, b@y.it")
+        // — 508 rows do. The first valid one becomes THE email (portal login,
+        // chasing); the rest are kept in the notes, not thrown away.
+        $emails = array_values(array_filter(
+            preg_split('/[,;\s]+/', $get('email')) ?: [],
+            static fn($e) => filter_var($e, FILTER_VALIDATE_EMAIL)
+        ));
+        $email = $emails[0] ?? null;
+
+        // Everything the gestionale wrote about this customer, in one notes
+        // field: Note, Note Agg., the chasing labels, any spare emails.
+        $noteParts = array_filter([
+            $get('notes'),
+            $get('notes2'),
+            count($emails) > 1 ? 'Email 2: ' . implode(', ', array_slice($emails, 1)) : '',
+            $get('check1') !== '' ? 'Gestionale: ' . $get('check1') : '',
+            $get('check2') !== '' ? 'Gestionale 2: ' . $get('check2') : '',
+        ], static fn($s) => $s !== '');
 
         $addr = trim($get('address') . ' ' . $get('address_num'));
 
@@ -212,7 +232,7 @@ final class CustomerImport
             'balance'         => (float)str_replace(',', '.', $get('balance') ?: '0'),
             'contract_expiry' => self::excelDate($get('contract_expiry')),
             'agent'           => $get('agent') !== '' ? mb_substr($get('agent'), 0, 120) : null,
-            'notes'           => $get('notes') !== '' ? $get('notes') : null,
+            'notes'           => $noteParts ? implode("\n", $noteParts) : null,
         ];
     }
 
@@ -261,6 +281,9 @@ final class CustomerImport
             $set['first_name'] = $g['first_name'] ?? '';
             $set['last_name']  = $g['last_name'] ?? '';
             $set['company']    = $g['company'];
+            // Notes on an import-born row are the gestionale's notes too —
+            // they converge with the file like the rest of the registry.
+            $set['notes']      = $g['notes'];
         } elseif (trim((string)($existing['company'] ?? '')) === '' && $g['company'] !== null) {
             $set['company'] = $g['company'];
         }
