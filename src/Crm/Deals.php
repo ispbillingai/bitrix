@@ -136,6 +136,10 @@ final class Deals
         // #7 Won -> thank-you + logistics, stop chasing the signature.
         if ($isWon) {
             $sched->cancelForEntity('deal', $dealId, ['sign_due', 'sign_overdue']);
+            // A won deal IS a new customer: flag the contact into the Customers
+            // area and carry the lead's VAT onto it (that VAT is what later
+            // matches their Sibill invoices).
+            Customers::markFromDeal($dealId);
             Automation::closing($dealId);
             // Partner referral commission: if this deal came from a partner-referred
             // lead, create a pending accrual (idempotent). Never fatal.

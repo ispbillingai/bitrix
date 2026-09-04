@@ -317,6 +317,19 @@ final class Invoices
 
         $contactId = $lead && $lead['contact_id'] !== null ? (int)$lead['contact_id'] : null;
 
+        // The customer registry: a contact carrying this VAT directly (imported
+        // from the gestionale, or stamped by a won deal). Registry rows are
+        // preferred over plain contacts when the VAT is shared across locations.
+        if ($contactId === null && $keys) {
+            $in = implode(',', array_fill(0, count($keys), '?'));
+            $stmt = $pdo->prepare(
+                "SELECT id FROM contacts WHERE vat_number IN ($in)
+                 ORDER BY (customer_code IS NOT NULL) DESC, id ASC LIMIT 1"
+            );
+            $stmt->execute($keys);
+            $contactId = ($v = $stmt->fetchColumn()) !== false ? (int)$v : null;
+        }
+
         // No VAT match: fall back to an unambiguous company-name hit on contacts.
         if ($contactId === null && trim($companyName) !== '') {
             $stmt = $pdo->prepare('SELECT id FROM contacts WHERE company = ? LIMIT 2');

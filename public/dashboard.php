@@ -751,6 +751,74 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $tab = 'contacts';
                 break;
 
+            // ---------- customers ----------
+            case 'customer_edit': {
+                $cuId = (int)($_POST['id'] ?? 0);
+                // Most gestionale customers are companies: first/last empty, the
+                // whole name in name/company. Passing empty name parts through
+                // Contacts::update would re-derive the name as 'Unknown' — so a
+                // company row updates its name from the company box instead.
+                $cuFirst = trim((string)($_POST['first_name'] ?? ''));
+                $cuLast  = trim((string)($_POST['last_name'] ?? ''));
+                $cuCo    = trim((string)($_POST['company'] ?? ''));
+                $cuName  = ($cuFirst !== '' || $cuLast !== '')
+                    ? ['first_name' => $cuFirst, 'last_name' => $cuLast]
+                    : ($cuCo !== '' ? ['name' => $cuCo, 'first_name' => '', 'last_name' => ''] : []);
+                Contacts::update($cuId, $cuName + [
+                    'company' => $cuCo ?: null,
+                    'phone'   => trim((string)($_POST['phone'] ?? '')) ?: null,
+                    'phone2'  => trim((string)($_POST['phone2'] ?? '')) ?: null,
+                    'email'   => trim((string)($_POST['email'] ?? '')) ?: null,
+                    'notes'   => $_POST['notes'] ?? '',
+                    'customer_code'    => trim((string)($_POST['customer_code'] ?? '')) ?: null,
+                    'vat_number'       => \Glue\Crm\VatLock::normalize((string)($_POST['vat_number'] ?? '')) ?: null,
+                    'address'          => trim((string)($_POST['address'] ?? '')) ?: null,
+                    'city'             => trim((string)($_POST['city'] ?? '')) ?: null,
+                    'province'         => mb_substr(trim((string)($_POST['province'] ?? '')), 0, 8) ?: null,
+                    'zip'              => trim((string)($_POST['zip'] ?? '')) ?: null,
+                    'contract_expiry'  => trim((string)($_POST['contract_expiry'] ?? '')) ?: null,
+                    'gestionale_agent' => trim((string)($_POST['gestionale_agent'] ?? '')) ?: null,
+                ]);
+                $_SESSION['dash_flash'] = [$t('saved'), 'ok'];
+                header('Location: ?tab=customers&id=' . $cuId);
+                exit;
+            }
+
+            // The gestionale's CLIENTI export, uploaded by hand. The FTP drop
+            // directory goes through bin/import-clienti.php instead.
+            case 'customer_import': {
+                if (empty($_FILES['file']['tmp_name']) || !is_uploaded_file($_FILES['file']['tmp_name'])) {
+                    $_SESSION['dash_flash'] = [$t('test_fail'), 'err'];
+                    header('Location: ?tab=customers');
+                    exit;
+                }
+                $r = \Glue\Crm\CustomerImport::run($_FILES['file']['tmp_name'], $uid ?: null);
+                if ($r['already']) {
+                    $_SESSION['dash_flash'] = [$t('cu_import_dup'), 'warn'];
+                } else {
+                    // New VAT numbers should claim their invoices right away.
+                    SibillInvoices::relink();
+                    SibillCustomers::rebuild();
+                    $_SESSION['dash_flash'] = [
+                        sprintf($t('cu_imported'), (string)$_FILES['file']['name'], $r['created'], $r['updated'], $r['skipped']), 'ok',
+                    ];
+                }
+                header('Location: ?tab=customers');
+                exit;
+            }
+
+            case 'customer_area_link':
+            case 'customer_area_unlink': {
+                $cuId = (int)($_POST['cid'] ?? 0);
+                \Glue\Crm\Customers::linkArea(
+                    (int)($_POST['area_id'] ?? 0),
+                    $do === 'customer_area_link' ? $cuId : null
+                );
+                $_SESSION['dash_flash'] = [$t('saved'), 'ok'];
+                header('Location: ?tab=customers&id=' . $cuId);
+                exit;
+            }
+
             // ---------- appointments ----------
             case 'appt_create':
                 Appointments::request([
@@ -1214,7 +1282,7 @@ $cfg = fn(string $k, $d = '') => Config::get($k, $d);
 $agents = Auth::agents();
 $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_format((float)$n, 0);
 
-$views = ['overview', 'leads', 'deals', 'contacts', 'appointments', 'tasks', 'tickets', 'documents',
+$views = ['overview', 'leads', 'deals', 'customers', 'contacts', 'appointments', 'tasks', 'tickets', 'documents',
           'invoices', 'payments', 'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents',
           'partners', 'devices', 'network_areas', 'settings', 'instructions'];
 $view = in_array($tab, $views, true) ? $tab : 'overview';
@@ -1266,6 +1334,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
     $brand = (string)\Glue\Config::get('app.company_name', '') ?: $t('app_title');
     $nav = [
         'overview' => 'nav_overview', 'leads' => 'nav_leads', 'deals' => 'nav_deals',
+        'customers' => 'nav_customers',
         'contacts' => 'nav_contacts', 'appointments' => 'nav_appointments', 'tasks' => 'nav_tasks',
         'tickets' => 'nav_tickets', 'documents' => 'nav_documents', 'invoices' => 'nav_invoices',
         'payments' => 'nav_payments',

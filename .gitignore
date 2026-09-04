@@ -9,6 +9,11 @@
 /public/uploads/*
 !/public/uploads/.htaccess
 
+# Gestionale customer exports: 10,000 people's personal data. The FTP drop
+# directory and any export lying in the repo root stay out of history.
+/storage/import/
+*-CLIENTI.xlsx
+
 # Signing: customer documents, sealed PDFs and — above all — the private key.
 # Committing storage/sign/keys would make every signature we ever made forgeable.
 /storage/sign/
