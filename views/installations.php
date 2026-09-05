@@ -64,7 +64,8 @@ if ($r !== null):
     <label class="fld"><span><?= $h($t('ir_f_start')) ?></span>
       <input type="datetime-local" name="started_at" value="<?= $h($dtLocal($r['started_at'])) ?>"></label>
     <label class="fld"><span><?= $h($t('ir_f_end')) ?></span>
-      <input type="datetime-local" name="finished_at" value="<?= $h($dtLocal($r['finished_at'])) ?>"></label>
+      <input type="text" value="<?= $h($t('ir_end_auto_ph')) ?>" disabled>
+      <small class="muted"><?= $h($t('ir_end_auto')) ?></small></label>
   </div>
   <div class="row">
     <label class="fld"><span><?= $h($t('ir_f_model')) ?></span>

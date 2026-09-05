@@ -758,6 +758,8 @@ return [
     'ir_data'           => 'Dati installazione',
     'ir_f_start'        => 'Inizio installazione',
     'ir_f_end'          => 'Fine installazione',
+    'ir_end_auto_ph'    => 'automatica',
+    'ir_end_auto'       => 'Impostata dal sistema al momento dell’invio alla firma — non modificabile.',
     'ir_f_model'        => 'Modello macchina',
     'ir_f_serial'       => 'Numero di serie',
     'ir_f_ground'       => 'Valore messa a terra',

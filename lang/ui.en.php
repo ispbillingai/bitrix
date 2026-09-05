@@ -758,6 +758,8 @@ return [
     'ir_data'           => 'Installation data',
     'ir_f_start'        => 'Installation start',
     'ir_f_end'          => 'Installation end',
+    'ir_end_auto_ph'    => 'automatic',
+    'ir_end_auto'       => 'Stamped by the system when the report is sent for signature — not editable.',
     'ir_f_model'        => 'Machine model',
     'ir_f_serial'       => 'Serial number',
     'ir_f_ground'       => 'Grounding value',

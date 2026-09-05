@@ -55,14 +55,17 @@ final class Reports
         }
         $ups  = in_array($d['ups_installed'] ?? '', self::UPS_VALUES, true) ? $d['ups_installed'] : 'absent';
         $cash = in_array($d['cash_collected'] ?? '', self::CASH_VALUES, true) ? $d['cash_collected'] : 'none';
+        // finished_at is deliberately NOT accepted here: the owner's rule is that
+        // the end time is the system's word, not the technician's — it is stamped
+        // in send(), the moment the report goes to the customer for signature.
         Db::pdo()->prepare(
             'UPDATE install_reports SET
-                started_at = ?, finished_at = ?, machine_model = ?, serial_number = ?, ground_value = ?,
+                started_at = ?, machine_model = ?, serial_number = ?, ground_value = ?,
                 local_ip = ?, public_ip = ?, adsl_provider = ?, vpn_address = ?, remote_assist_id = ?,
                 ups_installed = ?, cash_collected = ?, notes = ?
              WHERE id = ?'
         )->execute([
-            self::dt($d['started_at'] ?? ''), self::dt($d['finished_at'] ?? ''),
+            self::dt($d['started_at'] ?? ''),
             self::s($d['machine_model'] ?? '', 80), self::s($d['serial_number'] ?? '', 80),
             self::s($d['ground_value'] ?? '', 40),
             self::s($d['local_ip'] ?? '', 64), self::s($d['public_ip'] ?? '', 64),
@@ -97,6 +100,12 @@ final class Reports
         // The name printed on the PDF is decided the moment it is rendered.
         $tech = (string)($r['technician_name'] ?? '') ?: self::techName((int)$r['created_by'] ?: $userId);
         $r['technician_name'] = $tech;
+
+        // The end of the installation is NOW — the moment the tech asks the
+        // customer to sign. Stamped by the system so it cannot be back-dated.
+        $r['finished_at'] = date('Y-m-d H:i:s');
+        Db::pdo()->prepare('UPDATE install_reports SET finished_at = ? WHERE id = ?')
+            ->execute([$r['finished_at'], $id]);
 
         $lang  = in_array($contact['lang'] ?? '', ['en', 'it'], true) ? (string)$contact['lang'] : 'it';
         $bytes = ReportPdf::build($r, self::photosWithBytes($id), $contact, $lang);
