@@ -61,6 +61,22 @@ if ($r !== null):
   <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
   <h3 style="margin-top:0"><?= svg('installations') ?> <?= $h($t('ir_data')) ?></h3>
   <div class="row">
+    <label class="fld"><span><?= $h($t('ir_f_type')) ?></span>
+      <select name="report_type" id="ir-type" onchange="irTypeToggle()">
+        <option value="installation" <?= ($r['report_type'] ?? '') !== 'test' ? 'selected' : '' ?>><?= $h($t('ir_type_installation')) ?></option>
+        <option value="test" <?= ($r['report_type'] ?? '') === 'test' ? 'selected' : '' ?>><?= $h($t('ir_type_test')) ?></option>
+      </select></label>
+    <label class="fld" id="ir-testend" <?= ($r['report_type'] ?? '') === 'test' ? '' : 'style="display:none"' ?>>
+      <span><?= $h($t('ir_f_test_end')) ?></span>
+      <input type="date" name="test_end_date" value="<?= $h((string)($r['test_end_date'] ?? '')) ?>"
+             min="<?= $h(date('Y-m-d')) ?>">
+      <small class="muted"><?= $h($t('ir_f_test_end_h')) ?></small></label>
+  </div>
+  <script>
+  function irTypeToggle(){var s=document.getElementById('ir-type');
+    document.getElementById('ir-testend').style.display = s.value==='test' ? '' : 'none';}
+  </script>
+  <div class="row">
     <label class="fld"><span><?= $h($t('ir_f_start')) ?></span>
       <input type="datetime-local" name="started_at" value="<?= $h($dtLocal($r['started_at'])) ?>"></label>
     <label class="fld"><span><?= $h($t('ir_f_end')) ?></span>
@@ -165,7 +181,13 @@ if ($r !== null):
   <h3 style="margin-top:0"><?= svg('installations') ?> <?= $h($t('ir_data')) ?></h3>
   <table>
     <?php
-    $rows = [
+    $rows = [];
+    if (($r['report_type'] ?? '') === 'test') {
+        $rows['ir_f_type'] = $t('ir_type_test');
+        $rows['ir_f_test_end'] = !empty($r['test_end_date'])
+            ? date('d/m/Y', strtotime((string)$r['test_end_date'])) : '—';
+    }
+    $rows += [
         'ir_f_start'  => $dtHuman($r['started_at']),   'ir_f_end'    => $dtHuman($r['finished_at']),
         'ir_f_model'  => $r['machine_model'] ?: '—',   'ir_f_serial' => $r['serial_number'] ?: '—',
         'ir_f_ground' => $r['ground_value'] ?: '—',    'ir_f_local_ip' => $r['local_ip'] ?: '—',
@@ -279,7 +301,11 @@ if ($r !== null):
     <tr>
       <td class="muted"><?= (int)$row['id'] ?></td>
       <td><b><?= $h($row['customer_name']) ?></b></td>
-      <td><?= $h($row['machine_model'] ?: '—') ?></td>
+      <td><?= $h($row['machine_model'] ?: '—') ?>
+        <?php if (($row['report_type'] ?? '') === 'test'): ?>
+          <span class="pill" style="color:var(--amber)"><?= $h($t('ir_test_badge')) ?><?=
+            !empty($row['test_end_date']) ? ' ' . $h(date('d/m', strtotime((string)$row['test_end_date']))) : '' ?></span>
+        <?php endif; ?></td>
       <td class="small"><?= $h($row['serial_number'] ?: '—') ?></td>
       <td class="small"><?= $h($row['technician_name'] ?: ($row['full_name'] ?: ($row['username'] ?? '—'))) ?></td>
       <td class="small muted"><?= $h(short_time($row['created_at'])) ?></td>

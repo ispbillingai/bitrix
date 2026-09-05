@@ -805,9 +805,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['dash_flash'] = [$t('ir_sent'), 'ok'];
                 } else {
                     $irMsg = match ($irRes['error']) {
-                        'no_channel' => $t('ir_no_channel'),
-                        'not_draft'  => $t('ir_locked'),
-                        default      => $t('ir_send_failed') . ' (' . (string)$irRes['error'] . ')',
+                        'no_channel'   => $t('ir_no_channel'),
+                        'not_draft'    => $t('ir_locked'),
+                        'no_test_date' => $t('ir_no_test_date'),
+                        default        => $t('ir_send_failed') . ' (' . (string)$irRes['error'] . ')',
                     };
                     $_SESSION['dash_flash'] = [$irMsg, 'err'];
                 }

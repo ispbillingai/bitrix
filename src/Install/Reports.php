@@ -28,6 +28,9 @@ final class Reports
 
     public const UPS_VALUES  = ['present', 'absent'];
     public const CASH_VALUES = ['none', 'checks', 'card', 'cash'];
+    public const TYPES       = ['installation', 'test'];
+    /** "4 days before the end of the test, two notices must arrive." */
+    public const TEST_NOTICE_DAYS = 4;
     /** Suggested machine models (free text still allowed — new models arrive). */
     public const MODELS = ['SP 360', 'SP 460', 'SP 560', 'SP 860', 'SP 1060'];
 
@@ -55,16 +58,23 @@ final class Reports
         }
         $ups  = in_array($d['ups_installed'] ?? '', self::UPS_VALUES, true) ? $d['ups_installed'] : 'absent';
         $cash = in_array($d['cash_collected'] ?? '', self::CASH_VALUES, true) ? $d['cash_collected'] : 'none';
+        $type = in_array($d['report_type'] ?? '', self::TYPES, true) ? $d['report_type'] : 'installation';
+        // The TEST end date is the technician's to type, unlike finished_at: it
+        // is a promise about the future (when the trial ends), not a record of
+        // when the work stopped.
+        $testEnd = self::date($d['test_end_date'] ?? '');
         // finished_at is deliberately NOT accepted here: the owner's rule is that
         // the end time is the system's word, not the technician's — it is stamped
         // in send(), the moment the report goes to the customer for signature.
         Db::pdo()->prepare(
             'UPDATE install_reports SET
+                report_type = ?, test_end_date = ?,
                 started_at = ?, machine_model = ?, serial_number = ?, ground_value = ?,
                 local_ip = ?, public_ip = ?, adsl_provider = ?, vpn_address = ?, remote_assist_id = ?,
                 ups_installed = ?, cash_collected = ?, notes = ?
              WHERE id = ?'
         )->execute([
+            $type, $type === 'test' ? $testEnd : null,
             self::dt($d['started_at'] ?? ''),
             self::s($d['machine_model'] ?? '', 80), self::s($d['serial_number'] ?? '', 80),
             self::s($d['ground_value'] ?? '', 40),
@@ -95,6 +105,11 @@ final class Reports
         }
         if (trim((string)($contact['phone'] ?? '')) === '' && trim((string)($contact['email'] ?? '')) === '') {
             return ['ok' => false, 'error' => 'no_channel'];
+        }
+        // A test installation without its end date has nothing to time the
+        // end-of-test notices against — refuse to send until it is filled in.
+        if (($r['report_type'] ?? '') === 'test' && empty($r['test_end_date'])) {
+            return ['ok' => false, 'error' => 'no_test_date'];
         }
 
         // The name printed on the PDF is decided the moment it is rendered.
@@ -129,6 +144,12 @@ final class Reports
              WHERE id = ?'
         )->execute([(int)$res['id'], $tech, $id]);
 
+        // The test-end notices are timed the moment the report is finalised —
+        // after this the row is frozen, so the date can never drift under them.
+        if (($r['report_type'] ?? '') === 'test' && !empty($r['test_end_date'])) {
+            self::enqueueTestNotices($r, $contact);
+        }
+
         Log::write('install', 'report_sent', 'install_report', $id,
             ['sign_document_id' => (int)$res['id'], 'contact_id' => (int)$r['contact_id']]);
         return ['ok' => true, 'error' => null];
@@ -158,6 +179,11 @@ final class Reports
         }
         Db::pdo()->prepare('DELETE FROM install_report_photos WHERE report_id = ?')->execute([$id]);
         Db::pdo()->prepare('DELETE FROM install_reports WHERE id = ?')->execute([$id]);
+        // A deleted test report must not still page anyone about its trial.
+        Db::pdo()->prepare(
+            "UPDATE reminders SET status = 'cancelled'
+             WHERE status = 'pending' AND dedupe_key IN (?, ?)"
+        )->execute(['test_end_customer:' . $id, 'test_end_company:' . $id]);
         Log::write('install', 'report_deleted', 'install_report', $id, []);
         return true;
     }
@@ -463,6 +489,82 @@ final class Reports
         return $jpeg !== '' ? $jpeg : null;
     }
 
+    /**
+     * The two end-of-test notices, due TEST_NOTICE_DAYS before the trial ends
+     * (at 10:00, so nobody's phone buzzes at midnight; a date already inside
+     * the window fires on the next scheduler tick instead of never). One to
+     * the customer, one to the company — the logistics contact from Settings,
+     * or the first active admin with a reachable channel when that is empty.
+     */
+    private static function enqueueTestNotices(array $r, array $contact): void
+    {
+        $id   = (int)$r['id'];
+        $due  = date('Y-m-d H:i:s', max(time(),
+            strtotime((string)$r['test_end_date'] . ' 10:00:00') - self::TEST_NOTICE_DAYS * 86400));
+        $vars = [
+            'model'  => trim((string)($r['machine_model'] ?? '')) ?: '—',
+            'serial' => trim((string)($r['serial_number'] ?? '')) ?: '—',
+            'date'   => date('d/m/Y', strtotime((string)$r['test_end_date'])),
+            'days'   => (string)self::TEST_NOTICE_DAYS,
+        ];
+
+        (new \Glue\Reminder\Scheduler())->enqueue([
+            'entity_type'    => 'contact',
+            'entity_id'      => (int)$r['contact_id'],
+            'rule_key'       => 'test_end_customer',
+            'recipient_type' => 'customer',
+            'channel'        => 'both',
+            'due_at'         => $due,
+            'payload'        => $vars,
+            'lang'           => $contact['lang'] ?? null,
+            'dedupe_key'     => 'test_end_customer:' . $id,
+        ]);
+
+        $co = self::companyContact();
+        if ($co !== null) {
+            (new \Glue\Reminder\Scheduler())->enqueue([
+                'entity_type'    => 'contact',
+                'entity_id'      => (int)$r['contact_id'],
+                'rule_key'       => 'test_end_company',
+                'recipient_type' => 'agent',
+                'channel'        => 'both',
+                'due_at'         => $due,
+                // payload wins over the resolver, so it carries who to reach
+                'payload'        => $co + $vars + [
+                    'customer_name'  => (string)($contact['name'] ?? ''),
+                    'customer_phone' => (string)($contact['phone'] ?? ''),
+                ],
+                'dedupe_key'     => 'test_end_company:' . $id,
+            ]);
+        } else {
+            Log::write('install', 'test_notice_no_company_contact', 'install_report', $id, []);
+        }
+    }
+
+    /** @return array{agent_name:string, agent_phone:string, agent_email:string}|null */
+    private static function companyContact(): ?array
+    {
+        $phone = trim((string)Config::get('logistics.phone', ''));
+        $email = trim((string)Config::get('logistics.email', ''));
+        $name  = (string)Config::get('app.company_name', 'CRM');
+        if ($phone === '' && $email === '') {
+            $stmt = Db::pdo()->query(
+                "SELECT full_name, username, phone, email FROM users
+                 WHERE role = 'admin' AND active = 1
+                   AND (COALESCE(phone,'') <> '' OR COALESCE(email,'') <> '')
+                 ORDER BY id LIMIT 1"
+            );
+            $u = $stmt->fetch();
+            if (!$u) {
+                return null;
+            }
+            $name  = trim((string)$u['full_name']) ?: (string)$u['username'];
+            $phone = (string)($u['phone'] ?? '');
+            $email = (string)($u['email'] ?? '');
+        }
+        return ['agent_name' => $name, 'agent_phone' => $phone, 'agent_email' => $email];
+    }
+
     private static function techName(?int $userId): ?string
     {
         if (!$userId) {
@@ -477,6 +579,17 @@ final class Reports
     {
         $v = trim($v);
         return $v === '' ? null : mb_substr($v, 0, $len);
+    }
+
+    /** A bare date input ("2026-09-20"); normalise, refuse garbage. */
+    private static function date(string $v): ?string
+    {
+        $v = trim($v);
+        if ($v === '') {
+            return null;
+        }
+        $ts = strtotime($v);
+        return $ts ? date('Y-m-d', $ts) : null;
     }
 
     /** datetime-local posts "2026-09-05T17:47"; normalise, refuse garbage. */

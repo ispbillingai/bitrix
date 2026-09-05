@@ -56,6 +56,9 @@ final class ReportPdf
             'ups_present' => 'presente', 'ups_absent' => 'non presente',
             'cash_none' => 'nessun incasso', 'cash_checks' => 'assegni',
             'cash_card' => 'carta di credito', 'cash_cash' => 'contanti',
+            'type'      => 'Tipo installazione',
+            'type_test' => 'Installazione di test (noleggio di prova)',
+            'test_end'  => 'Fine periodo di test',
         ];
         $en = [
             'title'      => 'INSTALLATION REPORT',
@@ -85,6 +88,9 @@ final class ReportPdf
             'ups_present' => 'present', 'ups_absent' => 'not present',
             'cash_none' => 'no cash collected', 'cash_checks' => 'cheques',
             'cash_card' => 'credit card', 'cash_cash' => 'cash',
+            'type'      => 'Installation type',
+            'type_test' => 'Test installation (trial rental)',
+            'test_end'  => 'End of test period',
         ];
         $this->L = $lang === 'en' ? $en : $it;
         $this->pdf = new Pdf($title, (string)Config::get('app.company_name', 'CRM'));
@@ -124,6 +130,12 @@ final class ReportPdf
         $b->row($L['customer'], (string)($contact['name'] ?? ''));
         if ($addr !== '') {
             $b->row($L['address'], $addr);
+        }
+        if (($r['report_type'] ?? '') === 'test') {
+            $b->row($L['type'], $L['type_test']);
+            if (!empty($r['test_end_date'])) {
+                $b->row($L['test_end'], date('d/m/Y', strtotime((string)$r['test_end_date'])));
+            }
         }
         $b->row($L['start'], $dtf($r['started_at'] ?? null));
         $b->row($L['end'], $dtf($r['finished_at'] ?? null));

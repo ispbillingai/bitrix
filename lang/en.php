@@ -180,6 +180,17 @@ return [
             "⚠️ {customer_name}'s payment failed: *{description}*, {amount}. "
             . "Unpaid instalments: {count}. Open Payments in the CRM to retry the "
             . "charge or send a new link.",
+
+        'test_end_customer' => // to the CUSTOMER: the trial is about to end
+            "Hi {name}! ⏳ Your trial period for the *{model}* machine "
+            . "(serial {serial}) ends on *{date}*. If you'd like to keep it, reply to "
+            . "this message and we'll prepare the offer right away. If you'd rather "
+            . "return it, we'll arrange the pick-up together. — {company}",
+
+        'test_end_company' => // to the COMPANY: close out the trial
+            "⏳ Trial ends in {days} days ({date}): {customer_name} "
+            . "({customer_phone}) — machine {model}, serial {serial}. "
+            . "Contact the customer to close it out: purchase, rental or pick-up.",
     ],
 
     'email' => [
@@ -398,6 +409,22 @@ return [
             'html'    => '<p>{customer_name} — <strong>{description}</strong>, {amount}.</p>'
                 . '<p>Unpaid instalments: <strong>{count}</strong>.</p>'
                 . '<p>Open <strong>Payments</strong> in the CRM to retry the charge or send a new link.</p>',
+        ],
+        'test_end_customer' => [
+            'subject' => 'Your trial period ends on {date}',
+            'html'    => '<p>Hi {name},</p>'
+                . '<p>your trial period for the <strong>{model}</strong> machine '
+                . '(serial {serial}) ends on <strong>{date}</strong>.</p>'
+                . '<p>If you\'d like to keep it, reply to this email and we\'ll prepare the offer '
+                . 'right away. If you\'d rather return it, we\'ll arrange the pick-up together.</p>'
+                . '<p>Kind regards,<br>{company}</p>',
+        ],
+        'test_end_company' => [
+            'subject' => 'Trial ends in {days} days: {customer_name}',
+            'html'    => '<p><strong>{customer_name}</strong>\'s trial period '
+                . '({customer_phone}) ends on <strong>{date}</strong>.</p>'
+                . '<p>Machine: <strong>{model}</strong> — serial {serial}.</p>'
+                . '<p>Contact the customer to close it out: purchase, rental or pick-up.</p>',
         ],
     ],
 ];

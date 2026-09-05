@@ -184,6 +184,17 @@ return [
             "⚠️ Pagamento fallito di {customer_name}: *{description}*, {amount}. "
             . "Rate insolute: {count}. Apri Pagamenti nel CRM per ritentare "
             . "l'addebito o inviare un nuovo link.",
+
+        'test_end_customer' => // al CLIENTE: il noleggio di prova sta per finire
+            "Ciao {name}! ⏳ Il tuo periodo di prova della macchina *{model}* "
+            . "(matricola {serial}) termina il *{date}*. Se vuoi tenerla, rispondi a "
+            . "questo messaggio e prepariamo subito la proposta. Se preferisci la "
+            . "restituzione, concordiamo il ritiro. — {company}",
+
+        'test_end_company' => // all'AZIENDA: decidere il fine prova
+            "⏳ Fine test tra {days} giorni ({date}): {customer_name} "
+            . "({customer_phone}) — macchina {model}, matricola {serial}. "
+            . "Contattare il cliente per chiudere: acquisto, noleggio o ritiro.",
     ],
 
     'email' => [
@@ -404,6 +415,22 @@ return [
                 . '<p>Rate insolute: <strong>{count}</strong>.</p>'
                 . '<p>Apri <strong>Pagamenti</strong> nel CRM per ritentare l\'addebito o inviare '
                 . 'un nuovo link.</p>',
+        ],
+        'test_end_customer' => [
+            'subject' => 'Il tuo periodo di prova termina il {date}',
+            'html'    => '<p>Ciao {name},</p>'
+                . '<p>il periodo di prova della macchina <strong>{model}</strong> '
+                . '(matricola {serial}) termina il <strong>{date}</strong>.</p>'
+                . '<p>Se vuoi tenerla, rispondi a questa email e prepariamo subito la proposta. '
+                . 'Se preferisci la restituzione, concordiamo insieme il ritiro.</p>'
+                . '<p>Un saluto,<br>{company}</p>',
+        ],
+        'test_end_company' => [
+            'subject' => 'Fine test tra {days} giorni: {customer_name}',
+            'html'    => '<p>Il periodo di prova di <strong>{customer_name}</strong> '
+                . '({customer_phone}) termina il <strong>{date}</strong>.</p>'
+                . '<p>Macchina: <strong>{model}</strong> — matricola {serial}.</p>'
+                . '<p>Contattare il cliente per chiudere: acquisto, noleggio o ritiro.</p>',
         ],
     ],
 ];
