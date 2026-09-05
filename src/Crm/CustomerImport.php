@@ -35,11 +35,20 @@ use ZipArchive;
  */
 final class CustomerImport
 {
-    /** Header spellings in the export, mapped to what we call them. */
+    /**
+     * Header spellings in the export, mapped to what we call them. The
+     * gestionale has shipped two layouts so far — the Sep 2026 one renamed
+     * "Cognome o Ragione Sociale" to plain "Cognome" and added Disattiva and
+     * Email Pec — so both spellings map, and a column a file doesn't have is
+     * simply absent from the map.
+     */
     private const HEADERS = [
         'Cod.'                       => 'code',
         'Vs. Rif.'                   => 'ref',
         'Cognome o Ragione Sociale'  => 'surname_or_company',
+        'Cognome'                    => 'surname_or_company',
+        'Disattiva'                  => 'deactivated',
+        'Email Pec'                  => 'pec',
         'Nome'                       => 'first_name',
         'Localita'                   => 'city',
         'Telefono'                   => 'phone_land',
@@ -66,7 +75,7 @@ final class CustomerImport
      * @return array{file:string, sha256:string, total:int, created:int, updated:int,
      *               skipped:int, already:bool, dry_run:bool}
      */
-    public static function run(string $path, ?int $userId = null, bool $dryRun = false, bool $force = false): array
+    public static function run(string $path, ?int $userId = null, bool $dryRun = false, bool $force = false, bool $prune = false): array
     {
         if (!is_file($path)) {
             throw new RuntimeException("No such file: $path");
@@ -75,6 +84,7 @@ final class CustomerImport
         $out = [
             'file' => basename($path), 'sha256' => $sha, 'total' => 0,
             'created' => 0, 'updated' => 0, 'skipped' => 0,
+            'pruned' => 0, 'prune_kept' => 0,
             'already' => false, 'dry_run' => $dryRun,
         ];
 
@@ -111,6 +121,7 @@ final class CustomerImport
              WHERE vat_number = ? AND customer_code IS NULL LIMIT 2'
         );
 
+        $seenCodes = [];
         try {
         foreach ($rows as $r) {
             $g = self::rowToFields($r, $map);
@@ -119,6 +130,7 @@ final class CustomerImport
                 continue;
             }
             $out['total']++;
+            $seenCodes[$g['code']] = true;
 
             $findByCode->execute([$g['code']]);
             $hit = $findByCode->fetch() ?: null;
@@ -142,6 +154,10 @@ final class CustomerImport
                 self::insertNew($g);
                 $out['created']++;
             }
+        }
+
+        if ($prune) {
+            [$out['pruned'], $out['prune_kept']] = self::prune($seenCodes, $dryRun);
         }
         } catch (\Throwable $e) {
             if (!$dryRun && $pdo->inTransaction()) {
@@ -177,6 +193,12 @@ final class CustomerImport
         $surname = $get('surname_or_company');
         if ($code === '' || $surname === '') {
             return null; // no identity, nothing to hang the row on
+        }
+        // A row the gestionale switched off is not a customer to import; with
+        // --prune its code also drops out of "seen", so an existing CRM row for
+        // it goes away like one deleted upstream.
+        if (in_array(strtolower($get('deactivated')), ['vero', 'true', '1', 'si', 'sì'], true)) {
+            return null;
         }
 
         $first = $get('first_name');
@@ -222,6 +244,7 @@ final class CustomerImport
             'last_name'       => $first !== '' ? mb_substr($surname, 0, 100) : null,
             'company'         => $first === '' ? mb_substr($surname, 0, 190) : null,
             'vat'             => VatLock::normalize($get('vat')) ?: null,
+            'pec'             => filter_var($get('pec'), FILTER_VALIDATE_EMAIL) ? $get('pec') : null,
             'phone'           => $phone ?: null,
             'phone2'          => $phone2,
             'email'           => $email,
@@ -240,13 +263,13 @@ final class CustomerImport
     {
         Db::pdo()->prepare(
             'INSERT INTO contacts
-                (name, first_name, last_name, company, phone, phone2, email, lang, source,
+                (name, first_name, last_name, company, phone, phone2, email, pec, lang, source,
                  customer_code, vat_number, is_customer, customer_since,
                  address, city, province, zip, balance, contract_expiry, gestionale_agent, notes)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), ?, ?, ?, ?, ?, ?, ?, ?)'
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), ?, ?, ?, ?, ?, ?, ?, ?)'
         )->execute([
             $g['name'], $g['first_name'] ?? '', $g['last_name'] ?? '', $g['company'],
-            $g['phone'], $g['phone2'], $g['email'],
+            $g['phone'], $g['phone2'], $g['email'], $g['pec'],
             (string)Config::get('app.default_lang', 'it'), 'gestionale',
             $g['code'], $g['vat'],
             $g['address'], $g['city'], $g['province'], $g['zip'],
@@ -267,6 +290,7 @@ final class CustomerImport
         $set = [
             'customer_code'    => $g['code'],
             'vat_number'       => $g['vat'],
+            'pec'              => $g['pec'],
             'is_customer'      => 1,
             'address'          => $g['address'],
             'city'             => $g['city'],
@@ -299,6 +323,59 @@ final class CustomerImport
         Db::pdo()->prepare(
             "UPDATE contacts SET $cols, customer_since = COALESCE(customer_since, NOW()) WHERE id = ?"
         )->execute($args);
+    }
+
+    /**
+     * The file is a full snapshot, so a code it no longer carries is a customer
+     * the gestionale deleted (or deactivated): remove ours too — but ONLY rows
+     * the import itself created, and only when nothing in the CRM points at
+     * them. A vanished customer with tickets, deals, documents, a contract, a
+     * router or a portal login is history someone may need; those are counted
+     * as kept, never silently destroyed.
+     *
+     * Deliberately NOT run by default: a truncated or partial file must never
+     * be able to mass-delete the registry. The caller opts in per run.
+     *
+     * @param array<string,true> $seen codes present in this file
+     * @return array{0:int,1:int} [deleted, kept because linked]
+     */
+    private static function prune(array $seen, bool $dryRun): array
+    {
+        $pdo = Db::pdo();
+        $gone = [];
+        foreach ($pdo->query("SELECT id, customer_code FROM contacts
+                              WHERE source = 'gestionale' AND customer_code IS NOT NULL") as $r) {
+            if (!isset($seen[(string)$r['customer_code']])) {
+                $gone[] = (int)$r['id'];
+            }
+        }
+        if (!$gone) {
+            return [0, 0];
+        }
+
+        $in = implode(',', $gone);
+        $linked = [];
+        foreach ([
+            "SELECT DISTINCT contact_id FROM tickets           WHERE contact_id IN ($in)",
+            "SELECT DISTINCT contact_id FROM leads             WHERE contact_id IN ($in)",
+            "SELECT DISTINCT contact_id FROM deals             WHERE contact_id IN ($in)",
+            "SELECT DISTINCT contact_id FROM sign_documents    WHERE contact_id IN ($in)",
+            "SELECT DISTINCT contact_id FROM payment_contracts WHERE contact_id IN ($in)",
+            "SELECT DISTINCT contact_id FROM network_areas     WHERE contact_id IN ($in)",
+            "SELECT id AS contact_id    FROM contacts          WHERE id IN ($in) AND portal_enabled = 1",
+        ] as $sql) {
+            foreach ($pdo->query($sql)->fetchAll(\PDO::FETCH_COLUMN) as $cid) {
+                $linked[(int)$cid] = true;
+            }
+        }
+
+        $deletable = array_values(array_filter($gone, static fn(int $id) => !isset($linked[$id])));
+        if (!$dryRun && $deletable) {
+            foreach (array_chunk($deletable, 500) as $chunk) {
+                $pdo->exec('DELETE FROM contacts WHERE id IN (' . implode(',', $chunk) . ')');
+            }
+        }
+        return [count($deletable), count($linked)];
     }
 
     /**

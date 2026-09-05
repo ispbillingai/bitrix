@@ -248,7 +248,10 @@ if ($ov !== null):
         <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone" value="<?= $h($c['phone'] ?? '') ?>"></label>
         <label class="fld"><span><?= $h($t('cu_phone2')) ?></span><input name="phone2" value="<?= $h($c['phone2'] ?? '') ?>"></label>
       </div>
-      <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email" value="<?= $h($c['email'] ?? '') ?>"></label>
+      <div class="row">
+        <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email" value="<?= $h($c['email'] ?? '') ?>"></label>
+        <label class="fld"><span>PEC</span><input name="pec" value="<?= $h($c['pec'] ?? '') ?>"></label>
+      </div>
       <label class="fld"><span><?= $h($t('cu_address')) ?></span><input name="address" value="<?= $h($c['address'] ?? '') ?>"></label>
       <div class="row">
         <label class="fld"><span><?= $h($t('cu_city')) ?></span><input name="city" value="<?= $h($c['city'] ?? '') ?>"></label>

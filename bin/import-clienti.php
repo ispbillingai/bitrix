@@ -7,6 +7,7 @@ declare(strict_types=1);
  *   php bin/import-clienti.php file.xlsx            # import this file
  *   php bin/import-clienti.php file.xlsx --dry-run  # parse + report, write nothing
  *   php bin/import-clienti.php file.xlsx --force    # re-import a file already taken
+ *   php bin/import-clienti.php file.xlsx --prune    # ...and delete import-born customers absent from it
  *   php bin/import-clienti.php                      # scan the FTP drop directory
  *
  * With no path it scans customers.import_dir (default <root>/storage/import) for
@@ -38,6 +39,10 @@ if (PHP_SAPI !== 'cli') {
 $args   = array_slice($argv, 1);
 $dryRun = in_array('--dry-run', $args, true);
 $force  = in_array('--force', $args, true);
+// --prune: the file is the whole truth — import-born customers whose code is
+// no longer in it are deleted (unless something in the CRM points at them).
+// Opt-in per run, never the cron default: a partial file must not mass-delete.
+$prune  = in_array('--prune', $args, true);
 $rest   = array_values(array_filter($args, static fn($a) => !str_starts_with($a, '--')));
 $path   = $rest[0] ?? null;
 
@@ -62,7 +67,7 @@ if ($path !== null) {
 $imported = 0;
 foreach ($files as $f) {
     try {
-        $r = CustomerImport::run($f, null, $dryRun, $force);
+        $r = CustomerImport::run($f, null, $dryRun, $force, $prune);
     } catch (Throwable $e) {
         fwrite(STDERR, basename($f) . ": " . $e->getMessage() . "\n");
         exit(1);
@@ -73,6 +78,11 @@ foreach ($files as $f) {
     }
     $mode = $dryRun ? ' [DRY RUN — nothing written]' : '';
     fwrite(STDOUT, "{$r['file']}: {$r['total']} rows -> {$r['created']} created, {$r['updated']} updated, {$r['skipped']} unusable$mode\n");
+    if ($prune) {
+        fwrite(STDOUT, "prune: {$r['pruned']} customers no longer in the file deleted"
+            . ($r['prune_kept'] > 0 ? ", {$r['prune_kept']} kept (they have tickets/deals/documents/contracts/routers/portal)" : '')
+            . "$mode\n");
+    }
     if (!$dryRun) {
         $imported++;
     }

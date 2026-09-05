@@ -786,6 +786,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'phone'   => trim((string)($_POST['phone'] ?? '')) ?: null,
                     'phone2'  => trim((string)($_POST['phone2'] ?? '')) ?: null,
                     'email'   => trim((string)($_POST['email'] ?? '')) ?: null,
+                    'pec'     => trim((string)($_POST['pec'] ?? '')) ?: null,
                     'notes'   => $_POST['notes'] ?? '',
                     'customer_code'    => trim((string)($_POST['customer_code'] ?? '')) ?: null,
                     'vat_number'       => \Glue\Crm\VatLock::normalize((string)($_POST['vat_number'] ?? '')) ?: null,

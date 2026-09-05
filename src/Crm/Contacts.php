@@ -135,7 +135,7 @@ final class Contacts
         if (isset($fields['first_name']) || isset($fields['last_name']) || isset($fields['name'])) {
             $fields = array_merge($fields, self::nameParts($fields));
         }
-        $allowed = ['name', 'first_name', 'last_name', 'company', 'phone', 'phone2', 'email', 'lang', 'source', 'assigned_to', 'notes',
+        $allowed = ['name', 'first_name', 'last_name', 'company', 'phone', 'phone2', 'email', 'pec', 'lang', 'source', 'assigned_to', 'notes',
                     // customer-registry fields (migration 038, edited from the Customers page)
                     'customer_code', 'vat_number', 'is_customer', 'address', 'city', 'province', 'zip',
                     'balance', 'contract_expiry', 'gestionale_agent'];
