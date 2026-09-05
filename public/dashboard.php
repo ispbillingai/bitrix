@@ -29,6 +29,7 @@ use Glue\Crm\Tasks;
 use Glue\Crm\Tickets;
 use Glue\Db;
 use Glue\Event\Log;
+use Glue\Install\Reports as InstallReports;
 use Glue\Notify\Notifier;
 use Glue\Notify\TextMeBot;
 use Glue\Pay\Contracts as PayContracts;
@@ -122,7 +123,10 @@ if ($filterAgentId !== null) {
 // brought in — entered in their own area or through their referral link.
 $filterPartnerId = (!$isAgent && !empty($_GET['partner'])) ? (int)$_GET['partner'] : null;
 $agentViews   = ['overview', 'leads', 'deals', 'appointments', 'tasks', 'messages', 'tickets', 'documents', 'instructions'];
-$techViews    = ['devices', 'network_areas'];
+$techViews    = ['devices', 'network_areas', 'installations'];
+// Technicians' POST whitelist: the installation-report flow and nothing else.
+// Until now the tech role had no POST actions at all, so nothing is taken away.
+$techActions  = ['install_create', 'install_save', 'install_photos', 'install_photo_del', 'install_send'];
 $agentActions = [
     'lead_create', 'lead_move', 'lead_convert', 'lead_note', 'lead_edit',
     'deal_move', 'deal_note', 'deal_invite',
@@ -135,7 +139,8 @@ $agentActions = [
 if (isset($_GET['dl'])) {
     $msg = Tickets::messageFile((int)$_GET['dl']);
     // Admin can fetch anything; an agent only files on tickets assigned to them.
-    if ($msg && (!$isAgent || (int)$msg['assigned_agent_id'] === $scopeId)) {
+    // Tech users have no tickets at all, so they get nothing here.
+    if ($msg && ((!$isAgent && !$isTech) || ($isAgent && (int)$msg['assigned_agent_id'] === $scopeId))) {
         Tickets::streamAttachment($msg);
     }
     http_response_code(404);
@@ -147,12 +152,26 @@ if (isset($_GET['dl'])) {
 // agent only reaches the documents they raised.
 if (isset($_GET['sdl'])) {
     $sdoc = SignDocs::find((int)$_GET['sdl']);
-    if ($sdoc && (!$isAgent || (int)$sdoc['created_by'] === $scopeId)) {
+    // Admin: everything. Agent or tech: only the documents they raised — which
+    // for a technician is their own installation reports.
+    if ($sdoc && ((!$isAgent && !$isTech) || (int)$sdoc['created_by'] === (int)$uid)) {
         $wantSigned = ($_GET['k'] ?? 'orig') === 'signed';
         $path = $wantSigned ? SignDocs::signedPath($sdoc) : SignDocs::originalPath($sdoc);
         if ($path !== null) {
             SignDocs::stream($path, $wantSigned ? 'signed-' . $sdoc['uid'] . '.pdf' : (string)$sdoc['orig_name']);
         }
+    }
+    http_response_code(404);
+    exit('Not found');
+}
+
+// ---- installation-report photo (?ipf=<photo_id>) ----
+// Photos live outside the web root (or behind the uploads deny); this is the
+// only way out. Admin sees all, a technician/agent only their own reports'.
+if (isset($_GET['ipf'])) {
+    $ph = InstallReports::photoFile((int)$_GET['ipf']);
+    if ($ph && ((!$isAgent && !$isTech) || (int)$ph['created_by'] === (int)$uid)) {
+        InstallReports::streamPhoto($ph);
     }
     http_response_code(404);
     exit('Not found');
@@ -230,14 +249,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $flashType = 'err';
         $do = ''; // fall through the switch without matching any case
     }
+    // Technicians the same: only the install-report actions are theirs. (Before
+    // this whitelist the tech role, being neither agent nor admin, slipped past
+    // the agent gate and could POST anything — closed now that techs get logins.)
+    if ($isTech && !in_array($do, $techActions, true)) {
+        if ($ajax) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
+        $flash = $t('not_allowed');
+        $flashType = 'err';
+        $do = '';
+    }
     // ...and only on records assigned to them (block IDOR via a forged id). An
     // unassigned or non-existent record reads as owner 0 and is denied too.
-    if ($isAgent && $do !== '') {
+    if (($isAgent || $isTech) && $do !== '') {
         $rid = (int)($_POST['id'] ?? 0);
         $ownerCol = ['lead_' => ['leads', 'assigned_to'], 'deal_' => ['deals', 'assigned_to'],
                      'appt_' => ['appointments', 'agent_id'], 'task_' => ['tasks', 'assigned_to'],
                      'ticket_' => ['tickets', 'assigned_agent_id'],
-                     'doc_' => ['sign_documents', 'created_by']];
+                     'doc_' => ['sign_documents', 'created_by'],
+                     'install_' => ['install_reports', 'created_by']];
         $needsOwner = null;
         foreach ($ownerCol as $prefix => $tc) {
             if (str_starts_with($do, $prefix)) { $needsOwner = $tc; break; }
@@ -247,7 +276,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($needsOwner !== null && $rid > 0) {
             [$table, $col] = $needsOwner;
             $owner = (int)$pdo->query("SELECT $col FROM $table WHERE id = $rid")->fetchColumn();
-            if ($owner !== $scopeId) {
+            if ($owner !== (int)($isAgent ? $scopeId : $uid)) {
                 if ($ajax) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
                 $flash = $t('not_allowed');
                 $flashType = 'err';
@@ -725,6 +754,70 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $flash = SignDocs::void((int)$_POST['id'], $uid) ? $t('dc_voided') : $t('not_allowed');
                 $tab = 'documents';
                 break;
+
+            // ---------- installation reports ----------
+            // All PRG: the technician is on a phone in a shop with weak signal,
+            // where a hung POST gets reloaded — and a reloaded POST re-sends
+            // photos or re-messages the customer.
+            case 'install_create': {
+                $irContact = (int)($_POST['contact_id'] ?? 0);
+                if ($irContact <= 0 || !Contacts::find($irContact)) {
+                    $_SESSION['dash_flash'] = [$t('ir_need_customer'), 'err'];
+                    header('Location: ?tab=installations');
+                    exit;
+                }
+                $irId = InstallReports::create($irContact, $uid);
+                $_SESSION['dash_flash'] = [$t('ir_created'), 'ok'];
+                header('Location: ?tab=installations&id=' . $irId);
+                exit;
+            }
+            case 'install_save': {
+                $ok = InstallReports::update((int)$_POST['id'], $_POST);
+                $_SESSION['dash_flash'] = [$ok ? $t('saved') : $t('ir_locked'), $ok ? 'ok' : 'err'];
+                header('Location: ?tab=installations&id=' . (int)$_POST['id']);
+                exit;
+            }
+            case 'install_photos': {
+                $irRes = InstallReports::addPhotos(
+                    (int)$_POST['id'], (string)($_POST['kind'] ?? 'final'), $_FILES['photos'] ?? null);
+                if (in_array('not_draft', $irRes['errors'], true)) {
+                    $_SESSION['dash_flash'] = [$t('ir_locked'), 'err'];
+                } elseif ($irRes['errors']) {
+                    $_SESSION['dash_flash'] = [sprintf($t('ir_photos_added'), $irRes['saved'])
+                        . ' · ' . count($irRes['errors']) . ' ' . $t('ir_photos_failed'), 'warn'];
+                } else {
+                    $_SESSION['dash_flash'] = [sprintf($t('ir_photos_added'), $irRes['saved']),
+                        $irRes['saved'] > 0 ? 'ok' : 'warn'];
+                }
+                header('Location: ?tab=installations&id=' . (int)$_POST['id']);
+                exit;
+            }
+            case 'install_photo_del': {
+                InstallReports::deletePhoto((int)($_POST['photo_id'] ?? 0), (int)$_POST['id']);
+                $_SESSION['dash_flash'] = [$t('saved'), 'ok'];
+                header('Location: ?tab=installations&id=' . (int)$_POST['id']);
+                exit;
+            }
+            case 'install_send': {
+                $irRes = InstallReports::send((int)$_POST['id'], $uid);
+                if ($irRes['ok']) {
+                    $_SESSION['dash_flash'] = [$t('ir_sent'), 'ok'];
+                } else {
+                    $irMsg = match ($irRes['error']) {
+                        'no_channel' => $t('ir_no_channel'),
+                        'not_draft'  => $t('ir_locked'),
+                        default      => $t('ir_send_failed') . ' (' . (string)$irRes['error'] . ')',
+                    };
+                    $_SESSION['dash_flash'] = [$irMsg, 'err'];
+                }
+                header('Location: ?tab=installations&id=' . (int)$_POST['id']);
+                exit;
+            }
+            case 'install_delete': // admin only (not in the tech/agent whitelists)
+                $ok = InstallReports::delete((int)$_POST['id'], $uid);
+                $_SESSION['dash_flash'] = [$ok ? $t('ir_deleted') : $t('not_allowed'), $ok ? 'ok' : 'err'];
+                header('Location: ?tab=installations' . ($ok ? '' : '&id=' . (int)$_POST['id']));
+                exit;
 
             // ---------- contacts ----------
             case 'contact_create':
@@ -1326,6 +1419,7 @@ $agents = Auth::agents();
 $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_format((float)$n, 0);
 
 $views = ['overview', 'leads', 'deals', 'customers', 'contacts', 'appointments', 'tasks', 'tickets', 'documents',
+          'installations',
           'invoices', 'payments', 'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents',
           'partners', 'devices', 'network_areas', 'settings', 'instructions'];
 $view = in_array($tab, $views, true) ? $tab : 'overview';
@@ -1379,7 +1473,8 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
         'overview' => 'nav_overview', 'leads' => 'nav_leads', 'deals' => 'nav_deals',
         'customers' => 'nav_customers',
         'contacts' => 'nav_contacts', 'appointments' => 'nav_appointments', 'tasks' => 'nav_tasks',
-        'tickets' => 'nav_tickets', 'documents' => 'nav_documents', 'invoices' => 'nav_invoices',
+        'tickets' => 'nav_tickets', 'documents' => 'nav_documents', 'installations' => 'nav_installations',
+        'invoices' => 'nav_invoices',
         'payments' => 'nav_payments',
         'campaigns' => 'nav_campaigns', 'messages' => 'nav_messages', 'outbound' => 'nav_outbound',
         'reminders' => 'nav_reminders', 'templates' => 'nav_templates',
@@ -1388,8 +1483,8 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
     ];
     if ($isAgent) { // agents only see their own work
         $nav = array_intersect_key($nav, array_flip(['overview', 'leads', 'deals', 'appointments', 'tasks', 'messages', 'documents', 'instructions']));
-    } elseif ($isTech) { // technical-area users only see device monitoring
-        $nav = array_intersect_key($nav, array_flip(['devices']));
+    } elseif ($isTech) { // technical-area users: device monitoring + their install reports
+        $nav = array_intersect_key($nav, array_flip(['devices', 'installations']));
     } ?>
 <!DOCTYPE html><html lang="<?= $h($lang) ?>"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

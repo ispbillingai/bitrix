@@ -165,6 +165,28 @@ if ($ov !== null):
     <?php endif; ?>
   </div>
 
+  <!-- ---- installation reports ---- -->
+  <?php $cuInstalls = \Glue\Install\Reports::forContact($custId); if ($cuInstalls): ?>
+  <div class="card">
+    <h3><?= svg('installations') ?> <?= $h($t('cu_installs')) ?></h3>
+    <table><thead><tr>
+      <th>#</th><th><?= $h($t('ir_f_model')) ?></th><th><?= $h($t('ir_f_serial')) ?></th>
+      <th><?= $h($t('ir_f_tech')) ?></th><th><?= $h($t('th_status')) ?></th><th></th>
+    </tr></thead><tbody>
+    <?php foreach ($cuInstalls as $ir): $irSt = \Glue\Install\Reports::displayStatus($ir); ?>
+      <tr>
+        <td class="muted"><?= (int)$ir['id'] ?></td>
+        <td><?= $h($ir['machine_model'] ?: '—') ?></td>
+        <td class="small"><?= $h($ir['serial_number'] ?: '—') ?></td>
+        <td class="small"><?= $h($ir['technician_name'] ?: '—') ?></td>
+        <td><?= pill($h, $irSt === 'draft' ? 'draft' : $irSt, $t) ?></td>
+        <td class="small"><a class="btn ghost tiny" href="?tab=installations&id=<?= (int)$ir['id'] ?>"><?= $h($t('cu_open')) ?></a></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody></table>
+  </div>
+  <?php endif; ?>
+
   <!-- ---- pipeline history ---- -->
   <div class="card">
     <h3><?= svg('deals') ?> <?= $h($t('cu_pipeline')) ?></h3>

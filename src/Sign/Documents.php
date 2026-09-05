@@ -99,6 +99,75 @@ final class Documents
     }
 
     /**
+     * Same as create(), for a PDF the CRM produced itself (e.g. the installation
+     * report): the bytes never went through an upload, so the is_uploaded_file
+     * path cannot take them. Everything after storage — audit, sending, OTP,
+     * sealing — is the one flow.
+     *
+     * @return array{ok:bool, id:int, error:?string}
+     */
+    public static function createFromBytes(array $in, string $bytes, string $origName, ?int $userId = null): array
+    {
+        if ($bytes === '' || strncmp($bytes, '%PDF-', 5) !== 0) {
+            return ['ok' => false, 'id' => 0, 'error' => 'bad_type'];
+        }
+        if (strlen($bytes) > self::MAX_BYTES) {
+            return ['ok' => false, 'id' => 0, 'error' => 'too_big'];
+        }
+        $contactId = (int)($in['contact_id'] ?? 0);
+        $contact = $contactId > 0 ? Contacts::find($contactId) : null;
+        if (!$contact) {
+            return ['ok' => false, 'id' => 0, 'error' => 'no_contact'];
+        }
+
+        $stored = bin2hex(random_bytes(16)) . '.pdf';
+        $dest   = Store::path('docs') . '/' . $stored;
+        if (file_put_contents($dest, $bytes, LOCK_EX) === false) {
+            return ['ok' => false, 'id' => 0, 'error' => 'save_failed'];
+        }
+        @chmod($dest, 0640);
+
+        $origName = mb_substr(trim($origName) ?: 'document.pdf', 0, 190);
+        $sha256   = hash('sha256', $bytes);
+        $uid = self::newUid();
+        Db::pdo()->prepare(
+            'INSERT INTO sign_documents
+             (uid, title, contact_id, deal_id, signer_name, signer_email, signer_phone, lang,
+              orig_name, orig_path, orig_sha256, orig_bytes, orig_mime, status, created_by)
+             VALUES (:uid, :title, :contact_id, :deal_id, :signer_name, :signer_email, :signer_phone, :lang,
+                     :orig_name, :orig_path, :orig_sha256, :orig_bytes, "application/pdf", "draft", :created_by)'
+        )->execute([
+            ':uid'          => $uid,
+            ':title'        => mb_substr(trim((string)($in['title'] ?? '')) ?: $origName, 0, 190),
+            ':contact_id'   => $contactId,
+            ':deal_id'      => ((int)($in['deal_id'] ?? 0)) ?: null,
+            ':signer_name'  => mb_substr((string)($contact['name'] ?? ''), 0, 190),
+            ':signer_email' => $contact['email'] ?: null,
+            ':signer_phone' => $contact['phone'] ?: null,
+            ':lang'         => $in['lang'] ?? ($contact['lang'] ?? null),
+            ':orig_name'    => $origName,
+            ':orig_path'    => $stored,
+            ':orig_sha256'  => $sha256,
+            ':orig_bytes'   => strlen($bytes),
+            ':created_by'   => $userId ?: null,
+        ]);
+        $id = (int)Db::pdo()->lastInsertId();
+
+        Audit::append($id, 'document_created', [
+            'title'  => (string)($in['title'] ?? $origName),
+            'file'   => $origName,
+            'sha256' => $sha256,
+            'bytes'  => strlen($bytes),
+            'source' => 'generated',
+        ], ['type' => 'staff', 'id' => $userId, 'label' => self::staffLabel($userId)]);
+
+        Log::write('sign', 'document_created', 'sign_document', $id,
+            ['uid' => $uid, 'contact_id' => $contactId, 'sha256' => $sha256]);
+
+        return ['ok' => true, 'id' => $id, 'error' => null];
+    }
+
+    /**
      * Send it for signature: mint a link token and message the customer. Signing
      * needs no portal account — the token in the link is the entry, and the
      * one-time code is what actually proves who is at the other end.

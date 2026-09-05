@@ -35,6 +35,8 @@ final class Pdf
     private array $obj = [];
     /** @var array<int,string> page index => content stream operators */
     private array $ops = [];
+    /** @var array<int,array{bytes:string, w:int, h:int, gray:bool}> image index => JPEG data */
+    private array $images = [];
     /** @var array{name:string, bytes:string, mime:string, desc:string}|null */
     private ?array $attachment = null;
     private ?array $signature = null;
@@ -171,6 +173,31 @@ final class Pdf
         $this->ops[$this->page] .= $op;
     }
 
+    /**
+     * Place a JPEG on the current page, top-left corner at (x, yDown), scaled to
+     * w × h points. JPEG only: its bytes go into the file verbatim (/DCTDecode),
+     * which is the one image path that needs no decoding on our side. Returns
+     * false (drawing nothing) for anything that is not a plain RGB/gray JPEG —
+     * callers fall back to listing the photo by name.
+     */
+    public function jpeg(string $bytes, float $x, float $yDown, float $w, float $h): bool
+    {
+        $info = @getimagesizefromstring($bytes);
+        if (!$info || $info[2] !== IMAGETYPE_JPEG || (int)($info['channels'] ?? 3) === 4) {
+            return false; // not a JPEG, or CMYK — both would render wrong or not at all
+        }
+        $idx = count($this->images) + 1;
+        $this->images[$idx] = [
+            'bytes' => $bytes, 'w' => (int)$info[0], 'h' => (int)$info[1],
+            'gray'  => (int)($info['channels'] ?? 3) === 1,
+        ];
+        $this->ops[$this->page] .= sprintf(
+            "q %s 0 0 %s %s %s cm /Im%d Do Q\n",
+            $this->n($w), $this->n($h), $this->n($x), $this->n(self::A4_H - $yDown - $h), $idx
+        );
+        return true;
+    }
+
     // ---- attachment + signature ---------------------------------------------------
 
     /**
@@ -214,7 +241,23 @@ final class Pdf
         foreach ($fonts as $name => $id) {
             $fontRes .= '/' . $name . ' ' . $id . ' 0 R ';
         }
-        $fontRes .= '>> >>';
+        $fontRes .= '>>';
+        // Images share one resource dictionary with the fonts: every page can
+        // reference every /ImN, and unreferenced entries are legal and ignored.
+        if ($this->images !== []) {
+            $fontRes .= ' /XObject << ';
+            foreach ($this->images as $idx => $im) {
+                $imgId = $this->add(sprintf(
+                    "<< /Type /XObject /Subtype /Image /Width %d /Height %d /ColorSpace %s"
+                    . " /BitsPerComponent 8 /Filter /DCTDecode /Length %d >>\nstream\n%s\nendstream",
+                    $im['w'], $im['h'], $im['gray'] ? '/DeviceGray' : '/DeviceRGB',
+                    strlen($im['bytes']), $im['bytes']
+                ));
+                $fontRes .= '/Im' . $idx . ' ' . $imgId . ' 0 R ';
+            }
+            $fontRes .= '>>';
+        }
+        $fontRes .= ' >>';
 
         // The signature widget and its page reference each other, so the field id
         // is reserved before the pages are written and filled in afterwards.
