@@ -98,14 +98,8 @@ final class CustomerImport
             }
         }
 
-        $rows = self::readSheet($path);
-        if (!$rows) {
-            throw new RuntimeException('The file has no data rows.');
-        }
-        $map = self::mapHeaders(array_shift($rows));
-        if (!isset($map['code'])) {
-            throw new RuntimeException('Column "Cod." not found — is this really the CLIENTI export?');
-        }
+        $rows = self::readSheet($path); // a generator: rows stream, nothing is held
+        $map  = null;
 
         // One transaction for the whole file: 10,000 autocommitted INSERTs are
         // 10,000 disk flushes (minutes); one commit is seconds. All-or-nothing
@@ -124,6 +118,13 @@ final class CustomerImport
         $seenCodes = [];
         try {
         foreach ($rows as $r) {
+            if ($map === null) { // first row is the header
+                $map = self::mapHeaders($r);
+                if (!isset($map['code'])) {
+                    throw new RuntimeException('Column "Cod." not found — is this really the CLIENTI export?');
+                }
+                continue;
+            }
             $g = self::rowToFields($r, $map);
             if ($g === null) {
                 $out['skipped']++;
@@ -156,6 +157,14 @@ final class CustomerImport
             }
         }
 
+        if ($map === null) {
+            throw new RuntimeException('The file has no rows at all.');
+        }
+        if ($out['total'] === 0) {
+            // An empty snapshot is a broken export, not "all customers left" —
+            // refuse before prune can act on it.
+            throw new RuntimeException('The file has a header but no usable data rows.');
+        }
         if ($prune) {
             [$out['pruned'], $out['prune_kept']] = self::prune($seenCodes, $dryRun);
         }
@@ -422,65 +431,94 @@ final class CustomerImport
 
     // ---- the xlsx itself ----------------------------------------------------
 
-    /** @return array<int,array<int,string>> raw rows, header row included */
-    private static function readSheet(string $path): array
+    /**
+     * Stream the first worksheet, one row at a time, header row first.
+     *
+     * XMLReader, not simplexml_load_string on the whole sheet: the newer export
+     * layout is ~15 MB of XML, and a full DOM of it OOM-killed the import on
+     * the production box (848 MB total RAM). Only one <row> fragment is ever
+     * materialised at a time, so memory stays flat however large the file gets.
+     *
+     * @return \Generator<array<int,string>>
+     */
+    private static function readSheet(string $path): \Generator
     {
+        // ZipArchive just to validate + confirm the parts exist; reading itself
+        // goes through the zip:// stream wrapper so nothing is inflated whole.
         $zip = new ZipArchive();
         if ($zip->open($path) !== true) {
             throw new RuntimeException('Cannot open the xlsx (is it a real Excel file?).');
         }
-
-        $shared = [];
-        $ssXml = $zip->getFromName('xl/sharedStrings.xml');
-        if ($ssXml !== false) {
-            $sx = simplexml_load_string($ssXml);
-            foreach ($sx->si as $si) {
-                // A cell string is either one <t> or a run of <r><t> pieces.
-                $txt = '';
-                if (isset($si->t)) {
-                    $txt = (string)$si->t;
-                } else {
-                    foreach ($si->r as $run) {
-                        $txt .= (string)$run->t;
-                    }
-                }
-                $shared[] = $txt;
-            }
-        }
-
-        $sheetXml = $zip->getFromName('xl/worksheets/sheet1.xml');
+        $hasShared = $zip->locateName('xl/sharedStrings.xml') !== false;
+        $hasSheet  = $zip->locateName('xl/worksheets/sheet1.xml') !== false;
         $zip->close();
-        if ($sheetXml === false) {
+        if (!$hasSheet) {
             throw new RuntimeException('No worksheet found in the file.');
         }
 
-        $sx = simplexml_load_string($sheetXml);
-        $rows = [];
-        foreach ($sx->sheetData->row as $row) {
-            $out = [];
-            foreach ($row->c as $c) {
-                $ref = (string)$c['r'];
-                preg_match('/^([A-Z]+)/', $ref, $m);
-                $col = 0;
-                foreach (str_split($m[1]) as $ch) {
-                    $col = $col * 26 + (ord($ch) - 64);
+        $shared = [];
+        if ($hasShared) {
+            $r = new \XMLReader();
+            if ($r->open('zip://' . $path . '#xl/sharedStrings.xml')) {
+                $ok = $r->read();
+                while ($ok) {
+                    if ($r->nodeType === \XMLReader::ELEMENT && $r->localName === 'si') {
+                        $si = simplexml_load_string($r->readOuterXml());
+                        // A cell string is either one <t> or a run of <r><t> pieces.
+                        $txt = '';
+                        if (isset($si->t)) {
+                            $txt = (string)$si->t;
+                        } else {
+                            foreach ($si->r as $run) {
+                                $txt .= (string)$run->t;
+                            }
+                        }
+                        $shared[] = $txt;
+                        $ok = $r->next();
+                        continue;
+                    }
+                    $ok = $r->read();
                 }
-                $col--;
-                $t = (string)$c['t'];
-                if ($t === 'inlineStr') {
-                    $val = (string)($c->is->t ?? '');
-                } elseif ($t === 's') {
-                    $val = $shared[(int)$c->v] ?? '';
-                } else {
-                    $val = (string)$c->v;
-                }
-                $out[$col] = $val;
-            }
-            if ($out) {
-                $rows[] = $out;
+                $r->close();
             }
         }
-        return $rows;
+
+        $r = new \XMLReader();
+        if (!$r->open('zip://' . $path . '#xl/worksheets/sheet1.xml')) {
+            throw new RuntimeException('No worksheet found in the file.');
+        }
+        $ok = $r->read();
+        while ($ok) {
+            if ($r->nodeType === \XMLReader::ELEMENT && $r->localName === 'row') {
+                $row = simplexml_load_string($r->readOuterXml());
+                $out = [];
+                foreach ($row->c as $c) {
+                    $ref = (string)$c['r'];
+                    preg_match('/^([A-Z]+)/', $ref, $m);
+                    $col = 0;
+                    foreach (str_split($m[1]) as $ch) {
+                        $col = $col * 26 + (ord($ch) - 64);
+                    }
+                    $col--;
+                    $t = (string)$c['t'];
+                    if ($t === 'inlineStr') {
+                        $val = (string)($c->is->t ?? '');
+                    } elseif ($t === 's') {
+                        $val = $shared[(int)$c->v] ?? '';
+                    } else {
+                        $val = (string)$c->v;
+                    }
+                    $out[$col] = $val;
+                }
+                if ($out) {
+                    yield $out;
+                }
+                $ok = $r->next();
+                continue;
+            }
+            $ok = $r->read();
+        }
+        $r->close();
     }
 
     /** @return array<string,int> our field name -> column index */
