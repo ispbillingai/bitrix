@@ -808,6 +808,26 @@ return [
     'ir_sent'           => 'Report sent to the customer for signature.',
     'ir_send_failed'    => 'Sending failed',
     'cu_installs'       => 'Installation reports',
+
+    // portal assistance requests (support-contract gate)
+    'sec_support'       => 'Support contract (portal requests)',
+    'sec_support_h'     => 'A customer without an active support contract who asks for assistance from the portal must first activate and pay this contract (through SmallPay). No amount = gate off: requests pass tagged [SENZA CONTRATTO DI ASSISTENZA].',
+    'f_su_amount'       => 'Monthly amount (EUR)',
+    'f_su_amount_h'     => 'e.g. 25 or 25,50 — empty = no gate',
+    'f_su_cycles'       => 'Number of months',
+    'f_su_cycles_h'     => '0 = until cancelled',
+    'f_su_desc'         => 'Description',
+    'f_su_desc_h'       => 'Shown on the customer’s payment page',
+    'as_held_t'         => 'Assistance requests awaiting payment',
+    'as_held_h'         => 'The customer sent the request but the support contract is not paid yet. It forwards itself on payment; “Forward now” waives the payment (e.g. paid in cash).',
+    'as_contract'       => 'Contract',
+    'as_no_contract'    => 'no contract — handle by hand',
+    'as_forward'        => 'Forward now',
+    'as_forward_confirm' => 'Forward the request without waiting for the payment?',
+    'as_cancel'         => 'Cancel',
+    'as_cancel_confirm' => 'Cancel this request? The customer will have to send a new one.',
+    'as_forwarded'      => 'Request forwarded — it is a ticket now.',
+    'as_cancelled'      => 'Request cancelled.',
     'dc_ev_seal_failed'           => 'Sealing failed',
 
     // invoices (Sibill)

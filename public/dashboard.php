@@ -314,6 +314,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'smallpay.service_id', 'smallpay.domain', 'smallpay.reference_prefix',
                     'smallpay.sync_minutes', 'smallpay.modify_installments',
                     'smallpay.notify_customer_on_failure',
+                    'support.amount', 'support.cycles', 'support.description',
                 ];
                 // PHP rewrites dots in POST field names to underscores, so a field
                 // named 'mail.from_email' actually arrives as 'mail_from_email'.
@@ -817,6 +818,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $ok = InstallReports::delete((int)$_POST['id'], $uid);
                 $_SESSION['dash_flash'] = [$ok ? $t('ir_deleted') : $t('not_allowed'), $ok ? 'ok' : 'err'];
                 header('Location: ?tab=installations' . ($ok ? '' : '&id=' . (int)$_POST['id']));
+                exit;
+
+            // ---------- assistance requests held for payment (admin only) ----------
+            case 'assist_forward': // the customer paid another way, or the admin waives the gate
+                $ok = \Glue\Portal\AssistRequests::forward((int)$_POST['id']);
+                $_SESSION['dash_flash'] = [$ok ? $t('as_forwarded') : $t('not_allowed'), $ok ? 'ok' : 'err'];
+                header('Location: ?tab=tickets');
+                exit;
+            case 'assist_cancel':
+                $ok = \Glue\Portal\AssistRequests::cancel((int)$_POST['id']);
+                $_SESSION['dash_flash'] = [$ok ? $t('as_cancelled') : $t('not_allowed'), $ok ? 'ok' : 'err'];
+                header('Location: ?tab=tickets');
                 exit;
 
             // ---------- contacts ----------

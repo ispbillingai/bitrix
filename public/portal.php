@@ -121,11 +121,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if ($attErr !== null) {
             $prg($t('att_' . $attErr), 'err', 'portal.php?page=support');
         }
-        if (trim((string)($_POST['body'] ?? '')) !== '') {
-            $tid = Tickets::open($cid, (string)($_POST['subject'] ?? ''), (string)$_POST['body'], null, $att);
-            $prg($t('tk_opened'), 'ok', 'portal.php?page=support&tk=' . $tid);
+        if (trim((string)($_POST['body'] ?? '')) === '') {
+            $prg($t('err_generic'), 'err', 'portal.php?page=support');
         }
-        $prg($t('err_generic'), 'err', 'portal.php?page=support');
+        // The gate: no support contract → the request is held and a SmallPay
+        // support subscription is opened; paying it is what forwards the
+        // request. The consent box only exists (and is only required) when the
+        // customer is uncovered and there is an offer to accept.
+        if (!\Glue\Portal\AssistRequests::cover($cid)['covered']
+            && \Glue\Portal\AssistRequests::offer() !== null
+            && empty($_POST['support_consent'])) {
+            $prg($t('as_need_consent'), 'err', 'portal.php?page=support');
+        }
+        $asRes = \Glue\Portal\AssistRequests::submit(
+            $cid, (string)($_POST['subject'] ?? ''), (string)$_POST['body'], $att);
+        if ($asRes['status'] === 'forwarded') {
+            $prg($t('tk_opened'), 'ok', 'portal.php?page=support&tk=' . (int)$asRes['ticket_id']);
+        }
+        if ($asRes['status'] === 'awaiting_payment') {
+            $prg($t('as_sent_pay'), 'ok', 'portal.php?page=support');
+        }
+        $prg($t('as_no_offer'), 'ok', 'portal.php?page=support'); // held_no_contract
     }
     if ($cid && $do === 'offer_accept') {
         $mid = (int)($_POST['message_id'] ?? 0);
@@ -426,7 +442,46 @@ if ($tkCur && $page === 'support') {
   </div>
   <script>(function(){var c=document.getElementById('chat');if(c)c.scrollTop=c.scrollHeight;})();</script>
 
-<?php elseif ($page === 'support'): ?>
+<?php elseif ($page === 'support'):
+  // The support-contract gate, rendered honestly: what the customer sees is
+  // exactly what submit() will do with their request.
+  $asCover   = \Glue\Portal\AssistRequests::cover($cid);
+  $asOffer   = \Glue\Portal\AssistRequests::offer();
+  $asPending = \Glue\Portal\AssistRequests::pendingForContact($cid);
+  $asPrice   = $asOffer !== null ? $money($asOffer['amount_cents'] / 100, null) . '/' . $t('as_month') : '';
+?>
+  <?php if ($asCover['covered']): ?>
+    <div class="card" style="border-left:4px solid #2fa36b">
+      <b style="color:#188a4c">✓ <?= $h($t('as_covered')) ?></b>
+      <?php if ($asCover['label'] !== ''): ?>
+        <span class="muted small"> · <?= $h($asCover['label']) ?></span>
+      <?php endif; ?>
+    </div>
+  <?php endif; ?>
+
+  <?php foreach ($asPending as $ap): ?>
+    <div class="card" style="border-left:4px solid #e0a52e">
+      <b style="color:#a87908"><?= $h($t('as_pending_t')) ?></b>
+      <p class="muted small" style="margin:6px 0 10px">
+        «<?= $h($ap['subject']) ?>» — <?= $h(str_replace('{amount}',
+            !empty($ap['amount_cents']) ? $money(((int)$ap['amount_cents']) / 100, (string)($ap['currency'] ?? '')) . '/' . $t('as_month') : $asPrice,
+            $t('as_pending'))) ?>
+      </p>
+      <?php if (!empty($ap['checkout_url'])): ?>
+        <a class="btn" href="<?= $h($ap['checkout_url']) ?>" target="_blank" rel="noopener"><?= $h($t('as_pay')) ?></a>
+      <?php else: ?>
+        <span class="muted small"><?= $h($t('as_no_offer')) ?></span>
+      <?php endif; ?>
+    </div>
+  <?php endforeach; ?>
+
+  <?php if (!$asCover['covered'] && !$asPending && $asOffer !== null): ?>
+    <div class="card" style="border-left:4px solid #e0a52e">
+      <b style="color:#a87908"><?= $h($t('as_need_t')) ?></b>
+      <p class="muted small" style="margin-top:6px"><?= $h(str_replace('{amount}', $asPrice, $t('as_need'))) ?></p>
+    </div>
+  <?php endif; ?>
+
   <!-- ---------- conversation list ---------- -->
   <div class="card">
     <details<?= !$tickets ? ' open' : '' ?>>
@@ -436,6 +491,12 @@ if ($tkCur && $page === 'support') {
         <label><?= $h($t('tk_subject')) ?><input name="subject" maxlength="190" required></label>
         <label><?= $h($t('tk_message')) ?><textarea name="body" rows="3" required></textarea></label>
         <label><?= $h($t('tk_attach')) ?><input type="file" name="attachment"></label>
+        <?php if (!$asCover['covered'] && $asOffer !== null): ?>
+          <label style="display:flex;gap:9px;align-items:flex-start;font-weight:500">
+            <input type="checkbox" name="support_consent" value="1" required style="width:auto;margin-top:4px">
+            <span><?= $h(str_replace('{amount}', $asPrice, $t('as_consent'))) ?></span>
+          </label>
+        <?php endif; ?>
         <button class="btn"><?= $h($t('tk_send')) ?></button>
       </form>
     </details>
@@ -569,6 +630,17 @@ function portal_strings(string $lang): array
         'offer_accept' => '✓ Accept this offer',
         'offer_accepted_on' => 'Offer accepted on',
         'offer_accept_done' => 'Thank you! We received your acceptance — we will send you the contract to sign.',
+        'as_covered' => 'Support contract active — your requests go straight to a technician.',
+        'as_month' => 'month',
+        'as_need_t' => 'Support contract required',
+        'as_need' => 'Assistance requests need an active support contract ({amount}). Send your request and pay right after by card — as soon as the payment goes through, the request reaches a technician.',
+        'as_consent' => 'I activate the support contract ({amount}) and accept its terms; it starts with the first payment.',
+        'as_need_consent' => 'Please accept the support contract to send the request.',
+        'as_pending_t' => 'Request awaiting payment',
+        'as_pending' => 'it will be forwarded to a technician as soon as the support contract ({amount}) is paid.',
+        'as_pay' => 'Activate and pay now',
+        'as_sent_pay' => 'Request saved — complete the support contract payment to forward it. We also sent you the payment link by WhatsApp/email.',
+        'as_no_offer' => 'Your request has been recorded. We could not start the online payment — our office will contact you shortly.',
     ];
     $it = [
         'portal' => 'Area clienti', 'welcome' => 'Benvenuto', 'logout' => 'Esci',
@@ -613,6 +685,17 @@ function portal_strings(string $lang): array
         'offer_accept' => '✓ Accetta questa offerta',
         'offer_accepted_on' => 'Offerta accettata il',
         'offer_accept_done' => 'Grazie! Abbiamo ricevuto la tua accettazione — ti invieremo il contratto da firmare.',
+        'as_covered' => 'Contratto di assistenza attivo — le tue richieste vengono inoltrate subito a un tecnico.',
+        'as_month' => 'mese',
+        'as_need_t' => 'Serve un contratto di assistenza',
+        'as_need' => 'Per richiedere assistenza serve un contratto di assistenza attivo ({amount}). Invia la richiesta e paga subito dopo con carta — appena il pagamento va a buon fine la richiesta arriva a un tecnico.',
+        'as_consent' => 'Attivo il contratto di assistenza ({amount}) e ne accetto le condizioni; parte con il primo pagamento.',
+        'as_need_consent' => 'Per inviare la richiesta devi accettare il contratto di assistenza.',
+        'as_pending_t' => 'Richiesta in attesa di pagamento',
+        'as_pending' => 'sarà inoltrata a un tecnico appena il contratto di assistenza ({amount}) risulterà pagato.',
+        'as_pay' => 'Attiva e paga ora',
+        'as_sent_pay' => 'Richiesta registrata — completa il pagamento del contratto di assistenza per inoltrarla. Ti abbiamo inviato il link di pagamento anche via WhatsApp/email.',
+        'as_no_offer' => 'La tua richiesta è stata registrata. Non è stato possibile avviare il pagamento online: il nostro ufficio ti contatterà a breve.',
     ];
     return $lang === 'it' ? $it : $en;
 }

@@ -260,6 +260,18 @@ $pipelines = \Glue\Crm\Pipelines::all();
     <small class="muted"><?= $h($t('f_sp_callback_h')) ?></small>
   </label>
 
+  <?php // The support contract the portal sells when an uncovered customer asks
+        // for assistance. No amount = no gate: requests pass with a warning tag. ?>
+  <h4 style="margin:16px 0 4px"><?= $h($t('sec_support')) ?></h4>
+  <p class="muted small"><?= $h($t('sec_support_h')) ?></p>
+  <div class="row">
+    <?php
+    fld($h, 'support.amount', $t('f_su_amount'), $cfg('support.amount', ''), $t('f_su_amount_h'));
+    fld($h, 'support.cycles', $t('f_su_cycles'), $cfg('support.cycles', '0'), $t('f_su_cycles_h'));
+    fld($h, 'support.description', $t('f_su_desc'), $cfg('support.description', ''), $t('f_su_desc_h'));
+    ?>
+  </div>
+
   <h3><?= $h($t('sec_bitrix')) ?> <span class="pill"><?= $h($t('optional')) ?></span></h3>
   <p class="muted small"><?= $h($t('sec_bitrix_h')) ?></p>
   <label class="fld" style="display:flex;flex-direction:row;align-items:center;gap:10px">

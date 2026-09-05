@@ -22,6 +22,47 @@ $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
   <button class="btn tiny" type="button" onclick="document.getElementById('tk-new').classList.toggle('show')">+ <?= $h($t('tk_new_msg')) ?></button>
 </div>
 
+<?php
+// Assistance requests the portal is holding until their support contract is
+// paid. Admin-only: forwarding by hand waives the gate (cash, edge cases).
+$asHeld = empty($isAgent) && empty($isTech) ? \Glue\Portal\AssistRequests::pendingAll() : [];
+if ($asHeld): ?>
+<div class="card" style="border-left:4px solid var(--amber);margin-bottom:14px">
+  <b><?= $h($t('as_held_t')) ?></b>
+  <p class="muted small" style="margin:4px 0 10px"><?= $h($t('as_held_h')) ?></p>
+  <table>
+    <thead><tr><th>#</th><th><?= $h($t('th_customer')) ?></th><th><?= $h($t('tk_subject_l')) ?></th>
+      <th><?= $h($t('as_contract')) ?></th><th><?= $h($t('th_created')) ?></th><th></th></tr></thead>
+    <tbody>
+    <?php foreach ($asHeld as $ar): ?>
+      <tr>
+        <td class="muted"><?= (int)$ar['id'] ?></td>
+        <td><b><?= $h($ar['customer_name']) ?></b><div class="muted small"><?= $h($ar['customer_phone'] ?: '') ?></div></td>
+        <td><?= $h($ar['subject']) ?></td>
+        <td class="small">
+          <?php if (!empty($ar['reference'])): ?>
+            <a href="?tab=payments&q=<?= urlencode((string)$ar['reference']) ?>"><?= $h($ar['reference']) ?></a>
+            <?= pill($h, (string)($ar['pc_status'] ?? ''), $t) ?>
+          <?php else: ?><span class="muted"><?= $h($t('as_no_contract')) ?></span><?php endif; ?>
+        </td>
+        <td class="small muted"><?= $h(short_time($ar['created_at'])) ?></td>
+        <td style="text-align:right;white-space:nowrap">
+          <form method="post" style="display:inline" onsubmit="return confirm('<?= $h($t('as_forward_confirm')) ?>')">
+            <input type="hidden" name="do" value="assist_forward"><input type="hidden" name="id" value="<?= (int)$ar['id'] ?>">
+            <button class="btn ghost tiny"><?= $h($t('as_forward')) ?></button>
+          </form>
+          <form method="post" style="display:inline" onsubmit="return confirm('<?= $h($t('as_cancel_confirm')) ?>')">
+            <input type="hidden" name="do" value="assist_cancel"><input type="hidden" name="id" value="<?= (int)$ar['id'] ?>">
+            <button class="btn ghost tiny" style="color:var(--red)"><?= $h($t('as_cancel')) ?></button>
+          </form>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody>
+  </table>
+</div>
+<?php endif; ?>
+
 <div id="tk-new" class="card tk-newcard">
   <form method="post" enctype="multipart/form-data">
     <input type="hidden" name="do" value="ticket_open_staff"><input type="hidden" name="back" value="<?= $h($backTab) ?>">

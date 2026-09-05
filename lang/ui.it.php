@@ -808,6 +808,26 @@ return [
     'ir_sent'           => 'Rapporto inviato al cliente per la firma.',
     'ir_send_failed'    => 'Invio non riuscito',
     'cu_installs'       => 'Rapporti di installazione',
+
+    // richieste di assistenza dal portale (gate contratto di assistenza)
+    'sec_support'       => 'Contratto di assistenza (richieste dal portale)',
+    'sec_support_h'     => 'Un cliente senza contratto di assistenza attivo che chiede assistenza dal portale deve prima attivare e pagare questo contratto (via SmallPay). Senza importo il controllo è disattivato: le richieste passano con l’etichetta [SENZA CONTRATTO DI ASSISTENZA].',
+    'f_su_amount'       => 'Importo mensile (EUR)',
+    'f_su_amount_h'     => 'es. 25 oppure 25,50 — vuoto = nessun controllo',
+    'f_su_cycles'       => 'Numero di mesi',
+    'f_su_cycles_h'     => '0 = fino a disdetta',
+    'f_su_desc'         => 'Descrizione',
+    'f_su_desc_h'       => 'Compare sulla pagina di pagamento del cliente',
+    'as_held_t'         => 'Richieste di assistenza in attesa di pagamento',
+    'as_held_h'         => 'Il cliente ha inviato la richiesta ma il contratto di assistenza non è ancora pagato. Si inoltra da sola al pagamento; «Inoltra ora» salta il pagamento (es. incasso in contanti).',
+    'as_contract'       => 'Contratto',
+    'as_no_contract'    => 'nessun contratto — da gestire a mano',
+    'as_forward'        => 'Inoltra ora',
+    'as_forward_confirm' => 'Inoltrare la richiesta senza attendere il pagamento?',
+    'as_cancel'         => 'Annulla',
+    'as_cancel_confirm' => 'Annullare questa richiesta? Il cliente dovrà inviarne una nuova.',
+    'as_forwarded'      => 'Richiesta inoltrata: ora è un ticket.',
+    'as_cancelled'      => 'Richiesta annullata.',
     'dc_ev_seal_failed'           => 'Sigillo non riuscito',
 
     // fatture (Sibill)

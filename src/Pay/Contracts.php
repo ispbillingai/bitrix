@@ -419,6 +419,15 @@ final class Contracts
                 'every'       => self::cadenceText($c),
             ]);
             self::activity($c, 'Payment contract active — first payment collected');
+            // A support contract paid to unlock an assistance request: forward
+            // the held request now. Best-effort — a failure here must not make
+            // the webhook re-deliver a payment we have already applied.
+            try {
+                \Glue\Portal\AssistRequests::onContractActive((int)$c['id']);
+            } catch (\Throwable $e) {
+                Log::write('assist', 'forward_on_active_failed', 'payment_contract', (int)$c['id'],
+                    ['error' => $e->getMessage()]);
+            }
         }
         if ($to === 'failed') {
             self::activity($c, 'SmallPay refused the first payment');
