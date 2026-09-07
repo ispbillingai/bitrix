@@ -123,10 +123,11 @@ if ($filterAgentId !== null) {
 // brought in — entered in their own area or through their referral link.
 $filterPartnerId = (!$isAgent && !empty($_GET['partner'])) ? (int)$_GET['partner'] : null;
 $agentViews   = ['overview', 'leads', 'deals', 'appointments', 'tasks', 'messages', 'tickets', 'documents', 'instructions'];
-$techViews    = ['devices', 'network_areas', 'installations'];
-// Technicians' POST whitelist: the installation-report flow and nothing else.
-// Until now the tech role had no POST actions at all, so nothing is taken away.
-$techActions  = ['install_create', 'install_save', 'install_photos', 'install_photo_del', 'install_send'];
+$techViews    = ['devices', 'network_areas', 'installations', 'support', 'tickets'];
+// Technicians' POST whitelist: the installation-report flow, taking charge of
+// assistance requests, and replying on the tickets they claimed.
+$techActions  = ['install_create', 'install_save', 'install_photos', 'install_photo_del', 'install_send',
+                 'assist_claim', 'ticket_reply', 'ticket_status'];
 $agentActions = [
     'lead_create', 'lead_move', 'lead_convert', 'lead_note', 'lead_edit',
     'deal_move', 'deal_note', 'deal_invite',
@@ -138,9 +139,9 @@ $agentActions = [
 // ---- ticket attachment download (?dl=<message_id>) ----
 if (isset($_GET['dl'])) {
     $msg = Tickets::messageFile((int)$_GET['dl']);
-    // Admin can fetch anything; an agent only files on tickets assigned to them.
-    // Tech users have no tickets at all, so they get nothing here.
-    if ($msg && ((!$isAgent && !$isTech) || ($isAgent && (int)$msg['assigned_agent_id'] === $scopeId))) {
+    // Admin can fetch anything; agents and techs only files on tickets
+    // assigned to them (a tech gets assigned by claiming the request).
+    if ($msg && ((!$isAgent && !$isTech) || (int)$msg['assigned_agent_id'] === (int)$uid)) {
         Tickets::streamAttachment($msg);
     }
     http_response_code(404);
@@ -821,16 +822,21 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: ?tab=installations' . ($ok ? '' : '&id=' . (int)$_POST['id']));
                 exit;
 
-            // ---------- assistance requests held for payment (admin only) ----------
+            // ---------- assistance requests ----------
+            case 'assist_claim': // a technician takes charge — first press wins
+                $ok = $uid && \Glue\Portal\AssistRequests::claim((int)$_POST['id'], (int)$uid);
+                $_SESSION['dash_flash'] = [$ok ? $t('as_claimed') : $t('as_claim_lost'), $ok ? 'ok' : 'warn'];
+                header('Location: ?tab=support');
+                exit;
             case 'assist_forward': // the customer paid another way, or the admin waives the gate
                 $ok = \Glue\Portal\AssistRequests::forward((int)$_POST['id']);
                 $_SESSION['dash_flash'] = [$ok ? $t('as_forwarded') : $t('not_allowed'), $ok ? 'ok' : 'err'];
-                header('Location: ?tab=tickets');
+                header('Location: ?tab=support');
                 exit;
             case 'assist_cancel':
                 $ok = \Glue\Portal\AssistRequests::cancel((int)$_POST['id']);
                 $_SESSION['dash_flash'] = [$ok ? $t('as_cancelled') : $t('not_allowed'), $ok ? 'ok' : 'err'];
-                header('Location: ?tab=tickets');
+                header('Location: ?tab=support');
                 exit;
 
             // ---------- contacts ----------
@@ -993,6 +999,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // ---------- tickets ----------
             case 'ticket_reply':
                 $senderName = (string)($_SESSION['glue_user']['full_name'] ?? $_SESSION['glue_user']['username'] ?? 'Staff');
+                $senderRole = ($isAgent || $isTech) ? 'agent' : 'admin';
                 $att = null;
                 $attErr = null;
                 $signDocId = null;
@@ -1016,7 +1023,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 } else {
                     $att = Tickets::storeUpload($_FILES['attachment'] ?? null, $attErr);
                 }
-                $ok = $attErr === null && Tickets::reply((int)$_POST['id'], $isAgent ? 'agent' : 'admin', $uid, $senderName,
+                $ok = $attErr === null && Tickets::reply((int)$_POST['id'], $senderRole, $uid, $senderName,
                     (string)($_POST['body'] ?? ''), $att, $signDocId);
                 $flash = $ok ? $t('saved')
                     : ($attErr === 'too_big' ? 'File too large (max 10 MB).'
@@ -1433,7 +1440,7 @@ $agents = Auth::agents();
 $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_format((float)$n, 0);
 
 $views = ['overview', 'leads', 'deals', 'customers', 'contacts', 'appointments', 'tasks', 'tickets', 'documents',
-          'installations',
+          'installations', 'support',
           'invoices', 'payments', 'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents',
           'partners', 'devices', 'network_areas', 'settings', 'instructions'];
 $view = in_array($tab, $views, true) ? $tab : 'overview';
@@ -1442,7 +1449,7 @@ if ($isAgent && !in_array($view, $agentViews, true)) {
     $view = 'overview';
     $tab  = 'overview';
 }
-// Technical-area users can only reach their two views. Default them to Devices.
+// Technical-area users can only reach their own views. Default them to Devices.
 if ($isTech) {
     if (!in_array($view, $techViews, true)) {
         $view = 'devices';
@@ -1452,6 +1459,11 @@ if ($isTech) {
     if ($view === 'network_areas') {
         $view = 'devices';
         $tab  = 'devices';
+    }
+    // A tech in the ticket inbox sees only the threads they claimed — the
+    // same hard scope agents get, keyed on the same assigned_agent_id.
+    if ($view === 'tickets') {
+        $scopeId = (int)$uid;
     }
 }
 
@@ -1488,6 +1500,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
         'customers' => 'nav_customers',
         'contacts' => 'nav_contacts', 'appointments' => 'nav_appointments', 'tasks' => 'nav_tasks',
         'tickets' => 'nav_tickets', 'documents' => 'nav_documents', 'installations' => 'nav_installations',
+        'support' => 'nav_support',
         'invoices' => 'nav_invoices',
         'payments' => 'nav_payments',
         'campaigns' => 'nav_campaigns', 'messages' => 'nav_messages', 'outbound' => 'nav_outbound',
@@ -1497,8 +1510,8 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
     ];
     if ($isAgent) { // agents only see their own work
         $nav = array_intersect_key($nav, array_flip(['overview', 'leads', 'deals', 'appointments', 'tasks', 'messages', 'documents', 'instructions']));
-    } elseif ($isTech) { // technical-area users: device monitoring + their install reports
-        $nav = array_intersect_key($nav, array_flip(['devices', 'installations']));
+    } elseif ($isTech) { // technical-area users: devices, install reports, support queue, own tickets
+        $nav = array_intersect_key($nav, array_flip(['devices', 'installations', 'support', 'tickets']));
     } ?>
 <!DOCTYPE html><html lang="<?= $h($lang) ?>"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

@@ -12,21 +12,26 @@ use Glue\Notify\Notifier;
 use Glue\Pay\Contracts as PayContracts;
 
 /**
- * The portal's assistance request, gated on a support contract.
+ * Assistance requests — the client's spec of 2026-09-07, in full:
  *
- * Covered customer (a live SmallPay support subscription, or a gestionale
- * contract whose expiry is still ahead — the same rule the customer page's
- * support tile uses): the request becomes a ticket at once and the technicians
- * are messaged. Uncovered: the request is HELD, a SmallPay support subscription
- * is opened, and Contracts::onStatusChange forwards the held request the moment
- * the first payment lands. Payment is the acceptance; the consent checkbox in
- * the portal records that the customer asked for the contract.
+ * A customer asks for help (from the portal, or the public /support.php form
+ * that opens with their VAT number). Covered customers — a live SmallPay
+ * subscription or a gestionale contract still ahead of expiry — go straight
+ * through with PRIORITY handling. Uncovered ones choose: activate the one
+ * contract on offer (Helpdesk, EUR 9.90/month, paid through SmallPay — the
+ * request is held until the first payment lands) or continue without, in which
+ * case the request still goes through but flagged for BUSINESS-HOURS handling.
+ *
+ * Every open request reaches all technicians; exactly one takes charge —
+ * claim() is atomic, so two techs pressing together cannot both win — and the
+ * take-charge note lands in the ticket thread, which is what the customer sees
+ * in their area.
  */
 final class AssistRequests
 {
     // ---- the gate --------------------------------------------------------------------
 
-    /** @return array{covered:bool, label:string} label = why, for the portal banner */
+    /** @return array{covered:bool, label:string} label = why, for the banners */
     public static function cover(int $contactId): array
     {
         $pdo = Db::pdo();
@@ -50,9 +55,10 @@ final class AssistRequests
     }
 
     /**
-     * The contract on offer, from Settings. Null = no online offer (price not
-     * configured, or SmallPay off) — requests then pass with a warning tag so
-     * the business keeps flowing until the owner fills the price in.
+     * The one contract on offer — "we only offer a Helpdesk contract,
+     * EUR 9.90/month". The price and name are the code defaults; Settings can
+     * override them, and an explicit 0 amount (or SmallPay off) removes the
+     * offer, which turns every uncovered request into a business-hours one.
      *
      * @return array{amount_cents:int, cycles:int, description:string}|null
      */
@@ -61,16 +67,15 @@ final class AssistRequests
         if (!\Glue\Pay\SmallPay::enabled()) {
             return null;
         }
-        $amount = self::cents((string)Config::get('support.amount', ''));
+        $amount = self::cents((string)Config::get('support.amount', '9,90'));
         if ($amount <= 0) {
             return null;
         }
-        $desc = trim((string)Config::get('support.description', ''))
-            ?: 'Contratto di assistenza ' . (string)Config::get('app.company_name', '');
+        $desc = trim((string)Config::get('support.description', '')) ?: 'Contratto Helpdesk';
         return [
             'amount_cents' => $amount,
             'cycles'       => max(0, (int)Config::get('support.cycles', 0)),
-            'description'  => mb_substr(trim($desc), 0, 190),
+            'description'  => mb_substr($desc, 0, 190),
         ];
     }
 
@@ -78,71 +83,84 @@ final class AssistRequests
 
     /**
      * @param array|null $attachment ['path','name'] as Tickets::storeUpload returns
-     * @return array{status:string, ticket_id?:int, request_id?:int, pay_url?:string}
-     *         status: forwarded | awaiting_payment | held_no_contract
+     * @param array $opts choice: 'activate'|'skip'|null (only read when uncovered),
+     *                    phone: WhatsApp-able callback number for THIS request,
+     *                    vat: the VAT typed on the public form, source: portal|public
+     * @return array{status:string, ticket_id?:int, request_id?:int, pay_url?:string, pay_failed?:bool}
+     *         status: forwarded | awaiting_payment
      */
-    public static function submit(int $contactId, string $subject, string $body, ?array $attachment): array
+    public static function submit(int $contactId, string $subject, string $body,
+                                  ?array $attachment, array $opts = []): array
     {
         $subject = trim($subject) !== '' ? mb_substr(trim($subject), 0, 190) : 'Richiesta di assistenza';
+        $phone   = Notifier::normalizePhone((string)($opts['phone'] ?? ''));
+        $base    = [
+            'subject' => $subject, 'body' => $body, 'attachment' => $attachment,
+            'phone'   => $phone !== '' ? $phone : null,
+            'vat'     => trim((string)($opts['vat'] ?? '')) ?: null,
+            'source'  => ($opts['source'] ?? '') === 'public' ? 'public' : 'portal',
+        ];
 
         if (self::cover($contactId)['covered']) {
-            $tid = Tickets::open($contactId, $subject, $body, null, $attachment);
-            self::notifyTechs($tid, $contactId, $subject);
-            return ['status' => 'forwarded', 'ticket_id' => $tid];
+            $rid = self::createRow($contactId, $base, 'open', 'priority', null);
+            $tid = self::ticketize(self::find($rid));
+            return ['status' => 'forwarded', 'ticket_id' => $tid, 'request_id' => $rid, 'priority' => 'priority'];
         }
 
-        $offer = self::offer();
-        if ($offer === null) {
-            // No online offer to sell — let the request through, loudly tagged,
-            // so staff see the gap instead of the customer hitting a dead end.
-            $tid = Tickets::open($contactId, $subject, "[SENZA CONTRATTO DI ASSISTENZA]\n" . $body, null, $attachment);
-            self::notifyTechs($tid, $contactId, $subject);
-            return ['status' => 'forwarded', 'ticket_id' => $tid];
-        }
+        $offer  = self::offer();
+        $choice = (string)($opts['choice'] ?? 'skip');
 
-        // One pending contract per customer: a second request while the first
-        // payment is still open must NOT file a second SmallPay position.
-        $pcId = self::reusableContractId($contactId);
-        $payUrl = '';
-        if ($pcId === 0) {
-            $c = Contacts::find($contactId) ?: [];
-            try {
-                $pc = PayContracts::open([
-                    'kind'           => 'subscription',
-                    'contact_id'     => $contactId,
-                    'customer_name'  => (string)($c['name'] ?? ''),
-                    'customer_phone' => (string)($c['phone'] ?? ''),
-                    'customer_email' => (string)($c['email'] ?? ''),
-                    'lang'           => (string)($c['lang'] ?? 'it'),
-                    'description'    => $offer['description'],
-                    'amount_cents'   => $offer['amount_cents'],
-                    'total_cycles'   => $offer['cycles'],
-                ], null);
-                $pcId = (int)$pc['id'];
-                $payUrl = (string)($pc['checkout_url'] ?? '');
-                // Put the link on WhatsApp/email too — the portal shows it, but
-                // the customer may close the tab and pay from the message later.
-                try { PayContracts::sendLink($pcId, 'both', null); } catch (\Throwable $e) {
-                    Log::write('assist', 'send_link_failed', 'payment_contract', $pcId, ['error' => $e->getMessage()]);
+        if ($offer !== null && $choice === 'activate') {
+            // One pending contract per customer: a second request while the
+            // first payment is still open must NOT file a second position.
+            $pcId = self::reusableContractId($contactId);
+            $payUrl = '';
+            if ($pcId === 0) {
+                $c = Contacts::find($contactId) ?: [];
+                try {
+                    $pc = PayContracts::open([
+                        'kind'           => 'subscription',
+                        'contact_id'     => $contactId,
+                        'customer_name'  => (string)($c['name'] ?? ''),
+                        'customer_phone' => $phone !== '' ? $phone : (string)($c['phone'] ?? ''),
+                        'customer_email' => (string)($c['email'] ?? ''),
+                        'lang'           => (string)($c['lang'] ?? 'it'),
+                        'description'    => $offer['description'],
+                        'amount_cents'   => $offer['amount_cents'],
+                        'total_cycles'   => $offer['cycles'],
+                    ], null);
+                    $pcId = (int)$pc['id'];
+                    $payUrl = (string)($pc['checkout_url'] ?? '');
+                    try { PayContracts::sendLink($pcId, 'both', null); } catch (\Throwable $e) {
+                        Log::write('assist', 'send_link_failed', 'payment_contract', $pcId, ['error' => $e->getMessage()]);
+                    }
+                } catch (\Throwable $e) {
+                    // SmallPay refused: the request must still be processed —
+                    // it goes through at business hours, and the admins are
+                    // told the payment could not be started.
+                    Log::write('assist', 'contract_open_failed', 'contact', $contactId, ['error' => $e->getMessage()]);
+                    $rid = self::createRow($contactId, $base, 'open', 'business_hours', null);
+                    $tid = self::ticketize(self::find($rid));
+                    self::notifyAdminsPayFailed($rid, $contactId, $subject);
+                    return ['status' => 'forwarded', 'ticket_id' => $tid, 'request_id' => $rid,
+                            'pay_failed' => true, 'priority' => 'business_hours'];
                 }
-            } catch (\Throwable $e) {
-                // SmallPay refused (config, outage): hold the request with no
-                // contract and wake the admins — the customer is told we'll call.
-                Log::write('assist', 'contract_open_failed', 'contact', $contactId, ['error' => $e->getMessage()]);
-                $rid = self::hold($contactId, $subject, $body, $attachment, null);
-                self::notifyAdminsHeld($rid, $contactId, $subject);
-                return ['status' => 'held_no_contract', 'request_id' => $rid];
+            } else {
+                $pc = PayContracts::find($pcId);
+                $payUrl = (string)($pc['checkout_url'] ?? '');
             }
-        } else {
-            $pc = PayContracts::find($pcId);
-            $payUrl = (string)($pc['checkout_url'] ?? '');
+            $rid = self::createRow($contactId, $base, 'awaiting_payment', 'priority', $pcId);
+            return ['status' => 'awaiting_payment', 'request_id' => $rid, 'pay_url' => $payUrl];
         }
 
-        $rid = self::hold($contactId, $subject, $body, $attachment, $pcId);
-        return ['status' => 'awaiting_payment', 'request_id' => $rid, 'pay_url' => $payUrl];
+        // Declined (or nothing on offer): "the request must still be processed,
+        // but it will be handled during business hours."
+        $rid = self::createRow($contactId, $base, 'open', 'business_hours', null);
+        $tid = self::ticketize(self::find($rid));
+        return ['status' => 'forwarded', 'ticket_id' => $tid, 'request_id' => $rid, 'priority' => 'business_hours'];
     }
 
-    // ---- forwarding ------------------------------------------------------------------
+    // ---- forwarding + taking charge --------------------------------------------------
 
     /** Called by Contracts::onStatusChange when a contract's first payment lands. */
     public static function onContractActive(int $contractId): void
@@ -156,22 +174,42 @@ final class AssistRequests
         }
     }
 
-    /** Turn a held request into a live ticket. Also the admin's manual button. */
+    /** Turn a held request into an open ticket. Also the admin's manual waiver. */
     public static function forward(int $requestId): bool
     {
         $r = self::find($requestId);
         if (!$r || $r['status'] !== 'awaiting_payment') {
             return false;
         }
-        $att = !empty($r['attachment_path'])
-            ? ['path' => (string)$r['attachment_path'], 'name' => (string)($r['attachment_name'] ?: 'allegato')]
-            : null;
-        $tid = Tickets::open((int)$r['contact_id'], (string)$r['subject'], (string)$r['body'], null, $att);
-        Db::pdo()->prepare(
-            "UPDATE assist_requests SET status = 'forwarded', ticket_id = ?, forwarded_at = NOW() WHERE id = ?"
-        )->execute([$tid, $requestId]);
-        Log::write('assist', 'request_forwarded', 'assist_request', $requestId, ['ticket_id' => $tid]);
-        self::notifyTechs($tid, (int)$r['contact_id'], (string)$r['subject']);
+        self::ticketize($r);
+        return true;
+    }
+
+    /**
+     * One technician takes charge. Atomic: the UPDATE only wins on a row still
+     * unclaimed, so the second press returns false and the first name stands.
+     * The take-charge note goes into the ticket thread — Tickets::reply also
+     * messages the customer, and the thread is what their area shows.
+     */
+    public static function claim(int $requestId, int $userId): bool
+    {
+        $stmt = Db::pdo()->prepare(
+            "UPDATE assist_requests SET status = 'taken', claimed_by = ?, claimed_at = NOW()
+             WHERE id = ? AND status = 'open' AND claimed_by IS NULL"
+        );
+        $stmt->execute([$userId, $requestId]);
+        if ($stmt->rowCount() === 0) {
+            return false;
+        }
+        $r = self::find($requestId);
+        $who = self::staffName($userId);
+        if (!empty($r['ticket_id'])) {
+            Db::pdo()->prepare('UPDATE tickets SET assigned_agent_id = ? WHERE id = ?')
+                ->execute([$userId, (int)$r['ticket_id']]);
+            Tickets::reply((int)$r['ticket_id'], 'agent', $userId, $who,
+                '✅ Richiesta presa in carico da ' . $who . '. Ti ricontattiamo a breve.');
+        }
+        Log::write('assist', 'request_claimed', 'assist_request', $requestId, ['by' => $userId]);
         return true;
     }
 
@@ -207,37 +245,65 @@ final class AssistRequests
         return $stmt->fetchAll();
     }
 
-    /** Every held request, for the admin card on the Tickets tab. */
-    public static function pendingAll(): array
+    /** The Support tab: recent requests with customer, contract and claimer. */
+    public static function listAll(int $limit = 200): array
     {
+        $limit = max(1, min(1000, $limit));
         return Db::pdo()->query(
-            "SELECT r.*, c.name AS customer_name, c.phone AS customer_phone,
-                    pc.status AS pc_status, pc.reference, pc.amount_cents, pc.currency
+            "SELECT r.*, c.name AS customer_name, c.phone AS registry_phone,
+                    u.full_name AS claimer_name, u.username AS claimer_username,
+                    pc.status AS pc_status, pc.reference
              FROM assist_requests r
              JOIN contacts c ON c.id = r.contact_id
+             LEFT JOIN users u ON u.id = r.claimed_by
              LEFT JOIN payment_contracts pc ON pc.id = r.pay_contract_id
-             WHERE r.status = 'awaiting_payment' ORDER BY r.id DESC LIMIT 100"
+             ORDER BY (r.status = 'open') DESC, (r.status = 'awaiting_payment') DESC, r.id DESC
+             LIMIT $limit"
         )->fetchAll();
     }
 
     // ---- internals -------------------------------------------------------------------
 
-    private static function hold(int $contactId, string $subject, string $body,
-                                 ?array $attachment, ?int $contractId): int
+    private static function createRow(int $contactId, array $b, string $status,
+                                      string $priority, ?int $contractId): int
     {
         Db::pdo()->prepare(
             'INSERT INTO assist_requests
-                (contact_id, subject, body, attachment_path, attachment_name, pay_contract_id)
-             VALUES (?,?,?,?,?,?)'
+                (contact_id, vat_number, contact_phone, subject, body,
+                 attachment_path, attachment_name, status, priority, source, pay_contract_id)
+             VALUES (?,?,?,?,?,?,?,?,?,?,?)'
         )->execute([
-            $contactId, $subject, $body,
-            $attachment['path'] ?? null, $attachment['name'] ?? null,
-            $contractId ?: null,
+            $contactId, $b['vat'], $b['phone'], $b['subject'], $b['body'],
+            $b['attachment']['path'] ?? null, $b['attachment']['name'] ?? null,
+            $status, $priority, $b['source'], $contractId ?: null,
         ]);
         $rid = (int)Db::pdo()->lastInsertId();
-        Log::write('assist', 'request_held', 'assist_request', $rid,
-            ['contact_id' => $contactId, 'pay_contract_id' => $contractId]);
+        Log::write('assist', 'request_created', 'assist_request', $rid,
+            ['contact_id' => $contactId, 'status' => $status, 'priority' => $priority]);
         return $rid;
+    }
+
+    /** Open the ticket thread, mark the row open, wake the technicians. */
+    private static function ticketize(array $r): int
+    {
+        $lines = [];
+        if (!empty($r['contact_phone'])) {
+            $lines[] = '📞 Ricontattare al numero: ' . (string)$r['contact_phone'];
+        }
+        if ((string)$r['priority'] === 'business_hours') {
+            $lines[] = '⏰ Senza contratto di assistenza — gestione in orario lavorativo.';
+        }
+        $body = ($lines ? implode("\n", $lines) . "\n\n" : '') . (string)$r['body'];
+        $att = !empty($r['attachment_path'])
+            ? ['path' => (string)$r['attachment_path'], 'name' => (string)($r['attachment_name'] ?: 'allegato')]
+            : null;
+        $tid = Tickets::open((int)$r['contact_id'], (string)$r['subject'], $body, null, $att);
+        Db::pdo()->prepare(
+            "UPDATE assist_requests SET status = 'open', ticket_id = ?, forwarded_at = NOW() WHERE id = ?"
+        )->execute([$tid, (int)$r['id']]);
+        Log::write('assist', 'request_forwarded', 'assist_request', (int)$r['id'], ['ticket_id' => $tid]);
+        self::notifyTechs($r, $tid);
+        return $tid;
     }
 
     /** A draft/awaiting contract this customer already has from a previous request. */
@@ -255,40 +321,45 @@ final class AssistRequests
     }
 
     /**
-     * "The system will send it to a technician": WhatsApp + email to every
-     * active tech-role user — or to the admins when there are no techs yet.
-     * Direct sends (Notifier waits out the TextMeBot gap itself).
+     * "The request must reach all the technicians": WhatsApp + email to every
+     * active tech-role user — or the admins when there are no techs yet. The
+     * claim happens on the Support tab; first press wins.
      */
-    private static function notifyTechs(int $ticketId, int $contactId, string $subject): void
+    private static function notifyTechs(array $r, int $ticketId): void
     {
-        $customer = (string)((Contacts::find($contactId) ?: [])['name'] ?? '');
-        $link = Config::appBaseUrl() . '/dashboard.php?tab=tickets&tk=' . $ticketId;
-        $text = "🔧 " . (string)Config::get('app.company_name', 'CRM')
-            . " — nuova richiesta di assistenza da {$customer}: «{$subject}»\n{$link}";
-        $html = '<p>🔧 Nuova richiesta di assistenza da <b>' . htmlspecialchars($customer, ENT_QUOTES)
-            . '</b>: «' . htmlspecialchars($subject, ENT_QUOTES) . '»</p><p><a href="' . htmlspecialchars($link, ENT_QUOTES)
-            . '">Apri la richiesta nel CRM</a></p>';
+        $customer = (string)((Contacts::find((int)$r['contact_id']) ?: [])['name'] ?? '');
+        $phone = (string)($r['contact_phone'] ?? '') ?: (string)((Contacts::find((int)$r['contact_id']) ?: [])['phone'] ?? '');
+        $prio  = (string)$r['priority'] === 'business_hours' ? '⏰ orario lavorativo' : '⚡ prioritaria';
+        $link  = Config::appBaseUrl() . '/dashboard.php?tab=support';
+        $text = '🔧 ' . (string)Config::get('app.company_name', 'CRM')
+            . " — nuova richiesta di assistenza ($prio) da {$customer}"
+            . ($phone !== '' ? " ({$phone})" : '')
+            . ': «' . (string)$r['subject'] . "»\nPrendila in carico: {$link}";
+        $html = '<p>🔧 Nuova richiesta di assistenza (' . htmlspecialchars($prio, ENT_QUOTES) . ') da <b>'
+            . htmlspecialchars($customer, ENT_QUOTES) . '</b>'
+            . ($phone !== '' ? ' (' . htmlspecialchars($phone, ENT_QUOTES) . ')' : '')
+            . ': «' . htmlspecialchars((string)$r['subject'], ENT_QUOTES) . '»</p>'
+            . '<p><a href="' . htmlspecialchars($link, ENT_QUOTES) . '">Prendila in carico nel CRM</a></p>';
         self::sendToStaff('tech', $text, 'Nuova richiesta di assistenza — ' . $customer, $html)
             || self::sendToStaff('admin', $text, 'Nuova richiesta di assistenza — ' . $customer, $html);
     }
 
-    /** SmallPay would not open the contract — a human has to pick this one up. */
-    private static function notifyAdminsHeld(int $requestId, int $contactId, string $subject): void
+    /** SmallPay would not open the Helpdesk contract — the admins should know. */
+    private static function notifyAdminsPayFailed(int $requestId, int $contactId, string $subject): void
     {
         $customer = (string)((Contacts::find($contactId) ?: [])['name'] ?? '');
-        $text = "⚠️ " . (string)Config::get('app.company_name', 'CRM')
-            . " — richiesta di assistenza #{$requestId} da {$customer} SENZA contratto attivabile"
-            . " (SmallPay ha rifiutato l'apertura): «{$subject}». Gestire a mano dal CRM.";
-        self::sendToStaff('admin', $text, 'Richiesta di assistenza da gestire a mano — ' . $customer,
+        $text = '⚠️ ' . (string)Config::get('app.company_name', 'CRM')
+            . " — il cliente {$customer} voleva attivare il contratto Helpdesk ma SmallPay ha rifiutato "
+            . "l'apertura della posizione. La richiesta #{$requestId} («{$subject}») è passata comunque "
+            . 'in orario lavorativo. Contattarlo per il contratto.';
+        self::sendToStaff('admin', $text, 'Attivazione Helpdesk non riuscita — ' . $customer,
             '<p>' . htmlspecialchars($text, ENT_QUOTES) . '</p>');
     }
 
     /** Message every active user of a role. True if at least one channel went out. */
     private static function sendToStaff(string $role, string $text, string $subject, string $html): bool
     {
-        $stmt = Db::pdo()->prepare(
-            'SELECT phone, email FROM users WHERE role = ? AND active = 1'
-        );
+        $stmt = Db::pdo()->prepare('SELECT phone, email FROM users WHERE role = ? AND active = 1');
         $stmt->execute([$role]);
         $n = new Notifier();
         $any = false;
@@ -303,7 +374,14 @@ final class AssistRequests
         return $any;
     }
 
-    /** "25", "25,50", "1.234,56" → cents. Mirrors the dashboard's money_cents. */
+    private static function staffName(int $userId): string
+    {
+        $stmt = Db::pdo()->prepare('SELECT COALESCE(NULLIF(full_name, ""), username) FROM users WHERE id = ?');
+        $stmt->execute([$userId]);
+        return (string)($stmt->fetchColumn() ?: 'Staff');
+    }
+
+    /** "9,90", "25", "1.234,56" → cents. Mirrors the dashboard's money_cents. */
     private static function cents(string $raw): int
     {
         $s = preg_replace('/[^\d.,]/', '', trim($raw)) ?? '';

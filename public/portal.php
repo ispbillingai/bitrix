@@ -124,24 +124,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         if (trim((string)($_POST['body'] ?? '')) === '') {
             $prg($t('err_generic'), 'err', 'portal.php?page=support');
         }
-        // The gate: no support contract → the request is held and a SmallPay
-        // support subscription is opened; paying it is what forwards the
-        // request. The consent box only exists (and is only required) when the
-        // customer is uncovered and there is an offer to accept.
+        // Uncovered customers choose: activate the Helpdesk contract (held
+        // until paid, then priority) or continue without — the request still
+        // goes through, handled during business hours.
+        $asChoice = in_array($_POST['support_choice'] ?? '', ['activate', 'skip'], true)
+            ? (string)$_POST['support_choice'] : '';
         if (!\Glue\Portal\AssistRequests::cover($cid)['covered']
             && \Glue\Portal\AssistRequests::offer() !== null
-            && empty($_POST['support_consent'])) {
+            && $asChoice === '') {
             $prg($t('as_need_consent'), 'err', 'portal.php?page=support');
         }
         $asRes = \Glue\Portal\AssistRequests::submit(
-            $cid, (string)($_POST['subject'] ?? ''), (string)$_POST['body'], $att);
-        if ($asRes['status'] === 'forwarded') {
-            $prg($t('tk_opened'), 'ok', 'portal.php?page=support&tk=' . (int)$asRes['ticket_id']);
-        }
+            $cid, (string)($_POST['subject'] ?? ''), (string)$_POST['body'], $att, [
+                'choice' => $asChoice ?: 'skip',
+                'phone'  => (string)($_POST['alt_phone'] ?? ''),
+                'source' => 'portal',
+            ]);
         if ($asRes['status'] === 'awaiting_payment') {
             $prg($t('as_sent_pay'), 'ok', 'portal.php?page=support');
         }
-        $prg($t('as_no_offer'), 'ok', 'portal.php?page=support'); // held_no_contract
+        $prg($t(!empty($asRes['pay_failed']) ? 'as_no_offer'
+            : (($asRes['priority'] ?? '') === 'business_hours' ? 'as_sent_hours' : 'tk_opened')), 'ok',
+            'portal.php?page=support&tk=' . (int)($asRes['ticket_id'] ?? 0));
     }
     if ($cid && $do === 'offer_accept') {
         $mid = (int)($_POST['message_id'] ?? 0);
@@ -490,12 +494,21 @@ if ($tkCur && $page === 'support') {
         <input type="hidden" name="do" value="ticket_open">
         <label><?= $h($t('tk_subject')) ?><input name="subject" maxlength="190" required></label>
         <label><?= $h($t('tk_message')) ?><textarea name="body" rows="3" required></textarea></label>
+        <label><?= $h($t('as_phone')) ?><input name="alt_phone" inputmode="tel" placeholder="+39 …">
+          <small class="muted" style="font-weight:400"><?= $h($t('as_phone_h')) ?></small></label>
         <label><?= $h($t('tk_attach')) ?><input type="file" name="attachment"></label>
         <?php if (!$asCover['covered'] && $asOffer !== null): ?>
-          <label style="display:flex;gap:9px;align-items:flex-start;font-weight:500">
-            <input type="checkbox" name="support_consent" value="1" required style="width:auto;margin-top:4px">
-            <span><?= $h(str_replace('{amount}', $asPrice, $t('as_consent'))) ?></span>
-          </label>
+          <div style="border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:12px">
+            <label style="display:flex;gap:9px;align-items:flex-start;font-weight:500;margin-bottom:8px">
+              <input type="radio" name="support_choice" value="activate" required style="width:auto;margin-top:4px">
+              <span><?= $h(str_replace('{amount}', $asPrice, $t('as_choice_activate'))) ?></span>
+            </label>
+            <label style="display:flex;gap:9px;align-items:flex-start;font-weight:500;margin:0">
+              <input type="radio" name="support_choice" value="skip" required style="width:auto;margin-top:4px">
+              <span><?= $h($t('as_choice_skip')) ?>
+                <small class="muted" style="display:block;font-weight:400"><?= $h($t('as_choice_skip_h')) ?></small></span>
+            </label>
+          </div>
         <?php endif; ?>
         <button class="btn"><?= $h($t('tk_send')) ?></button>
       </form>
@@ -630,16 +643,21 @@ function portal_strings(string $lang): array
         'offer_accept' => '✓ Accept this offer',
         'offer_accepted_on' => 'Offer accepted on',
         'offer_accept_done' => 'Thank you! We received your acceptance — we will send you the contract to sign.',
-        'as_covered' => 'Support contract active — your requests go straight to a technician.',
+        'as_covered' => 'Support contract active — your requests go straight to a technician with priority.',
         'as_month' => 'month',
-        'as_need_t' => 'Support contract required',
-        'as_need' => 'Assistance requests need an active support contract ({amount}). Send your request and pay right after by card — as soon as the payment goes through, the request reaches a technician.',
-        'as_consent' => 'I activate the support contract ({amount}) and accept its terms; it starts with the first payment.',
-        'as_need_consent' => 'Please accept the support contract to send the request.',
+        'as_need_t' => 'No active support contract',
+        'as_need' => 'With the Helpdesk contract ({amount}) your requests are handled with priority. Without it your request still goes through, handled during business hours.',
+        'as_choice_activate' => 'Activate the Helpdesk contract ({amount}) — priority handling, pay now by card',
+        'as_choice_skip' => 'Continue without a contract',
+        'as_choice_skip_h' => 'Your request will still be handled, during business hours.',
+        'as_need_consent' => 'Please choose whether to activate the Helpdesk contract or continue without.',
+        'as_phone' => 'Callback number for this request (if different)',
+        'as_phone_h' => 'Must be reachable on WhatsApp. Leave empty to use your registered number.',
         'as_pending_t' => 'Request awaiting payment',
-        'as_pending' => 'it will be forwarded to a technician as soon as the support contract ({amount}) is paid.',
+        'as_pending' => 'it will be forwarded to a technician with priority as soon as the Helpdesk contract ({amount}) is paid.',
         'as_pay' => 'Activate and pay now',
-        'as_sent_pay' => 'Request saved — complete the support contract payment to forward it. We also sent you the payment link by WhatsApp/email.',
+        'as_sent_pay' => 'Request saved — complete the Helpdesk payment to send it with priority. We also sent you the payment link by WhatsApp/email.',
+        'as_sent_hours' => 'Your request has been sent. It will be handled during business hours.',
         'as_no_offer' => 'Your request has been recorded. We could not start the online payment — our office will contact you shortly.',
     ];
     $it = [
@@ -685,16 +703,21 @@ function portal_strings(string $lang): array
         'offer_accept' => '✓ Accetta questa offerta',
         'offer_accepted_on' => 'Offerta accettata il',
         'offer_accept_done' => 'Grazie! Abbiamo ricevuto la tua accettazione — ti invieremo il contratto da firmare.',
-        'as_covered' => 'Contratto di assistenza attivo — le tue richieste vengono inoltrate subito a un tecnico.',
+        'as_covered' => 'Contratto di assistenza attivo — le tue richieste arrivano subito a un tecnico, in via prioritaria.',
         'as_month' => 'mese',
-        'as_need_t' => 'Serve un contratto di assistenza',
-        'as_need' => 'Per richiedere assistenza serve un contratto di assistenza attivo ({amount}). Invia la richiesta e paga subito dopo con carta — appena il pagamento va a buon fine la richiesta arriva a un tecnico.',
-        'as_consent' => 'Attivo il contratto di assistenza ({amount}) e ne accetto le condizioni; parte con il primo pagamento.',
-        'as_need_consent' => 'Per inviare la richiesta devi accettare il contratto di assistenza.',
+        'as_need_t' => 'Nessun contratto di assistenza attivo',
+        'as_need' => 'Con il contratto Helpdesk ({amount}) le tue richieste vengono gestite in via prioritaria. Senza contratto la richiesta passa comunque, con gestione in orario lavorativo.',
+        'as_choice_activate' => 'Attiva il contratto Helpdesk ({amount}) — gestione prioritaria, paghi subito con carta',
+        'as_choice_skip' => 'Prosegui senza contratto',
+        'as_choice_skip_h' => 'La richiesta sarà comunque gestita, in orario lavorativo.',
+        'as_need_consent' => 'Scegli se attivare il contratto Helpdesk o proseguire senza.',
+        'as_phone' => 'Telefono per questo intervento (se diverso)',
+        'as_phone_h' => 'Deve essere raggiungibile su WhatsApp. Lascia vuoto per usare il numero registrato.',
         'as_pending_t' => 'Richiesta in attesa di pagamento',
-        'as_pending' => 'sarà inoltrata a un tecnico appena il contratto di assistenza ({amount}) risulterà pagato.',
+        'as_pending' => 'sarà inoltrata a un tecnico in via prioritaria appena il contratto Helpdesk ({amount}) risulterà pagato.',
         'as_pay' => 'Attiva e paga ora',
-        'as_sent_pay' => 'Richiesta registrata — completa il pagamento del contratto di assistenza per inoltrarla. Ti abbiamo inviato il link di pagamento anche via WhatsApp/email.',
+        'as_sent_pay' => 'Richiesta registrata — completa il pagamento del contratto Helpdesk per inviarla con priorità. Ti abbiamo inviato il link di pagamento anche via WhatsApp/email.',
+        'as_sent_hours' => 'La tua richiesta è stata inviata. Sarà gestita in orario lavorativo.',
         'as_no_offer' => 'La tua richiesta è stata registrata. Non è stato possibile avviare il pagamento online: il nostro ufficio ti contatterà a breve.',
     ];
     return $lang === 'it' ? $it : $en;

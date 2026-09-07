@@ -1,3 +1,9 @@
+# The public assistance form answers on the short address the client hands out.
+<IfModule mod_rewrite.c>
+RewriteEngine On
+RewriteRule ^support$ support.php [L]
+</IfModule>
+
 # Raise upload limits when PHP runs as an Apache module
 # (FPM/CGI hosts use .user.ini instead).
 <IfModule mod_php.c>
