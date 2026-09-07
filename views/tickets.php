@@ -114,36 +114,9 @@ $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
         </div>
       </div>
 
-      <div class="chat" id="tk-chat">
-        <?php foreach ($thread as $m): $mine = $m['sender_type'] !== 'customer'; ?>
-          <div class="msg <?= $mine ? 'staff' : 'cust' ?>">
-            <?php if ((string)$m['body'] !== ''): ?><div class="msg-b"><?= nl2br($h($m['body'])) ?></div><?php endif; ?>
-            <?php if (!empty($m['sign_document_id'])): ?>
-              <div class="msg-b">✍️ <a href="?sdl=<?= (int)$m['sign_document_id'] ?>&k=orig"><?= $h($m['sign_title'] ?: $t('dc_h_doc')) ?></a></div>
-              <div class="msg-rcpt<?= ($m['sign_status'] ?? '') === 'signed' ? ' ok' : '' ?>">
-                <?= pill($h, (string)($m['sign_status'] ?? 'sent'), $t) ?>
-                <?php if (($m['sign_status'] ?? '') === 'signed'): ?>
-                  ✅ <?= $h(short_time($m['sign_signed_at'])) ?>
-                  <?php if (!empty($m['sign_signed_path'])): ?> · <a href="?sdl=<?= (int)$m['sign_document_id'] ?>&k=signed"><?= $h($t('dc_dl_signed')) ?></a><?php endif; ?>
-                <?php endif; ?>
-              </div>
-            <?php endif; ?>
-            <?php if (!empty($m['attachment_path'])): ?>
-              <div class="msg-b"><a href="?dl=<?= $h($m['id']) ?>">📎 <?= $h($m['attachment_name'] ?: $t('tk_attachment')) ?></a></div>
-              <?php if ($mine): // our file — show the customer's receipts ?>
-                <div class="msg-rcpt<?= $m['downloaded_at'] ? ' ok' : '' ?>">
-                  <?= $m['downloaded_at']
-                      ? '📥 ' . $h($t('tk_downloaded')) . ' ' . $h(short_time($m['downloaded_at']))
-                      : '· ' . $h($t('tk_not_downloaded')) ?>
-                  <?php if (!empty($m['accepted_at'])): ?>
-                    <span class="msg-acc">✅ <?= $h($t('tk_accepted')) ?> <?= $h(short_time($m['accepted_at'])) ?></span>
-                  <?php endif; ?>
-                </div>
-              <?php endif; ?>
-            <?php endif; ?>
-            <div class="msg-m"><?= $h($m['sender_name'] ?: ($mine ? $t('tk_staff') : $t('th_customer'))) ?> · <?= $h(short_time($m['created_at'])) ?></div>
-          </div>
-        <?php endforeach; ?>
+      <?php $lastMid = 0; foreach ($thread as $m) { $lastMid = max($lastMid, (int)$m['id']); } ?>
+      <div class="chat" id="tk-chat" data-tk="<?= (int)$cur['id'] ?>" data-last="<?= $lastMid ?>" data-back="<?= $h($backTab) ?>">
+        <?php foreach ($thread as $m) { echo ticket_bubble($m, $t, $h); } ?>
       </div>
 
       <?php if ($cur['status'] !== 'closed'): ?>
@@ -170,7 +143,37 @@ $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
     <?php endif; ?>
   </section>
 </div>
-<script>(function(){var c=document.getElementById('tk-chat');if(c)c.scrollTop=c.scrollHeight;})();</script>
+<script>
+(function(){
+  var c=document.getElementById('tk-chat');
+  if(!c) return;
+  c.scrollTop=c.scrollHeight;
+  var tk=c.dataset.tk, back=c.dataset.back||'tickets', busy=false;
+  // Live chat: poll for messages newer than the last one we hold and append
+  // them. Keeps the view current without a refresh; stops while the tab is
+  // hidden so a backgrounded page isn't hammering the server.
+  function poll(){
+    if(busy||document.hidden) return; busy=true;
+    fetch('?poll=ticket&tk='+encodeURIComponent(tk)+'&after='+encodeURIComponent(c.dataset.last),
+          {headers:{'X-Requested-With':'fetch'}})
+      .then(function(r){return r.ok?r.json():null;})
+      .then(function(d){
+        busy=false;
+        if(!d||!d.messages||!d.messages.length) return;
+        var nearBottom=c.scrollHeight-c.scrollTop-c.clientHeight<80;
+        d.messages.forEach(function(m){
+          if(c.querySelector('[data-mid="'+m.id+'"]')) return; // no dupes
+          c.insertAdjacentHTML('beforeend', m.html);
+          if(m.id>+c.dataset.last) c.dataset.last=m.id;
+        });
+        if(nearBottom) c.scrollTop=c.scrollHeight;
+      })
+      .catch(function(){busy=false;});
+  }
+  setInterval(poll, 5000);
+  document.addEventListener('visibilitychange',function(){if(!document.hidden)poll();});
+})();
+</script>
 <?php endif; ?>
 
 <style>

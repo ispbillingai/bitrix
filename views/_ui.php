@@ -60,6 +60,44 @@ function svg(string $name): string {
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' . $body . '</svg>';
 }
 
+/**
+ * One staff chat bubble, as HTML. Shared by the tickets view's initial render
+ * and the live-poll endpoint, so a message appended by polling is byte-identical
+ * to one drawn by a page load. Uses pill()/short_time()/svg() from the dashboard.
+ */
+function ticket_bubble(array $m, callable $t, callable $h): string {
+    $mine = $m['sender_type'] !== 'customer';
+    ob_start(); ?>
+<div class="msg <?= $mine ? 'staff' : 'cust' ?>" data-mid="<?= (int)$m['id'] ?>">
+  <?php if ((string)$m['body'] !== ''): ?><div class="msg-b"><?= nl2br($h($m['body'])) ?></div><?php endif; ?>
+  <?php if (!empty($m['sign_document_id'])): ?>
+    <div class="msg-b">✍️ <a href="?sdl=<?= (int)$m['sign_document_id'] ?>&k=orig"><?= $h($m['sign_title'] ?: $t('dc_h_doc')) ?></a></div>
+    <div class="msg-rcpt<?= ($m['sign_status'] ?? '') === 'signed' ? ' ok' : '' ?>">
+      <?= pill($h, (string)($m['sign_status'] ?? 'sent'), $t) ?>
+      <?php if (($m['sign_status'] ?? '') === 'signed'): ?>
+        ✅ <?= $h(short_time($m['sign_signed_at'])) ?>
+        <?php if (!empty($m['sign_signed_path'])): ?> · <a href="?sdl=<?= (int)$m['sign_document_id'] ?>&k=signed"><?= $h($t('dc_dl_signed')) ?></a><?php endif; ?>
+      <?php endif; ?>
+    </div>
+  <?php endif; ?>
+  <?php if (!empty($m['attachment_path'])): ?>
+    <div class="msg-b"><a href="?dl=<?= $h($m['id']) ?>">📎 <?= $h($m['attachment_name'] ?: $t('tk_attachment')) ?></a></div>
+    <?php if ($mine): ?>
+      <div class="msg-rcpt<?= $m['downloaded_at'] ? ' ok' : '' ?>">
+        <?= $m['downloaded_at']
+            ? '📥 ' . $h($t('tk_downloaded')) . ' ' . $h(short_time($m['downloaded_at']))
+            : '· ' . $h($t('tk_not_downloaded')) ?>
+        <?php if (!empty($m['accepted_at'])): ?>
+          <span class="msg-acc">✅ <?= $h($t('tk_accepted')) ?> <?= $h(short_time($m['accepted_at'])) ?></span>
+        <?php endif; ?>
+      </div>
+    <?php endif; ?>
+  <?php endif; ?>
+  <div class="msg-m"><?= $h($m['sender_name'] ?: ($mine ? $t('tk_staff') : $t('th_customer'))) ?> · <?= $h(short_time($m['created_at'])) ?></div>
+</div>
+<?php return (string)ob_get_clean();
+}
+
 function css(): void { ?>
 <style>
 :root{

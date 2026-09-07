@@ -76,6 +76,34 @@ if (!$me) {
     unset($_SESSION['portal_cid']);
 }
 
+// ---- live chat poll (?poll=1&tk=<id>&after=<msgId>) ----
+// New messages on a thread that belongs to THIS customer, as append-ready HTML,
+// so the customer's chat updates without a refresh.
+if (($_GET['poll'] ?? '') !== '' && $cid) {
+    header('Content-Type: application/json');
+    $ptk = (int)($_GET['tk'] ?? 0);
+    $paf = (int)($_GET['after'] ?? 0);
+    if ($ptk <= 0 || !owns_ticket($cid, $ptk)) {
+        http_response_code(404);
+        echo json_encode(['ok' => false]);
+        exit;
+    }
+    $pout = [];
+    foreach (Tickets::thread($ptk) as $m) {
+        if ((int)$m['id'] > $paf) {
+            $pout[] = ['id' => (int)$m['id'], 'html' => portal_bubble($m, $ptk, $t, $h, $brand)];
+        }
+    }
+    // A live staff message the customer has now seen — mark it read for the
+    // agent's receipt, but only when something new actually arrived (no write
+    // on the idle polls).
+    if ($pout) {
+        Tickets::markCustomerSeen($ptk);
+    }
+    echo json_encode(['ok' => true, 'messages' => $pout]);
+    exit;
+}
+
 $flash = null;
 $flashType = 'ok';
 $signFor = 0; // deal id we're currently entering a code for
@@ -398,38 +426,9 @@ if ($tkCur && $page === 'support') {
       <b><?= $h($tkCur['subject']) ?></b>
       <span class="status <?= $tkCur['status'] === 'closed' ? 'grey' : ($tkCur['last_sender'] === 'customer' ? 'amber' : 'blue') ?>"><?= $h($t('tkst_' . $tkCur['status'])) ?></span>
     </div>
-    <div class="chat" id="chat">
-      <?php foreach ($thread as $m): $mine = $m['sender_type'] === 'customer'; ?>
-        <div class="msg <?= $mine ? 'me' : 'them' ?>">
-          <?php if ((string)$m['body'] !== ''): ?><div><?= nl2br($h($m['body'])) ?></div><?php endif; ?>
-          <?php if (!empty($m['sign_document_id']) && !$mine): // a document sent for signature ?>
-            <div>✍️ <b><?= $h($m['sign_title'] ?: $t('sign_doc')) ?></b></div>
-            <?php if (($m['sign_status'] ?? '') === 'signed'): ?>
-              <div class="accepted">✓ <?= $h($t('sign_done')) ?><?= $m['sign_signed_at'] ? ' ' . $h(date('d/m/Y', strtotime((string)$m['sign_signed_at']))) : '' ?></div>
-            <?php elseif (in_array($m['sign_status'] ?? '', ['sent', 'viewed'], true) && !empty($m['sign_token'])): ?>
-              <div style="margin-top:6px"><a class="btn sm accept" href="sign.php?t=<?= $h(urlencode((string)$m['sign_token'])) ?>"><?= $h($t('sign_now')) ?></a></div>
-            <?php elseif (($m['sign_status'] ?? '') === 'declined'): ?>
-              <div class="muted small"><?= $h($t('sign_declined')) ?></div>
-            <?php endif; ?>
-          <?php endif; ?>
-          <?php if (!empty($m['attachment_path'])): ?>
-            <div><a href="?dl=<?= $h($m['id']) ?>">📎 <?= $h($m['attachment_name'] ?: $t('tk_attachment')) ?></a></div>
-            <?php if (!$mine): // an offer file from us — the customer can accept it ?>
-              <?php if (!empty($m['accepted_at'])): ?>
-                <div class="accepted">✓ <?= $h($t('offer_accepted_on')) ?> <?= $h(date('d/m/Y', strtotime((string)$m['accepted_at']))) ?></div>
-              <?php else: ?>
-                <form method="post" class="accept-form">
-                  <input type="hidden" name="do" value="offer_accept">
-                  <input type="hidden" name="message_id" value="<?= $h($m['id']) ?>">
-                  <input type="hidden" name="ticket_id" value="<?= $h($tkCur['id']) ?>">
-                  <button class="btn sm accept"><?= $h($t('offer_accept')) ?></button>
-                </form>
-              <?php endif; ?>
-            <?php endif; ?>
-          <?php endif; ?>
-          <div class="msg-m"><?= $h($mine ? $t('tk_you') : ($m['sender_name'] ?: $brand)) ?> · <?= $h(date('d/m H:i', strtotime((string)$m['created_at']))) ?></div>
-        </div>
-      <?php endforeach; ?>
+    <?php $lastMid = 0; foreach ($thread as $m) { $lastMid = max($lastMid, (int)$m['id']); } ?>
+    <div class="chat" id="chat" data-tk="<?= (int)$tkCur['id'] ?>" data-last="<?= $lastMid ?>">
+      <?php foreach ($thread as $m) { echo portal_bubble($m, (int)$tkCur['id'], $t, $h, $brand); } ?>
     </div>
     <?php if ($tkCur['status'] !== 'closed'): ?>
       <form method="post" enctype="multipart/form-data" class="reply">
@@ -444,7 +443,35 @@ if ($tkCur && $page === 'support') {
       <p class="muted small" style="margin-top:10px"><?= $h($t('tk_closed_note')) ?></p>
     <?php endif; ?>
   </div>
-  <script>(function(){var c=document.getElementById('chat');if(c)c.scrollTop=c.scrollHeight;})();</script>
+  <script>
+  (function(){
+    var c=document.getElementById('chat');
+    if(!c) return;
+    c.scrollTop=c.scrollHeight;
+    var tk=c.dataset.tk, busy=false;
+    // Live chat: append messages newer than the last one held, no refresh.
+    function poll(){
+      if(busy||document.hidden) return; busy=true;
+      fetch('?poll=1&tk='+encodeURIComponent(tk)+'&after='+encodeURIComponent(c.dataset.last),
+            {headers:{'X-Requested-With':'fetch'}})
+        .then(function(r){return r.ok?r.json():null;})
+        .then(function(d){
+          busy=false;
+          if(!d||!d.messages||!d.messages.length) return;
+          var nearBottom=c.scrollHeight-c.scrollTop-c.clientHeight<80;
+          d.messages.forEach(function(m){
+            if(c.querySelector('[data-mid="'+m.id+'"]')) return;
+            c.insertAdjacentHTML('beforeend', m.html);
+            if(m.id>+c.dataset.last) c.dataset.last=m.id;
+          });
+          if(nearBottom) c.scrollTop=c.scrollHeight;
+        })
+        .catch(function(){busy=false;});
+    }
+    setInterval(poll, 5000);
+    document.addEventListener('visibilitychange',function(){if(!document.hidden)poll();});
+  })();
+  </script>
 
 <?php elseif ($page === 'support'):
   // The support-contract gate, rendered honestly: what the customer sees is
@@ -558,6 +585,45 @@ document.addEventListener('keydown',function(e){if(e.key==='Escape')portalCloseN
 <?php
 
 // ============================ helpers ============================
+
+/**
+ * One customer-side chat bubble, as HTML. Shared by the thread render and the
+ * live-poll endpoint so a polled message matches a page-loaded one exactly.
+ */
+function portal_bubble(array $m, int $ticketId, callable $t, callable $h, string $brand): string {
+    $mine = $m['sender_type'] === 'customer';
+    ob_start(); ?>
+<div class="msg <?= $mine ? 'me' : 'them' ?>" data-mid="<?= (int)$m['id'] ?>">
+  <?php if ((string)$m['body'] !== ''): ?><div><?= nl2br($h($m['body'])) ?></div><?php endif; ?>
+  <?php if (!empty($m['sign_document_id']) && !$mine): ?>
+    <div>✍️ <b><?= $h($m['sign_title'] ?: $t('sign_doc')) ?></b></div>
+    <?php if (($m['sign_status'] ?? '') === 'signed'): ?>
+      <div class="accepted">✓ <?= $h($t('sign_done')) ?><?= $m['sign_signed_at'] ? ' ' . $h(date('d/m/Y', strtotime((string)$m['sign_signed_at']))) : '' ?></div>
+    <?php elseif (in_array($m['sign_status'] ?? '', ['sent', 'viewed'], true) && !empty($m['sign_token'])): ?>
+      <div style="margin-top:6px"><a class="btn sm accept" href="sign.php?t=<?= $h(urlencode((string)$m['sign_token'])) ?>"><?= $h($t('sign_now')) ?></a></div>
+    <?php elseif (($m['sign_status'] ?? '') === 'declined'): ?>
+      <div class="muted small"><?= $h($t('sign_declined')) ?></div>
+    <?php endif; ?>
+  <?php endif; ?>
+  <?php if (!empty($m['attachment_path'])): ?>
+    <div><a href="?dl=<?= $h($m['id']) ?>">📎 <?= $h($m['attachment_name'] ?: $t('tk_attachment')) ?></a></div>
+    <?php if (!$mine): ?>
+      <?php if (!empty($m['accepted_at'])): ?>
+        <div class="accepted">✓ <?= $h($t('offer_accepted_on')) ?> <?= $h(date('d/m/Y', strtotime((string)$m['accepted_at']))) ?></div>
+      <?php else: ?>
+        <form method="post" class="accept-form">
+          <input type="hidden" name="do" value="offer_accept">
+          <input type="hidden" name="message_id" value="<?= $h($m['id']) ?>">
+          <input type="hidden" name="ticket_id" value="<?= (int)$ticketId ?>">
+          <button class="btn sm accept"><?= $h($t('offer_accept')) ?></button>
+        </form>
+      <?php endif; ?>
+    <?php endif; ?>
+  <?php endif; ?>
+  <div class="msg-m"><?= $h($mine ? $t('tk_you') : ($m['sender_name'] ?: $brand)) ?> · <?= $h(date('d/m H:i', strtotime((string)$m['created_at']))) ?></div>
+</div>
+<?php return (string)ob_get_clean();
+}
 
 /** The deal row if it belongs to this customer, else null. */
 function owns_deal(int $cid, int $dealId): ?array

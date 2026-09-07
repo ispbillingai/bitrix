@@ -166,6 +166,30 @@ if (isset($_GET['sdl'])) {
     exit('Not found');
 }
 
+// ---- live chat poll (?poll=ticket&tk=<id>&after=<msgId>) ----
+// Returns messages newer than <after> as ready-to-append HTML, so an open
+// thread stays current without a page refresh. Same scope as viewing: admins
+// any ticket, agents/techs only the ones assigned to them.
+if (($_GET['poll'] ?? '') === 'ticket') {
+    header('Content-Type: application/json');
+    $tkId  = (int)($_GET['tk'] ?? 0);
+    $after = (int)($_GET['after'] ?? 0);
+    $tk    = $tkId > 0 ? Tickets::find($tkId) : null;
+    if (!$tk || (($isAgent || $isTech) && (int)$tk['assigned_agent_id'] !== (int)$uid)) {
+        http_response_code(404);
+        echo json_encode(['ok' => false]);
+        exit;
+    }
+    $out = [];
+    foreach (Tickets::thread($tkId) as $m) {
+        if ((int)$m['id'] > $after) {
+            $out[] = ['id' => (int)$m['id'], 'html' => ticket_bubble($m, $t, $h)];
+        }
+    }
+    echo json_encode(['ok' => true, 'messages' => $out, 'status' => (string)$tk['status']]);
+    exit;
+}
+
 // ---- installation-report photo (?ipf=<photo_id>) ----
 // Photos live outside the web root (or behind the uploads deny); this is the
 // only way out. Admin sees all, a technician/agent only their own reports'.
