@@ -42,6 +42,25 @@ $t = fn(string $k): string => $S[$k] ?? $k;
 $brand = (string)Config::get('mail.from_name', '') ?: (string)Config::get('app.company_name', 'CRM');
 $money = fn($n, $cur) => ($cur ?: (string)Config::get('crm.currency', 'EUR')) . ' ' . number_format((float)$n, 2);
 
+// A durable "remember me" cookie holding the magic-link token. The PHP session
+// alone is fragile on phones — a customer who opened the link inside WhatsApp's
+// in-app browser can lose the session cookie on a reload and land back on the
+// login screen, which looks like the whole chat vanishing. This cookie lets the
+// portal silently re-establish the session from the still-valid token, so a
+// refresh never logs them out.
+$rememberSecs = 30 * 86400;
+$secureCookie = !empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off';
+$setRemember = static function (string $token) use ($rememberSecs, $secureCookie): void {
+    setcookie('crm_portal_tok', $token, [
+        'expires'  => time() + $rememberSecs,
+        'path'     => '/',
+        'secure'   => $secureCookie,
+        'httponly' => true,
+        'samesite' => 'Lax',
+    ]);
+    $_COOKIE['crm_portal_tok'] = $token;
+};
+
 // ---- magic-link login ----
 if (isset($_GET['token'])) {
     $c = Account::findByToken((string)$_GET['token']);
@@ -49,6 +68,7 @@ if (isset($_GET['token'])) {
         $_SESSION['portal_cid'] = (int)$c['id'];
         Account::touchLogin((int)$c['id']);
         Account::recordAccess((int)$c['id'], 'link'); // #4 private-area access count
+        $setRemember((string)$_GET['token']); // survive a session-cookie loss
     }
     header('Location: portal.php');
     exit;
@@ -65,11 +85,25 @@ if (isset($_GET['dl']) && !empty($_SESSION['portal_cid'])) {
 }
 if (($_GET['action'] ?? '') === 'logout') {
     session_destroy();
+    setcookie('crm_portal_tok', '', ['expires' => time() - 3600, 'path' => '/']); // forget the device
+    unset($_COOKIE['crm_portal_tok']);
     header('Location: portal.php');
     exit;
 }
 
 $cid = (int)($_SESSION['portal_cid'] ?? 0);
+// Session gone (expired, or lost by a mobile in-app browser) but the remember
+// cookie is still here and its token still valid → log them straight back in.
+if (!$cid && !empty($_COOKIE['crm_portal_tok'])) {
+    $rc = Account::findByToken((string)$_COOKIE['crm_portal_tok']);
+    if ($rc) {
+        $cid = (int)$rc['id'];
+        $_SESSION['portal_cid'] = $cid;
+        Account::touchLogin($cid);
+    } else {
+        setcookie('crm_portal_tok', '', ['expires' => time() - 3600, 'path' => '/']); // stale token
+    }
+}
 $me  = $cid ? Account::find($cid) : null;
 if (!$me) {
     $cid = 0;
@@ -130,6 +164,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['portal_cid'] = (int)$c['id'];
             Account::touchLogin((int)$c['id']);
             Account::recordAccess((int)$c['id'], 'password'); // #4 private-area access count
+            // Remember this device too, so a lost session re-authenticates. Mint
+            // a fresh long-lived token for it (password users have no link token).
+            $setRemember(Account::invite((int)$c['id'], 30));
             header('Location: portal.php');
             exit;
         }
