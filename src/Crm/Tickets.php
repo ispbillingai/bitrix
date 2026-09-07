@@ -159,7 +159,9 @@ final class Tickets
     public static function isAudio(?string $name): bool
     {
         $ext = strtolower(pathinfo((string)$name, PATHINFO_EXTENSION));
-        return in_array($ext, ['mp3', 'm4a', 'ogg', 'oga', 'opus', 'webm', 'wav', 'aac', 'amr'], true);
+        // 3gp/amr are what phone voice recorders emit; the rest are the common
+        // audio containers. mp4 stays out so a real video isn't shown as audio.
+        return in_array($ext, ['mp3', 'm4a', 'ogg', 'oga', 'opus', 'webm', 'wav', 'aac', 'amr', '3gp'], true);
     }
 
     /**

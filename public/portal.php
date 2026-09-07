@@ -515,15 +515,30 @@ if ($tkCur && $page === 'support') {
     var L={ready:<?= json_encode($t('rec_ready'), JSON_UNESCAPED_UNICODE) ?>,
             stop:<?= json_encode($t('rec_stop'), JSON_UNESCAPED_UNICODE) ?>,
             deny:<?= json_encode($t('rec_deny'), JSON_UNESCAPED_UNICODE) ?>};
-    var canRec=!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.MediaRecorder);
+    var canInline=!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.MediaRecorder);
+    // Phones use the native OS recorder (capture input) — inline getUserMedia is
+    // refused in many mobile browsers/webviews; desktop keeps inline recording.
+    var coarse=false; try{coarse=window.matchMedia&&matchMedia('(pointer:coarse)').matches;}catch(e){}
+    var useNative=!canInline||coarse;
+    function extFor(m){m=m||'';if(m.indexOf('webm')>=0)return 'webm';if(m.indexOf('ogg')>=0)return 'ogg';
+      if(m.indexOf('mp4')>=0||m.indexOf('m4a')>=0||m.indexOf('aac')>=0)return 'm4a';
+      if(m.indexOf('mpeg')>=0)return 'mp3';if(m.indexOf('wav')>=0)return 'wav';return 'webm';}
+    function drop(input,file,note){try{var dt=new DataTransfer();dt.items.add(file);input.files=dt.files;}catch(e){}
+      if(note)note.textContent='🎤 '+L.ready;}
     document.querySelectorAll('[data-mic]').forEach(function(btn){
-      if(!canRec) return; btn.hidden=false;
       var form=btn.closest('form'), input=form&&form.querySelector('input[type=file][name=attachment]');
       var note=document.getElementById('fn'); if(!input) return;
+      if(useNative){
+        var cap=document.createElement('input');
+        cap.type='file'; cap.accept='audio/*'; cap.setAttribute('capture','user');
+        cap.style.display='none'; form.appendChild(cap);
+        btn.hidden=false;
+        btn.addEventListener('click',function(){cap.click();});
+        cap.addEventListener('change',function(){if(cap.files&&cap.files.length)drop(input,cap.files[0],note);});
+        return;
+      }
+      btn.hidden=false;
       var rec=null,chunks=[],stream=null,t0=0,timer=null;
-      function extFor(m){m=m||'';if(m.indexOf('webm')>=0)return 'webm';if(m.indexOf('ogg')>=0)return 'ogg';
-        if(m.indexOf('mp4')>=0||m.indexOf('m4a')>=0||m.indexOf('aac')>=0)return 'm4a';
-        if(m.indexOf('mpeg')>=0)return 'mp3';if(m.indexOf('wav')>=0)return 'wav';return 'webm';}
       function tidy(){if(timer){clearInterval(timer);timer=null;}if(stream){stream.getTracks().forEach(function(x){x.stop();});stream=null;}
         btn.classList.remove('rec');btn.textContent='🎤';}
       btn.addEventListener('click',function(){
@@ -534,7 +549,7 @@ if ($tkCur && $page === 'support') {
           rec.onstop=function(){
             var mime=(rec&&rec.mimeType)||'audio/webm',ext=extFor(mime);
             var file=new File([new Blob(chunks,{type:mime})],'audio-'+Date.now()+'.'+ext,{type:mime});
-            try{var dt=new DataTransfer();dt.items.add(file);input.files=dt.files;}catch(err){}
+            drop(input,file,note);
             if(note)note.textContent='🎤 '+L.ready+' ('+Math.max(1,Math.round((Date.now()-t0)/1000))+'s)';tidy();
           };
           rec.start();t0=Date.now();btn.classList.add('rec');btn.textContent='⏹';btn.title=L.stop;
