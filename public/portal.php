@@ -483,6 +483,9 @@ if ($tkCur && $page === 'support') {
     <div class="card" style="border-left:4px solid #e0a52e">
       <b style="color:#a87908"><?= $h($t('as_need_t')) ?></b>
       <p class="muted small" style="margin-top:6px"><?= $h(str_replace('{amount}', $asPrice, $t('as_need'))) ?></p>
+      <?php if (trim((string)$asOffer['features']) !== ''): ?>
+        <p class="muted small" style="margin-top:6px">🎧 <?= $h($asOffer['features']) ?></p>
+      <?php endif; ?>
     </div>
   <?php endif; ?>
 

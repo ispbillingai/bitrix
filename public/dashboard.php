@@ -315,7 +315,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'smallpay.service_id', 'smallpay.domain', 'smallpay.reference_prefix',
                     'smallpay.sync_minutes', 'smallpay.modify_installments',
                     'smallpay.notify_customer_on_failure',
-                    'support.amount', 'support.cycles', 'support.description',
+                    'support.amount', 'support.cycles', 'support.description', 'support.features',
                 ];
                 // PHP rewrites dots in POST field names to underscores, so a field
                 // named 'mail.from_email' actually arrives as 'mail_from_email'.
@@ -824,8 +824,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // ---------- assistance requests ----------
             case 'assist_claim': // a technician takes charge — first press wins
-                $ok = $uid && \Glue\Portal\AssistRequests::claim((int)$_POST['id'], (int)$uid);
-                $_SESSION['dash_flash'] = [$ok ? $t('as_claimed') : $t('as_claim_lost'), $ok ? 'ok' : 'warn'];
+                if (!$uid) {
+                    // The master-password admin has no user row to own the ticket.
+                    $_SESSION['dash_flash'] = [$t('as_claim_needs_user'), 'warn'];
+                } else {
+                    $ok = \Glue\Portal\AssistRequests::claim((int)$_POST['id'], (int)$uid);
+                    $_SESSION['dash_flash'] = [$ok ? $t('as_claimed') : $t('as_claim_lost'), $ok ? 'ok' : 'warn'];
+                }
                 header('Location: ?tab=support');
                 exit;
             case 'assist_forward': // the customer paid another way, or the admin waives the gate

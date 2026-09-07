@@ -60,22 +60,29 @@ final class AssistRequests
      * override them, and an explicit 0 amount (or SmallPay off) removes the
      * offer, which turns every uncovered request into a business-hours one.
      *
-     * @return array{amount_cents:int, cycles:int, description:string}|null
+     * @return array{amount_cents:int, cycles:int, description:string, features:string}|null
      */
     public static function offer(): ?array
     {
         if (!\Glue\Pay\SmallPay::enabled()) {
             return null;
         }
-        $amount = self::cents((string)Config::get('support.amount', '9,90'));
+        $amount = self::cents((string)Config::get('support.amount', '9,99'));
         if ($amount <= 0) {
             return null;
         }
         $desc = trim((string)Config::get('support.description', '')) ?: 'Contratto Helpdesk';
+        // What the contract includes — shown to the customer on the form, not on
+        // the SmallPay page (that keeps the short description). Editable so the
+        // owner can restate the offer without a deploy.
+        $features = trim((string)Config::get('support.features', ''))
+            ?: 'Centralino con operatore H24 e gestione delle problematiche con assistenza '
+             . 'di primo livello da remoto via chat, con a disposizione 60 minuti al mese.';
         return [
             'amount_cents' => $amount,
             'cycles'       => max(0, (int)Config::get('support.cycles', 0)),
             'description'  => mb_substr($desc, 0, 190),
+            'features'     => $features,
         ];
     }
 

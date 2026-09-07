@@ -271,6 +271,10 @@ $pipelines = \Glue\Crm\Pipelines::all();
     fld($h, 'support.description', $t('f_su_desc'), $cfg('support.description', ''), $t('f_su_desc_h'));
     ?>
   </div>
+  <label class="fld"><span><?= $h($t('f_su_features')) ?></span>
+    <textarea name="support.features" rows="2" style="width:100%;resize:vertical"><?= $h((string)$cfg('support.features', '')) ?></textarea>
+    <small class="muted"><?= $h($t('f_su_features_h')) ?></small>
+  </label>
 
   <h3><?= $h($t('sec_bitrix')) ?> <span class="pill"><?= $h($t('optional')) ?></span></h3>
   <p class="muted small"><?= $h($t('sec_bitrix_h')) ?></p>

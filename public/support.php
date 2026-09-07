@@ -270,6 +270,9 @@ small{display:block;color:var(--muted);font-weight:400;margin-top:4px;}
   <div class="notice">
     <b><?= $h($T['choice_none']) ?></b>
     <p style="margin-top:6px"><?= $h(str_replace(['{desc}', '{price}'], [$desc, $price], $T['choice_offer'])) ?></p>
+    <?php if ($offer !== null && trim((string)$offer['features']) !== ''): ?>
+      <p style="margin-top:8px;padding-top:8px;border-top:1px solid var(--line2)">🎧 <?= $h($offer['features']) ?></p>
+    <?php endif; ?>
   </div>
   <form method="post">
     <?php foreach (['vat_number', 'name', 'phone', 'phone_cc', 'subject', 'message'] as $f): ?>
