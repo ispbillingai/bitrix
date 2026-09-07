@@ -174,8 +174,10 @@ $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
   setInterval(poll, 5000);
   document.addEventListener('visibilitychange',function(){if(!document.hidden)poll();});
 })();
-<?= chat_recorder_js($t('tk_rec'), $t('tk_rec_stop'), $t('tk_rec_ready'), $t('tk_rec_deny')) ?>
 </script>
+<?php // The recorder ships its own <script>, so it must sit OUTSIDE the block
+      // above — a nested <script> would break the JavaScript on this page. ?>
+<?= chat_recorder_js($t('tk_rec'), $t('tk_rec_stop'), $t('tk_rec_ready'), $t('tk_rec_deny')) ?>
 <?php // A stale page restored from the phone's back/forward cache would show an
       // old thread; force a fresh load so the chat is never behind. ?>
 <script>window.addEventListener('pageshow',function(e){if(e.persisted)location.reload();});</script>
