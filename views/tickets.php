@@ -132,6 +132,7 @@ $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
               onchange="this.parentElement.classList.toggle('on',this.checked);
                         this.closest('form').querySelector('.tk-sign-hint').hidden=!this.checked">
           </label>
+          <button type="button" class="tk-att tk-mic" data-mic title="<?= $h($t('tk_rec')) ?>" hidden>🎤</button>
           <textarea name="body" rows="1" placeholder="<?= $h($t('tk_reply')) ?>…"></textarea>
           <button class="btn tiny"><?= svg('send') ?> <?= $h($t('tk_send')) ?></button>
           <div class="tk-fn small muted"></div>
@@ -173,7 +174,11 @@ $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
   setInterval(poll, 5000);
   document.addEventListener('visibilitychange',function(){if(!document.hidden)poll();});
 })();
+<?= chat_recorder_js($t('tk_rec'), $t('tk_rec_stop'), $t('tk_rec_ready'), $t('tk_rec_deny')) ?>
 </script>
+<?php // A stale page restored from the phone's back/forward cache would show an
+      // old thread; force a fresh load so the chat is never behind. ?>
+<script>window.addEventListener('pageshow',function(e){if(e.persisted)location.reload();});</script>
 <?php endif; ?>
 
 <style>
@@ -217,6 +222,9 @@ $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
 .tk-att:hover{border-color:var(--line2)}
 .tk-att input{display:none}
 .tk-att.on{border-color:var(--accent);background:var(--accent-soft)}
+.tk-mic{font-size:15px;line-height:1}
+.tk-mic.rec{border-color:var(--red,#e5616e);background:rgba(229,97,110,.15);color:var(--red,#e5616e);animation:tkpulse 1s infinite}
+@keyframes tkpulse{50%{opacity:.55}}
 .tk-fn{flex-basis:100%;padding-left:47px}.tk-fn:empty{display:none}
 .tk-sign-hint{flex-basis:100%;padding-left:47px}
 .tk-closed{padding:13px 18px;border-top:1px solid var(--line)}

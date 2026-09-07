@@ -436,6 +436,7 @@ if ($tkCur && $page === 'support') {
         <input name="body" placeholder="<?= $h($t('tk_reply_ph')) ?>">
         <label class="att" title="<?= $h($t('tk_attach')) ?>">📎<input type="file" name="attachment"
           onchange="document.getElementById('fn').textContent=this.files.length?this.files[0].name:''"></label>
+        <button type="button" class="att mic" data-mic hidden title="<?= $h($t('rec')) ?>">🎤</button>
         <button class="btn"><?= $h($t('tk_send')) ?></button>
       </form>
       <div class="muted small" id="fn" style="margin-top:6px"></div>
@@ -471,6 +472,42 @@ if ($tkCur && $page === 'support') {
     setInterval(poll, 5000);
     document.addEventListener('visibilitychange',function(){if(!document.hidden)poll();});
   })();
+  // Voice message: the 🎤 records with the mic and drops the clip into the file
+  // input, so sending is the same as attaching. Hidden unless the phone can record.
+  (function(){
+    var L={ready:<?= json_encode($t('rec_ready'), JSON_UNESCAPED_UNICODE) ?>,
+            stop:<?= json_encode($t('rec_stop'), JSON_UNESCAPED_UNICODE) ?>,
+            deny:<?= json_encode($t('rec_deny'), JSON_UNESCAPED_UNICODE) ?>};
+    var canRec=!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia&&window.MediaRecorder);
+    document.querySelectorAll('[data-mic]').forEach(function(btn){
+      if(!canRec) return; btn.hidden=false;
+      var form=btn.closest('form'), input=form&&form.querySelector('input[type=file][name=attachment]');
+      var note=document.getElementById('fn'); if(!input) return;
+      var rec=null,chunks=[],stream=null,t0=0,timer=null;
+      function extFor(m){m=m||'';if(m.indexOf('webm')>=0)return 'webm';if(m.indexOf('ogg')>=0)return 'ogg';
+        if(m.indexOf('mp4')>=0||m.indexOf('m4a')>=0||m.indexOf('aac')>=0)return 'm4a';
+        if(m.indexOf('mpeg')>=0)return 'mp3';if(m.indexOf('wav')>=0)return 'wav';return 'webm';}
+      function tidy(){if(timer){clearInterval(timer);timer=null;}if(stream){stream.getTracks().forEach(function(x){x.stop();});stream=null;}
+        btn.classList.remove('rec');btn.textContent='🎤';}
+      btn.addEventListener('click',function(){
+        if(rec&&rec.state==='recording'){rec.stop();return;}
+        navigator.mediaDevices.getUserMedia({audio:true}).then(function(s){
+          stream=s;chunks=[];rec=new MediaRecorder(s);
+          rec.ondataavailable=function(e){if(e.data&&e.data.size)chunks.push(e.data);};
+          rec.onstop=function(){
+            var mime=(rec&&rec.mimeType)||'audio/webm',ext=extFor(mime);
+            var file=new File([new Blob(chunks,{type:mime})],'audio-'+Date.now()+'.'+ext,{type:mime});
+            try{var dt=new DataTransfer();dt.items.add(file);input.files=dt.files;}catch(err){}
+            if(note)note.textContent='🎤 '+L.ready+' ('+Math.max(1,Math.round((Date.now()-t0)/1000))+'s)';tidy();
+          };
+          rec.start();t0=Date.now();btn.classList.add('rec');btn.textContent='⏹';btn.title=L.stop;
+          timer=setInterval(function(){btn.textContent='⏹ '+Math.round((Date.now()-t0)/1000);},1000);
+        }).catch(function(){if(note)note.textContent=L.deny;});
+      });
+    });
+  })();
+  // A page restored from the phone's back/forward cache would be stale — reload.
+  window.addEventListener('pageshow',function(e){if(e.persisted)location.reload();});
   </script>
 
 <?php elseif ($page === 'support'):
@@ -606,7 +643,11 @@ function portal_bubble(array $m, int $ticketId, callable $t, callable $h, string
     <?php endif; ?>
   <?php endif; ?>
   <?php if (!empty($m['attachment_path'])): ?>
-    <div><a href="?dl=<?= $h($m['id']) ?>">📎 <?= $h($m['attachment_name'] ?: $t('tk_attachment')) ?></a></div>
+    <?php if (Tickets::isAudio($m['attachment_name'])): ?>
+      <div><audio controls preload="metadata" src="?dl=<?= $h($m['id']) ?>" style="max-width:230px;height:40px"></audio></div>
+    <?php else: ?>
+      <div><a href="?dl=<?= $h($m['id']) ?>">📎 <?= $h($m['attachment_name'] ?: $t('tk_attachment')) ?></a></div>
+    <?php endif; ?>
     <?php if (!$mine): ?>
       <?php if (!empty($m['accepted_at'])): ?>
         <div class="accepted">✓ <?= $h($t('offer_accepted_on')) ?> <?= $h(date('d/m/Y', strtotime((string)$m['accepted_at']))) ?></div>
@@ -728,6 +769,8 @@ function portal_strings(string $lang): array
         'as_sent_pay' => 'Request saved — complete the Helpdesk payment to send it with priority. We also sent you the payment link by WhatsApp/email.',
         'as_sent_hours' => 'Your request has been sent. It will be handled during business hours.',
         'as_no_offer' => 'Your request has been recorded. We could not start the online payment — our office will contact you shortly.',
+        'rec' => 'Record a voice message', 'rec_stop' => 'Stop recording',
+        'rec_ready' => 'voice ready — press send', 'rec_deny' => 'Microphone unavailable or permission denied',
     ];
     $it = [
         'portal' => 'Area clienti', 'welcome' => 'Benvenuto', 'logout' => 'Esci',
@@ -788,6 +831,8 @@ function portal_strings(string $lang): array
         'as_sent_pay' => 'Richiesta registrata — completa il pagamento del contratto Helpdesk per inviarla con priorità. Ti abbiamo inviato il link di pagamento anche via WhatsApp/email.',
         'as_sent_hours' => 'La tua richiesta è stata inviata. Sarà gestita in orario lavorativo.',
         'as_no_offer' => 'La tua richiesta è stata registrata. Non è stato possibile avviare il pagamento online: il nostro ufficio ti contatterà a breve.',
+        'rec' => 'Registra un messaggio vocale', 'rec_stop' => 'Ferma la registrazione',
+        'rec_ready' => 'vocale pronto — premi invia', 'rec_deny' => 'Microfono non disponibile o permesso negato',
     ];
     return $lang === 'it' ? $it : $en;
 }
@@ -914,6 +959,9 @@ input:focus,textarea:focus{border-color:var(--accent);background:#fff;box-shadow
 .reply{display:flex;gap:9px;margin-top:8px;align-items:center}.reply input{margin:0}.reply .btn{margin:0;flex-shrink:0}
 .att{flex-shrink:0;width:42px;height:42px;margin:0;display:flex;align-items:center;justify-content:center;border:1.5px solid #dde2ec;border-radius:11px;background:#fbfcfe;cursor:pointer;font-size:17px}
 .att input{display:none}
+.att.mic{border:0;background:#fbfcfe}
+.att.mic.rec{background:rgba(229,97,110,.15);color:#e5616e;animation:recpulse 1s infinite;font-size:13px}
+@keyframes recpulse{50%{opacity:.55}}
 input[type=file]{padding:9px;background:#fbfcfe}
 .msg a{color:#4453d6;font-weight:600}
 .accept-form{margin-top:7px}

@@ -145,7 +145,22 @@ final class Tickets
 
     private const UPLOAD_MAX_BYTES = 10485760; // 10 MB
     private const UPLOAD_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'pdf', 'doc', 'docx',
-                                'xls', 'xlsx', 'csv', 'txt', 'zip'];
+                                'xls', 'xlsx', 'csv', 'txt', 'zip',
+                                // voice messages: MediaRecorder emits webm (Chrome/
+                                // Android) or mp4/m4a (Safari/iOS); the rest cover
+                                // files a customer might attach from their phone.
+                                'mp3', 'm4a', 'mp4', 'ogg', 'oga', 'opus', 'webm', 'wav', 'aac', 'amr', '3gp'];
+
+    /** Extensions we serve inline (play/preview in the chat) rather than force-download. */
+    private const INLINE_EXT = ['jpg', 'jpeg', 'png', 'gif', 'webp',
+                                'mp3', 'm4a', 'mp4', 'ogg', 'oga', 'opus', 'webm', 'wav', 'aac', 'amr', '3gp'];
+
+    /** True when a stored attachment is a voice/audio clip (drives the chat player). */
+    public static function isAudio(?string $name): bool
+    {
+        $ext = strtolower(pathinfo((string)$name, PATHINFO_EXTENSION));
+        return in_array($ext, ['mp3', 'm4a', 'ogg', 'oga', 'opus', 'webm', 'wav', 'aac', 'amr'], true);
+    }
 
     /**
      * Where attachments live. Preferred: storage/ above the web root. On hosts
@@ -232,9 +247,24 @@ final class Tickets
             exit('Not found');
         }
         $name = (string)($msg['attachment_name'] ?: 'attachment');
-        header('Content-Type: application/octet-stream');
-        header('Content-Disposition: attachment; filename="' . str_replace('"', '', $name) . '"');
+        $ext  = strtolower(pathinfo($path, PATHINFO_EXTENSION));
+        // Audio and images are served inline so the chat can play/preview them;
+        // everything else downloads. The MIME has to be right for <audio> to work.
+        $mimes = [
+            'jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png',
+            'gif' => 'image/gif', 'webp' => 'image/webp',
+            'mp3' => 'audio/mpeg', 'm4a' => 'audio/mp4', 'mp4' => 'audio/mp4',
+            'ogg' => 'audio/ogg', 'oga' => 'audio/ogg', 'opus' => 'audio/ogg',
+            'webm' => 'audio/webm', 'wav' => 'audio/wav', 'aac' => 'audio/aac',
+            'amr' => 'audio/amr', '3gp' => 'audio/3gpp',
+        ];
+        $inline = in_array($ext, self::INLINE_EXT, true);
+        header('Content-Type: ' . ($mimes[$ext] ?? 'application/octet-stream'));
+        header('Content-Disposition: ' . ($inline ? 'inline' : 'attachment')
+            . '; filename="' . str_replace('"', '', $name) . '"');
         header('Content-Length: ' . (string)filesize($path));
+        header('Accept-Ranges: bytes'); // let the audio element seek
+        header('X-Content-Type-Options: nosniff');
         readfile($path);
         exit;
     }

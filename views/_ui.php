@@ -81,7 +81,11 @@ function ticket_bubble(array $m, callable $t, callable $h): string {
     </div>
   <?php endif; ?>
   <?php if (!empty($m['attachment_path'])): ?>
-    <div class="msg-b"><a href="?dl=<?= $h($m['id']) ?>">📎 <?= $h($m['attachment_name'] ?: $t('tk_attachment')) ?></a></div>
+    <?php if (\Glue\Crm\Tickets::isAudio($m['attachment_name'])): ?>
+      <div class="msg-b"><audio controls preload="metadata" src="?dl=<?= $h($m['id']) ?>" style="max-width:230px;height:40px"></audio></div>
+    <?php else: ?>
+      <div class="msg-b"><a href="?dl=<?= $h($m['id']) ?>">📎 <?= $h($m['attachment_name'] ?: $t('tk_attachment')) ?></a></div>
+    <?php endif; ?>
     <?php if ($mine): ?>
       <div class="msg-rcpt<?= $m['downloaded_at'] ? ' ok' : '' ?>">
         <?= $m['downloaded_at']
@@ -96,6 +100,58 @@ function ticket_bubble(array $m, callable $t, callable $h): string {
   <div class="msg-m"><?= $h($m['sender_name'] ?: ($mine ? $t('tk_staff') : $t('th_customer'))) ?> · <?= $h(short_time($m['created_at'])) ?></div>
 </div>
 <?php return (string)ob_get_clean();
+}
+
+/**
+ * Voice-message recorder, shared by the staff reply bar and (via the same
+ * markup contract) any chat form: a [data-mic] button records with the mic and
+ * drops the clip into the form's <input type=file name=attachment>, so sending
+ * works exactly like attaching a file. Buttons stay hidden until this confirms
+ * the browser can record. Labels are passed in already translated.
+ */
+function chat_recorder_js(string $rec, string $stop, string $ready, string $deny): string {
+    $enc  = static fn(string $s): string => (string)json_encode($s, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+    $jRec = $enc($rec); $jStop = $enc($stop); $jReady = $enc($ready); $jDeny = $enc($deny);
+    return <<<JS
+<script>
+(function(){
+  var L={rec:$jRec,stop:$jStop,ready:$jReady,deny:$jDeny};
+  var canRec = !!(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+  document.querySelectorAll('[data-mic]').forEach(function(btn){
+    if(!canRec) return;                 // no support -> leave it hidden
+    btn.hidden=false;
+    var form=btn.closest('form');
+    var input=form&&form.querySelector('input[type=file][name=attachment]');
+    if(!input) return;
+    var note=form.querySelector('.tk-fn')||document.getElementById('fn');
+    var rec=null,chunks=[],stream=null,t0=0,timer=null;
+    function extFor(m){m=m||'';if(m.indexOf('webm')>=0)return 'webm';if(m.indexOf('ogg')>=0)return 'ogg';
+      if(m.indexOf('mp4')>=0||m.indexOf('m4a')>=0||m.indexOf('aac')>=0)return 'm4a';
+      if(m.indexOf('mpeg')>=0)return 'mp3';if(m.indexOf('wav')>=0)return 'wav';return 'webm';}
+    function tidy(){if(timer){clearInterval(timer);timer=null;}if(stream){stream.getTracks().forEach(function(x){x.stop();});stream=null;}
+      btn.classList.remove('rec');btn.textContent='🎤';}
+    btn.addEventListener('click',function(){
+      if(rec&&rec.state==='recording'){rec.stop();return;}
+      navigator.mediaDevices.getUserMedia({audio:true}).then(function(s){
+        stream=s;chunks=[];rec=new MediaRecorder(s);
+        rec.ondataavailable=function(e){if(e.data&&e.data.size)chunks.push(e.data);};
+        rec.onstop=function(){
+          var mime=(rec&&rec.mimeType)||'audio/webm';var ext=extFor(mime);
+          var blob=new Blob(chunks,{type:mime});
+          var file=new File([blob],'audio-'+Date.now()+'.'+ext,{type:mime});
+          try{var dt=new DataTransfer();dt.items.add(file);input.files=dt.files;}catch(err){}
+          if(note)note.textContent='🎤 '+L.ready+' ('+Math.max(1,Math.round((Date.now()-t0)/1000))+'s)';
+          tidy();
+        };
+        rec.start();t0=Date.now();btn.classList.add('rec');
+        btn.textContent='⏹';btn.title=L.stop;
+        timer=setInterval(function(){btn.textContent='⏹ '+Math.round((Date.now()-t0)/1000);},1000);
+      }).catch(function(){if(note)note.textContent=L.deny;});
+    });
+  });
+})();
+</script>
+JS;
 }
 
 function css(): void { ?>
