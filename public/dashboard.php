@@ -943,6 +943,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
 
+            // Open a customer's portal: mint the magic link, show it to the
+            // admin (so they can open the area themselves to test messaging) and
+            // send it to the customer on WhatsApp + email.
+            case 'customer_portal_invite': {
+                $cuId  = (int)($_POST['id'] ?? 0);
+                $token = \Glue\Portal\Account::invite($cuId);
+                if ($token !== '') {
+                    \Glue\Portal\Account::sendInvite($cuId, $token);
+                    Activities::add('contact', $cuId, 'system', 'Portal access link sent to customer', $uid);
+                    $_SESSION['dash_flash'] = [$t('cu_portal_link') . ' ' . \Glue\Portal\Account::magicLink($token), 'ok'];
+                } else {
+                    $_SESSION['dash_flash'] = [$t('not_allowed'), 'err'];
+                }
+                header('Location: ?tab=customers&id=' . $cuId);
+                exit;
+            }
+
             case 'customer_area_link':
             case 'customer_area_unlink': {
                 $cuId = (int)($_POST['cid'] ?? 0);

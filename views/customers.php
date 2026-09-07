@@ -297,6 +297,12 @@ if ($ov !== null):
       <?= (int)($c['portal_enabled'] ?? 0) === 1
           ? '<span class="pill pill-up">' . $h($t('cu_portal_on')) . '</span>' . ($c['last_login_at'] ? ' ' . $h(short_time($c['last_login_at'])) : '')
           : '<span class="pill">' . $h($t('cu_portal_off')) . '</span>' ?></p>
+    <form method="post" style="margin-top:8px">
+      <input type="hidden" name="do" value="customer_portal_invite">
+      <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
+      <button class="btn ghost tiny"><?= svg('link') ?> <?= $h($t('cu_portal_send')) ?></button>
+      <small class="muted" style="display:block;margin-top:4px"><?= $h($t('cu_portal_send_h')) ?></small>
+    </form>
   </div>
 </div>
 </div>
