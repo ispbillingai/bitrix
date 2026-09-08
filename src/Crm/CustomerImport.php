@@ -7,15 +7,14 @@ use Glue\Config;
 use Glue\Db;
 use Glue\Event\Log;
 use RuntimeException;
-use ZipArchive;
 
 /**
  * Ingests the gestionale's customer export (…-CLIENTI.xlsx) into contacts.
  *
  * The management software drops a full snapshot of every customer — about
- * 10,000 rows — named like 20260903T180034.655-CLIENTI.xlsx. This class reads
- * that file straight (an .xlsx is a zip of XML; no library needed for one known
- * sheet), and upserts each row keyed on its "Cod." (customer_code).
+ * 10,000 rows — named like 20260903T180034.655-CLIENTI.xlsx. This class streams
+ * that file through Xlsx::rows and upserts each row keyed on its "Cod."
+ * (customer_code).
  *
  * Ownership of fields is the part worth being careful about:
  *   gestionale-owned  name/company (only on rows the import itself created),
@@ -98,7 +97,7 @@ final class CustomerImport
             }
         }
 
-        $rows = self::readSheet($path); // a generator: rows stream, nothing is held
+        $rows = Xlsx::rows($path); // a generator: rows stream, nothing is held
         $map  = null;
 
         // One transaction for the whole file: 10,000 autocommitted INSERTs are
@@ -262,7 +261,7 @@ final class CustomerImport
             'province'        => $get('province') !== '' ? mb_substr($get('province'), 0, 8) : null,
             'zip'             => $get('zip') !== '' ? mb_substr($get('zip'), 0, 12) : null,
             'balance'         => (float)str_replace(',', '.', $get('balance') ?: '0'),
-            'contract_expiry' => self::excelDate($get('contract_expiry')),
+            'contract_expiry' => Xlsx::date($get('contract_expiry')),
             'agent'           => $get('agent') !== '' ? mb_substr($get('agent'), 0, 120) : null,
             'notes'           => $noteParts ? implode("\n", $noteParts) : null,
         ];
@@ -408,117 +407,6 @@ final class CustomerImport
             return '+' . substr($digits, 2);
         }
         return '+39' . $digits;
-    }
-
-    /** Excel serial ("42204") or textual date -> Y-m-d, else null. */
-    private static function excelDate(string $v): ?string
-    {
-        $v = trim($v);
-        if ($v === '') {
-            return null;
-        }
-        if (preg_match('/^\d{4,6}$/', $v)) { // serial days since 1899-12-30
-            return gmdate('Y-m-d', (int)(((int)$v - 25569) * 86400));
-        }
-        if (preg_match('#^(\d{1,2})[/-](\d{1,2})[/-](\d{4})$#', $v, $m)) {
-            return sprintf('%04d-%02d-%02d', (int)$m[3], (int)$m[2], (int)$m[1]);
-        }
-        if (preg_match('/^\d{4}-\d{2}-\d{2}/', $v)) {
-            return substr($v, 0, 10);
-        }
-        return null;
-    }
-
-    // ---- the xlsx itself ----------------------------------------------------
-
-    /**
-     * Stream the first worksheet, one row at a time, header row first.
-     *
-     * XMLReader, not simplexml_load_string on the whole sheet: the newer export
-     * layout is ~15 MB of XML, and a full DOM of it OOM-killed the import on
-     * the production box (848 MB total RAM). Only one <row> fragment is ever
-     * materialised at a time, so memory stays flat however large the file gets.
-     *
-     * @return \Generator<array<int,string>>
-     */
-    private static function readSheet(string $path): \Generator
-    {
-        // ZipArchive just to validate + confirm the parts exist; reading itself
-        // goes through the zip:// stream wrapper so nothing is inflated whole.
-        $zip = new ZipArchive();
-        if ($zip->open($path) !== true) {
-            throw new RuntimeException('Cannot open the xlsx (is it a real Excel file?).');
-        }
-        $hasShared = $zip->locateName('xl/sharedStrings.xml') !== false;
-        $hasSheet  = $zip->locateName('xl/worksheets/sheet1.xml') !== false;
-        $zip->close();
-        if (!$hasSheet) {
-            throw new RuntimeException('No worksheet found in the file.');
-        }
-
-        $shared = [];
-        if ($hasShared) {
-            $r = new \XMLReader();
-            if ($r->open('zip://' . $path . '#xl/sharedStrings.xml')) {
-                $ok = $r->read();
-                while ($ok) {
-                    if ($r->nodeType === \XMLReader::ELEMENT && $r->localName === 'si') {
-                        $si = simplexml_load_string($r->readOuterXml());
-                        // A cell string is either one <t> or a run of <r><t> pieces.
-                        $txt = '';
-                        if (isset($si->t)) {
-                            $txt = (string)$si->t;
-                        } else {
-                            foreach ($si->r as $run) {
-                                $txt .= (string)$run->t;
-                            }
-                        }
-                        $shared[] = $txt;
-                        $ok = $r->next();
-                        continue;
-                    }
-                    $ok = $r->read();
-                }
-                $r->close();
-            }
-        }
-
-        $r = new \XMLReader();
-        if (!$r->open('zip://' . $path . '#xl/worksheets/sheet1.xml')) {
-            throw new RuntimeException('No worksheet found in the file.');
-        }
-        $ok = $r->read();
-        while ($ok) {
-            if ($r->nodeType === \XMLReader::ELEMENT && $r->localName === 'row') {
-                $row = simplexml_load_string($r->readOuterXml());
-                $out = [];
-                foreach ($row->c as $c) {
-                    $ref = (string)$c['r'];
-                    preg_match('/^([A-Z]+)/', $ref, $m);
-                    $col = 0;
-                    foreach (str_split($m[1]) as $ch) {
-                        $col = $col * 26 + (ord($ch) - 64);
-                    }
-                    $col--;
-                    $t = (string)$c['t'];
-                    if ($t === 'inlineStr') {
-                        $val = (string)($c->is->t ?? '');
-                    } elseif ($t === 's') {
-                        $val = $shared[(int)$c->v] ?? '';
-                    } else {
-                        $val = (string)$c->v;
-                    }
-                    $out[$col] = $val;
-                }
-                if ($out) {
-                    yield $out;
-                }
-                $ok = $r->next();
-                continue;
-            }
-            $ok = $r->read();
-        }
-        $r->close();
     }
 
     /** @return array<string,int> our field name -> column index */

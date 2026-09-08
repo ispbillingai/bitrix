@@ -9,10 +9,12 @@
 /public/uploads/*
 !/public/uploads/.htaccess
 
-# Gestionale customer exports: 10,000 people's personal data. The FTP drop
-# directory and any export lying in the repo root stay out of history.
+# Gestionale exports: 10,000 people's personal data (CLIENTI) and the whole
+# catalog with its cost prices (ARTICO). The FTP drop directory and any export
+# lying in the repo root stay out of history — the repo is public.
 /storage/import/
 *-CLIENTI.xlsx
+*-ARTICO*.xlsx
 
 # Signing: customer documents, sealed PDFs and — above all — the private key.
 # Committing storage/sign/keys would make every signature we ever made forgeable.
