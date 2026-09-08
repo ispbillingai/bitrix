@@ -547,20 +547,27 @@ final class Reports
         $phone = trim((string)Config::get('logistics.phone', ''));
         $email = trim((string)Config::get('logistics.email', ''));
         $name  = (string)Config::get('app.company_name', 'CRM');
-        if ($phone === '' && $email === '') {
-            $stmt = Db::pdo()->query(
+        // Fill any channel the logistics settings leave blank from the first
+        // reachable admin — PER CHANNEL, so an unset logistics phone still
+        // reaches someone on WhatsApp even when a logistics email is present.
+        if ($phone === '' || $email === '') {
+            $u = Db::pdo()->query(
                 "SELECT full_name, username, phone, email FROM users
                  WHERE role = 'admin' AND active = 1
                    AND (COALESCE(phone,'') <> '' OR COALESCE(email,'') <> '')
                  ORDER BY id LIMIT 1"
-            );
-            $u = $stmt->fetch();
-            if (!$u) {
-                return null;
+            )->fetch();
+            if ($u) {
+                if ($phone === '') { $phone = (string)($u['phone'] ?? ''); }
+                if ($email === '') { $email = (string)($u['email'] ?? ''); }
+                if (trim((string)Config::get('logistics.phone', '')) === ''
+                    && trim((string)Config::get('logistics.email', '')) === '') {
+                    $name = trim((string)$u['full_name']) ?: (string)$u['username'];
+                }
             }
-            $name  = trim((string)$u['full_name']) ?: (string)$u['username'];
-            $phone = (string)($u['phone'] ?? '');
-            $email = (string)($u['email'] ?? '');
+        }
+        if ($phone === '' && $email === '') {
+            return null;
         }
         return ['agent_name' => $name, 'agent_phone' => $phone, 'agent_email' => $email];
     }
