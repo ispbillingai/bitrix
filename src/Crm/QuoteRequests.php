@@ -341,6 +341,7 @@ final class QuoteRequests
         return Db::pdo()->query(
             "SELECT q.*, l.customer_name, l.customer_phone, l.customer_email, l.vat_number,
                     l.zone, l.status AS lead_status, l.stage_code, ct.company,
+                    l.contact_id, ct.name AS contact_name,
                     u.username AS requester_username, u.full_name AS requester_name,
                     d.status AS doc_status, d.title AS doc_title, d.signed_at, d.uid AS doc_uid
                FROM quote_requests q

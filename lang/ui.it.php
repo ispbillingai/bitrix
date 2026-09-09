@@ -109,6 +109,8 @@ return [
     'cu_no_chat_files'=> 'Non è ancora stato inviato nulla in chat.',
     'cu_chat_thread'  => 'Conversazione',
     'cu_no_quotes'    => 'Nessun preventivo richiesto per questo cliente.',
+    'cu_f_leads'      => 'Da segnalazioni',
+    'qt_open_customer'=> 'Apri il cliente',
     'lead_back_all'   => 'Tutte le segnalazioni',
     'lead_not_here'   => 'Questa segnalazione non è nel tuo elenco — potrebbe essere di un altro venditore.',
     'vat_taken_flash' => 'Lead NON salvato: la partita IVA %s è già stata inserita da un altro collaboratore. Tornerà disponibile il %s.',

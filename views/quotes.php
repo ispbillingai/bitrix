@@ -133,6 +133,12 @@ $qColor = [QuoteRequests::OPEN => 'var(--amber)', QuoteRequests::READY => 'var(-
           </form>
         <?php endif; ?>
         <a class="btn ghost tiny" href="?tab=leads&amp;lead=<?= (int)$q['lead_id'] ?>"><?= $h($t('qt_open_lead')) ?></a>
+        <?php // Straight to the person's own page, where the quote, the chat and
+              // everything else about them sits together. Works whether or not
+              // they are in the gestionale registry. ?>
+        <?php if (!empty($q['contact_id'])): ?>
+          <a class="btn ghost tiny" href="?tab=customers&amp;id=<?= (int)$q['contact_id'] ?>"><?= $h($t('qt_open_customer')) ?></a>
+        <?php endif; ?>
         <?php if (empty($isAgent) && $qst !== QuoteRequests::SENT && $qst !== QuoteRequests::CANCELLED): ?>
           <form method="post" style="display:inline" onsubmit="return confirm('<?= $h($t('qt_cancel_confirm')) ?>')">
             <input type="hidden" name="do" value="quote_cancel"><input type="hidden" name="id" value="<?= (int)$q['id'] ?>">

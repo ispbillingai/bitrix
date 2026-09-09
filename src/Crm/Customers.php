@@ -37,7 +37,13 @@ final class Customers
     public static function search(array $f = [], int $page = 1, int $per = 50): array
     {
         $pdo   = Db::pdo();
-        $where = ['c.is_customer = 1'];
+        // The registry is contacts flagged is_customer. The one exception is the
+        // 'leads' filter below, which exists precisely to reach the people who
+        // are NOT in it: someone who came in as a lead, was quoted, maybe signed
+        // — and could not be found on this page at all, because the very first
+        // condition ruled them out. See the state match.
+        $state = (string)($f['state'] ?? 'all');
+        $where = $state === 'leads' ? [] : ['c.is_customer = 1'];
         $args  = [];
 
         $q = trim((string)($f['q'] ?? ''));
@@ -48,11 +54,14 @@ final class Customers
             array_push($args, $like, $like, $like, $like, $like, $like, $like, $like);
         }
 
-        $state = (string)($f['state'] ?? 'all');
         // "Support" is either kind of contract: a live SmallPay subscription or a
         // gestionale contract whose expiry is still ahead. "Expired" is the
         // renewal list — they had one, it lapsed, and nothing replaced it.
+        // "Leads" is everyone the CRM knows who never made it into the
+        // gestionale registry — the contact behind a lead, a quote, a signed
+        // document. They are customers in every sense that matters here.
         $where[] = match ($state) {
+            'leads'      => 'c.is_customer = 0 AND EXISTS (SELECT 1 FROM leads l WHERE l.contact_id = c.id)',
             'owing'      => 'COALESCE(inv.open_amount, 0) > 0',
             'support'    => '(COALESCE(pc.active_contracts, 0) > 0
                               OR (c.contract_expiry IS NOT NULL AND c.contract_expiry >= CURDATE()))',
@@ -151,7 +160,13 @@ final class Customers
                                   AND (c.email IS NULL OR c.email = '') THEN 1 ELSE 0 END) AS no_contact
              FROM contacts c $joins WHERE c.is_customer = 1"
         )->fetch();
-        return array_map('intval', $row ?: ['total' => 0, 'owing' => 0, 'support' => 0, 'expired' => 0, 'no_contact' => 0]);
+        $out = array_map('intval', $row ?: ['total' => 0, 'owing' => 0, 'support' => 0, 'expired' => 0, 'no_contact' => 0]);
+        // Counted apart, because they are outside the registry the row above sums.
+        $out['leads'] = (int)$pdo->query(
+            'SELECT COUNT(*) FROM contacts c WHERE c.is_customer = 0
+              AND EXISTS (SELECT 1 FROM leads l WHERE l.contact_id = c.id)'
+        )->fetchColumn();
+        return $out;
     }
 
     // ---- one customer, whole ------------------------------------------------

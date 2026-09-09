@@ -109,6 +109,8 @@ return [
     'cu_no_chat_files'=> 'Nothing has been sent in the chat yet.',
     'cu_chat_thread'  => 'Conversation',
     'cu_no_quotes'    => 'No quote has been requested for this customer.',
+    'cu_f_leads'      => 'From leads',
+    'qt_open_customer'=> 'Open the customer',
     'lead_back_all'   => 'All leads',
     'lead_not_here'   => 'That lead is not in your list — it may belong to another seller.',
     'vat_taken_flash' => 'Lead NOT saved: VAT number %s was already entered by another associate. It becomes available again on %s.',

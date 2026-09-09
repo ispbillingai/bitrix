@@ -527,6 +527,10 @@ if ($ov !== null):
   <?= $chip('support', $t('cu_f_support'), $cnt['support']) ?>
   <?= $chip('expired', $t('cu_f_expired'), $cnt['expired']) ?>
   <?= $chip('no_contact', $t('cu_f_no_contact'), $cnt['no_contact']) ?>
+  <?php // The people the registry does not hold: they arrived as a lead and were
+        // quoted, invoiced or signed without ever being imported from the
+        // gestionale. Reaching them used to be impossible from this page. ?>
+  <?= $chip('leads', $t('cu_f_leads'), $cnt['leads']) ?>
   <form method="get" class="inline" style="margin-left:auto">
     <input type="hidden" name="tab" value="customers"><input type="hidden" name="state" value="<?= $h($state) ?>">
     <input type="search" name="q" value="<?= $h($q) ?>" placeholder="<?= $h($t('cu_search_ph')) ?>" style="width:min(320px,60vw)">
