@@ -87,6 +87,10 @@ final class Leads
                 $contactId = Contacts::findOrCreate([
                     'name' => $name ?: 'Unknown', 'phone' => $phone, 'email' => $email,
                     'company' => $d['company'] ?? null, 'lang' => $lang, 'source' => $source,
+                    // The identifier that decides whether this is a business the
+                    // CRM already knows. Withholding it here is what put a lead
+                    // for an existing customer onto a fresh, empty contact.
+                    'vat_number' => $vat,
                 ]);
             }
 
