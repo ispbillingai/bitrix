@@ -16,6 +16,19 @@ foreach ($rows as $r) {
 }
 if (!$cur && $rows) { $cur = $rows[0]; $sel = (int)$cur['id']; }
 $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
+
+// ?to=<contact_id> — arriving from a customer's page to write to them. The
+// new-message card opens with that customer already chosen, so nobody has to
+// find them again in a registry of ten thousand. Permission-checked: the id in
+// the URL is a request, not a grant.
+$preTo = (int)($_GET['to'] ?? 0);
+$preToName = '';
+if ($preTo > 0 && \Glue\Crm\Tickets::mayMessage($isAgent ? ($scopeId ?? 0) : null, $preTo)) {
+    $preToName = (string)((\Glue\Crm\Contacts::find($preTo) ?: [])['name'] ?? '');
+}
+if ($preToName === '') {
+    $preTo = 0;
+}
 ?>
 <div class="tk-topbar">
   <h2 style="margin:0"><?= $h($t('nav_tickets')) ?></h2>
@@ -24,7 +37,7 @@ $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
 
 <?php // Assistance requests (incl. held-for-payment) live on the Support tab. ?>
 
-<div id="tk-new" class="card tk-newcard">
+<div id="tk-new" class="card tk-newcard<?= $preTo ? ' show' : '' ?>">
   <form method="post" enctype="multipart/form-data">
     <input type="hidden" name="do" value="ticket_open_staff"><input type="hidden" name="back" value="<?= $h($backTab) ?>">
     <div class="tk-new-grid">
@@ -33,8 +46,9 @@ $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
             // list this replaces ran out inside the letter A. ?>
       <label><?= $h($t('tk_to')) ?>
         <span class="tk-pick">
-          <input type="text" id="tk-cust" autocomplete="off" placeholder="<?= $h($t('tk_to_ph')) ?>">
-          <input type="hidden" name="contact_id" id="tk-cust-id">
+          <input type="text" id="tk-cust" autocomplete="off" placeholder="<?= $h($t('tk_to_ph')) ?>"
+                 value="<?= $h($preToName) ?>">
+          <input type="hidden" name="contact_id" id="tk-cust-id" value="<?= $preTo ?: '' ?>">
           <div id="tk-cust-hits" class="tk-hits" hidden></div>
         </span></label>
       <label><?= $h($t('tk_subject_l')) ?><input name="subject" maxlength="190" required></label>

@@ -35,6 +35,17 @@ if ($ov !== null):
     <?php if (!empty($c['customer_code'])): ?><span class="pill"><?= $h($t('cu_code')) ?> <?= $h($c['customer_code']) ?></span><?php endif; ?>
     <?php if (!empty($c['vat_number'])): ?><span class="pill"><?= $h($t('cu_vat')) ?> <?= $h($c['vat_number']) ?></span><?php endif; ?>
   </h2>
+  <?php // Straight into the conversation from here. The newest thread when there
+        // is one, otherwise the new-message form with this customer already
+        // chosen — reaching the chat used to mean going to Ticket and finding
+        // them again in a list of ten thousand. ?>
+  <span class="cu-acts">
+    <?php $cuNewest = $ov['tickets'][0] ?? null; ?>
+    <?php if ($cuNewest): ?>
+      <a class="btn tiny" href="?tab=tickets&tk=<?= (int)$cuNewest['id'] ?>"><?= svg('chat') ?> <?= $h($t('cu_open_chat')) ?></a>
+    <?php endif; ?>
+    <a class="btn ghost tiny" href="?tab=tickets&to=<?= (int)$custId ?>"><?= svg('send') ?> <?= $h($t('cu_new_msg')) ?></a>
+  </span>
 </div>
 
 <div class="grid stats">
@@ -140,6 +151,102 @@ if ($ov !== null):
         </div>
       </details>
     <?php endforeach; ?>
+  </div>
+
+  <!-- ---- files exchanged in the chat ---- -->
+  <?php
+  // Built from the threads already loaded above, so this costs no extra query.
+  // The card below it lists SIGNING documents; this one is everything that
+  // actually passed through a conversation — a plain PDF attached to a reply
+  // appeared nowhere but inside its own thread, which is no use when the
+  // question is "what did we send this customer?".
+  $cuFiles = [];
+  foreach ($ov['tickets'] as $tk) {
+      foreach ($tk['messages'] as $m) {
+          if (empty($m['attachment_path']) && empty($m['sign_document_id'])) {
+              continue;
+          }
+          $cuFiles[] = $m + ['ticket_id' => (int)$tk['id'], 'ticket_subject' => (string)$tk['subject']];
+      }
+  }
+  usort($cuFiles, fn($a, $b) => (int)$b['id'] <=> (int)$a['id']);
+  ?>
+  <div class="card">
+    <h3><?= svg('documents') ?> <?= $h($t('cu_chat_files')) ?>
+      <?php if ($cuFiles): ?><span class="muted small">· <?= count($cuFiles) ?></span><?php endif; ?></h3>
+    <?php if (!$cuFiles): ?><p class="muted small"><?= $h($t('cu_no_chat_files')) ?></p>
+    <?php else: ?>
+    <table><thead><tr>
+      <th><?= $h($t('dc_h_doc')) ?></th><th><?= $h($t('cu_chat_thread')) ?></th>
+      <th><?= $h($t('th_status')) ?></th><th><?= $h($t('th_created')) ?></th><th></th>
+    </tr></thead><tbody>
+    <?php foreach ($cuFiles as $f): $isSign = !empty($f['sign_document_id']); ?>
+      <tr>
+        <td>
+          <?php if ($isSign): ?>
+            ✍️ <?= $h($f['sign_title'] ?: $t('dc_h_doc')) ?>
+          <?php else: ?>
+            📎 <?= $h($f['attachment_name'] ?: $t('tk_attachment')) ?>
+          <?php endif; ?>
+          <div class="muted small"><?= $h($f['sender_name'] ?: ($f['sender_type'] === 'customer' ? $t('th_customer') : $t('tk_staff'))) ?></div>
+        </td>
+        <td class="small"><a href="?tab=tickets&tk=<?= (int)$f['ticket_id'] ?>"><?= $h($f['ticket_subject']) ?></a></td>
+        <td class="small"><?= $isSign ? pill($h, (string)($f['sign_status'] ?? 'sent'), $t) : $dash ?></td>
+        <td class="small muted"><?= $h(short_time($f['created_at'])) ?></td>
+        <td class="small" style="white-space:nowrap">
+          <?php if ($isSign): ?>
+            <a class="btn ghost tiny" href="?sdl=<?= (int)$f['sign_document_id'] ?>&k=orig"><?= $h($t('dc_dl_orig')) ?></a>
+            <?php if (!empty($f['sign_signed_path'])): ?>
+              <a class="btn ghost tiny" href="?sdl=<?= (int)$f['sign_document_id'] ?>&k=signed"><?= $h($t('dc_dl_signed')) ?></a>
+            <?php endif; ?>
+          <?php else: ?>
+            <a class="btn ghost tiny" href="?dl=<?= (int)$f['id'] ?>"><?= $h($t('dc_dl_orig')) ?></a>
+          <?php endif; ?>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody></table>
+    <?php endif; ?>
+  </div>
+
+  <!-- ---- quote requests ---- -->
+  <?php $cuQuotes = \Glue\Crm\QuoteRequests::forContact($custId); ?>
+  <div class="card">
+    <h3><?= svg('quotes') ?> <?= $h($t('nav_quotes')) ?>
+      <?php if ($cuQuotes): ?><span class="muted small">· <?= count($cuQuotes) ?></span><?php endif; ?></h3>
+    <?php if (!$cuQuotes): ?><p class="muted small"><?= $h($t('cu_no_quotes')) ?></p>
+    <?php else: ?>
+    <table><thead><tr>
+      <th><?= $h($t('qt_notes')) ?></th><th><?= $h($t('qt_asked_by')) ?></th>
+      <th><?= $h($t('th_status')) ?></th><th><?= $h($t('qt_quote')) ?></th>
+      <th><?= $h($t('th_created')) ?></th><th></th>
+    </tr></thead><tbody>
+    <?php foreach ($cuQuotes as $qr): $qs = (string)$qr['status']; ?>
+      <tr>
+        <td><div class="note-clip l2" style="max-width:320px;white-space:pre-wrap"><?= $h($qr['notes']) ?></div></td>
+        <td class="small"><?= $h($qr['requester_name'] ?: ($qr['requester_username'] ?: $dash)) ?></td>
+        <td class="small"><span class="pill"><?= $h($t('qt_st_' . $qs)) ?></span></td>
+        <td class="small">
+          <?php if (!empty($qr['document_id'])): ?>
+            <?= $h($qr['doc_title'] ?: $t('qt_quote')) ?>
+            <div class="muted small"><span class="pill pill-<?= $h((string)($qr['doc_status'] ?? 'draft')) ?>"><?= $h($t('dc_st_' . (string)($qr['doc_status'] ?? 'draft'))) ?></span>
+              <?php if (!empty($qr['signed_at'])): ?> ✅ <?= $h(short_time($qr['signed_at'])) ?><?php endif; ?></div>
+          <?php else: ?><?= $dash ?><?php endif; ?>
+        </td>
+        <td class="small muted"><?= $h(short_time($qr['created_at'])) ?></td>
+        <td class="small" style="white-space:nowrap">
+          <?php if (!empty($qr['document_id'])): ?>
+            <a class="btn ghost tiny" href="?sdl=<?= (int)$qr['document_id'] ?>&k=orig"><?= $h($t('dc_dl_orig')) ?></a>
+            <?php if (!empty($qr['signed_path'])): ?>
+              <a class="btn ghost tiny" href="?sdl=<?= (int)$qr['document_id'] ?>&k=signed"><?= $h($t('dc_dl_signed')) ?></a>
+            <?php endif; ?>
+          <?php endif; ?>
+          <a class="btn ghost tiny" href="?tab=quotes"><?= $h($t('cu_open')) ?></a>
+        </td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody></table>
+    <?php endif; ?>
   </div>
 
   <!-- ---- signed documents ---- -->
@@ -309,6 +416,10 @@ if ($ov !== null):
 
 <style>
 .cu-top{display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap}
+/* The chat actions sit at the far right of the customer's name, so reaching the
+   conversation is one click from the top of the page rather than a scroll. */
+.cu-acts{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap}
+.cu-acts .btn{white-space:nowrap}
 .cu-cols{display:flex;gap:16px;align-items:flex-start}
 .cu-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:16px}
 .cu-main .card{margin:0}

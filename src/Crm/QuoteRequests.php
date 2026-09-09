@@ -314,6 +314,28 @@ final class QuoteRequests
         return $s->fetchAll() ?: [];
     }
 
+    /**
+     * Every quote request for a CUSTOMER rather than for one lead — the card on
+     * the customer page. Requests hang off leads, and a customer can have more
+     * than one lead behind them over the years, so it reaches through the lead
+     * to the contact instead of asking for a lead id the caller does not have.
+     */
+    public static function forContact(int $contactId): array
+    {
+        $s = Db::pdo()->prepare(
+            "SELECT q.*, l.customer_name, l.contact_id,
+                    u.username AS requester_username, u.full_name AS requester_name,
+                    d.status AS doc_status, d.title AS doc_title, d.signed_at, d.signed_path
+               FROM quote_requests q
+               JOIN leads l ON l.id = q.lead_id
+               LEFT JOIN users u ON u.id = q.requested_by
+               LEFT JOIN sign_documents d ON d.id = q.document_id
+              WHERE l.contact_id = ? ORDER BY q.id DESC"
+        );
+        $s->execute([$contactId]);
+        return $s->fetchAll() ?: [];
+    }
+
     /** How many requests sit in each status — the tiles on the Quotes tab. */
     public static function counts(?int $agentId = null): array
     {
