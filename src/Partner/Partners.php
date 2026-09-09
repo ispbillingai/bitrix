@@ -300,11 +300,21 @@ final class Partners
      * they typed in themselves. Carries the internal stage/status (the admin view
      * shows them) plus `deal_status`, the last word on how the lead ended, which
      * outcome() below turns into the one thing the PARTNER is shown.
+     *
+     * Two more columns the partner area actually renders, both asked for by the
+     * client after using it:
+     *   zone       the area the lead belongs to — theirs to see, since it is the
+     *              customer's own territory and not internal pipeline mechanics;
+     *   updated_at when the status last MOVED. The list showed only the date the
+     *              lead came in, which never changes, so a partner watching a
+     *              lead be contacted and qualified saw the same unchanging line
+     *              and read it as "the status is not updated".
      */
     public static function referrals(int $partnerId): array
     {
         $s = Db::pdo()->prepare(
-            "SELECT l.id, l.customer_name, l.stage_code, l.status, l.received_at,
+            "SELECT l.id, l.customer_name, l.zone, l.stage_code, l.status, l.received_at,
+                    COALESCE(l.stage_changed_at, l.received_at) AS updated_at,
                     (SELECT d.status FROM deals d WHERE d.lead_id = l.id
                       ORDER BY d.id DESC LIMIT 1) AS deal_status
                FROM leads l WHERE l.referred_by_partner_id = ? ORDER BY l.id DESC"
@@ -401,10 +411,17 @@ final class Partners
      *     already exists, the request is still recorded on that lead's timeline
      *     (Leads::create groups it) but attribution is never touched. Otherwise a
      *     partner could take over a colleague's customer — or harvest the office's
-     *     own inbound leads — simply by typing their name in. Only a genuinely new
-     *     lead is attributed; the partner is told which of the two happened.
+     *     own inbound leads — simply by typing their name in.
      *
-     * @param array $d name|company|email|phone|vat_number|comments|lang
+     *     A duplicate comes back as a FAILURE (ok=false, error='duplicate'), not
+     *     as a success carrying a footnote. It used to be the latter, and the
+     *     client reported it as the bug it is: the partner read a green "thank
+     *     you, we have received it", went to their list, and there was no new
+     *     referral there — because none had been created. The note really is
+     *     filed on the existing lead, and the message says so, but the answer to
+     *     "did this create a referral for me?" is no, and it now reads as no.
+     *
+     * @param array $d name|company|email|phone|vat_number|zone|comments|lang
      * @return array{ok:bool,error?:string,lead_id?:int,duplicate?:string,available_at?:string}
      */
     public static function submitLead(int $partnerId, array $d): array
@@ -428,6 +445,11 @@ final class Partners
             'company'    => trim((string)($d['company'] ?? '')),
             'comments'   => trim((string)($d['comments'] ?? '')),
             'vat_number' => (string)($d['vat_number'] ?? ''),
+            // The area the customer sits in. The partner knows it better than
+            // anyone — they are the one standing in front of the shop — and the
+            // office routes on it, so it is asked for here rather than typed in
+            // again later.
+            'zone'       => trim((string)($d['zone'] ?? '')),
             'source'     => 'partner',
             'lang'       => $d['lang'] ?? null,
         ];
@@ -459,7 +481,7 @@ final class Partners
             $ownerId = (int)(self::ownerIdOfLead($leadId) ?? 0);
             Log::write('partner', 'lead_duplicate', 'lead', $leadId,
                 ['partner_id' => $partnerId, 'owner_id' => $ownerId]);
-            return ['ok' => true, 'lead_id' => $leadId,
+            return ['ok' => false, 'error' => 'duplicate', 'lead_id' => $leadId,
                 'duplicate' => $ownerId === $partnerId ? 'own' : 'other'];
         }
 

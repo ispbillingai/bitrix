@@ -88,21 +88,20 @@ if ($partner && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') ==
         'vat_number' => (string)($_POST['vat_number'] ?? ''),
         'email'      => (string)($_POST['email'] ?? ''),
         'phone'      => (string)($_POST['phone'] ?? ''),
+        'zone'       => (string)($_POST['zone'] ?? ''),
         'comments'   => (string)($_POST['message'] ?? ''),
         'lang'       => $lang,
     ]);
     if (!empty($res['ok'])) {
-        $key = match ($res['duplicate'] ?? '') {
-            'own'   => 'ok_dup_own',
-            'other' => 'ok_dup_other',
-            default => 'ok_created',
-        };
-        $_SESSION['partner_notice'] = ['ok' => true, 'msg' => $t($key)];
+        $_SESSION['partner_notice'] = ['ok' => true, 'msg' => $t('ok_created')];
         $back = 'leads';
     } else {
+        // A duplicate is a REFUSAL, not a success with a caveat. It used to come
+        // back green and send the partner to a list that had gained nothing.
         $msg = match ($res['error'] ?? '') {
             'required'  => $t('err_required'),
             'vat_taken' => sprintf($t('err_vat_taken'), (string)($res['available_at'] ?? '')),
+            'duplicate' => $t(($res['duplicate'] ?? '') === 'own' ? 'err_dup_own' : 'err_dup_other'),
             default     => $t('err_generic'),
         };
         $_SESSION['partner_notice'] = ['ok' => false, 'msg' => $msg];
@@ -226,7 +225,8 @@ foreach ($refs as $r) {
               <div class="feed-ic"><?= svg('leads') ?></div>
               <div class="feed-main">
                 <b><?= $h($r['customer_name'] ?: ('#' . $r['id'])) ?></b>
-                <div class="meta"><?= $h(substr((string)$r['received_at'], 0, 10)) ?></div>
+                <div class="meta"><?= $h($t('updated')) ?> <?= $h(substr((string)$r['updated_at'], 0, 16)) ?><?php
+                  if (!empty($r['zone'])): ?> · <?= $h($r['zone']) ?><?php endif; ?></div>
               </div>
               <span class="pill pill-<?= $h($st) ?>"><?= $h($t('st_' . $st)) ?></span>
             </div>
@@ -258,8 +258,14 @@ foreach ($refs as $r) {
       <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone" placeholder="<?= $h($t('f_phone_ph')) ?>"></label>
     </div>
     <p class="muted small" style="margin:-8px 0 16px"><?= $h($t('f_contact_hint')) ?></p>
-    <label class="fld"><span><?= $h($t('f_vat')) ?></span><input name="vat_number" placeholder="<?= $h($t('f_vat_ph')) ?>">
-      <small class="muted"><?= $h($t('f_vat_hint')) ?></small></label>
+    <div class="row">
+      <label class="fld"><span><?= $h($t('f_vat')) ?></span><input name="vat_number" placeholder="<?= $h($t('f_vat_ph')) ?>">
+        <small class="muted"><?= $h($t('f_vat_hint')) ?></small></label>
+      <label class="fld"><span><?= $h($t('f_zone')) ?></span>
+        <input name="zone" list="zone-list" placeholder="<?= $h($t('f_zone_ph')) ?>">
+        <small class="muted"><?= $h($t('f_zone_hint')) ?></small></label>
+    </div>
+    <datalist id="zone-list"><?php foreach (\Glue\Crm\Leads::zones() as $z): ?><option value="<?= $h($z) ?>"><?php endforeach; ?></datalist>
     <label class="fld"><span><?= $h($t('f_message')) ?></span><textarea name="message" rows="4" placeholder="<?= $h($t('f_message_ph')) ?>"></textarea></label>
     <button class="btn"><?= svg('send') ?> <?= $h($t('f_send')) ?></button>
   </form>
@@ -272,12 +278,17 @@ foreach ($refs as $r) {
     <div class="card"><div class="empty"><?= $h($t('no_referrals')) ?></div></div>
   <?php else: ?>
     <table>
-      <thead><tr><th><?= $h($t('customer')) ?></th><th><?= $h($t('status')) ?></th><th><?= $h($t('date')) ?></th></tr></thead>
+      <thead><tr><th><?= $h($t('customer')) ?></th><th><?= $h($t('f_zone')) ?></th>
+        <th><?= $h($t('status')) ?></th><th><?= $h($t('updated')) ?></th><th><?= $h($t('date')) ?></th></tr></thead>
       <tbody>
         <?php foreach ($refs as $r): $st = Partners::status($r); ?>
           <tr>
             <td><strong><?= $h($r['customer_name'] ?: ('#' . $r['id'])) ?></strong></td>
+            <td class="muted small"><?= $h($r['zone'] ?: '—') ?></td>
             <td><span class="pill pill-<?= $h($st) ?>"><?= $h($t('st_' . $st)) ?></span></td>
+            <?php // When the status last moved — without it the row never changes
+                  // on screen and the status reads as frozen. ?>
+            <td class="muted small"><?= $h(substr((string)$r['updated_at'], 0, 16)) ?></td>
             <td class="muted small"><?= $h(substr((string)$r['received_at'], 0, 10)) ?></td>
           </tr>
         <?php endforeach; ?>
@@ -375,6 +386,7 @@ function partner_strings(string $lang): array
         'referrals' => 'My leads', 'leads_sub' => 'The status of every lead you brought in. We message you as soon as one is closed or lost.',
         'no_referrals' => 'No leads yet — enter your first one.',
         'customer' => 'Customer', 'status' => 'Status', 'date' => 'Date',
+        'updated' => 'Last update',
         // lead entry
         'new_lead' => 'Enter a new lead',
         'new_lead_sub' => 'Fill in your contact and we take it from here. You will hear from us when the lead is closed or lost.',
@@ -383,11 +395,13 @@ function partner_strings(string $lang): array
         'f_contact_hint' => 'Give at least one of email or phone. For a number outside Italy, start it with + and the country code.',
         'f_vat' => 'VAT number (optional)', 'f_vat_ph' => 'e.g. 01234567890',
         'f_vat_hint' => 'Entering the VAT number reserves the customer for you for 90 days.',
+        'f_zone' => 'Zone', 'f_zone_ph' => 'e.g. Naples North',
+        'f_zone_hint' => 'The area the customer is in. It helps us route the lead to the right person.',
         'f_message' => 'Notes', 'f_message_ph' => 'What do they need?',
         'f_send' => 'Send lead',
         'ok_created' => 'Thank you — your lead has been received. We will let you know how it ends.',
-        'ok_dup_own' => 'You had already entered this customer. Your notes have been added to their existing lead.',
-        'ok_dup_other' => 'This customer is already in our system under another entry. Your notes have been recorded, but the lead is not assigned to you.',
+        'err_dup_own' => 'Not filed: you had already entered this customer, so no new lead was created. Your notes have been added to the lead you already have for them.',
+        'err_dup_other' => 'Not filed: this customer is already in our system under another entry, so no new lead was created and this one is not assigned to you. Your notes have been recorded on the existing lead.',
         'err_required' => 'Please give the contact name and at least an email or a phone number.',
         'err_vat_taken' => 'This VAT number has already been entered by another associate. It becomes available again on %s.',
         'err_generic' => 'The lead could not be saved. Please try again.',
@@ -425,6 +439,7 @@ function partner_strings(string $lang): array
         'referrals' => 'Le mie segnalazioni', 'leads_sub' => 'Lo stato di ogni segnalazione che hai portato. Ti scriviamo appena una viene chiusa o persa.',
         'no_referrals' => 'Ancora nessuna segnalazione — inserisci la prima.',
         'customer' => 'Cliente', 'status' => 'Stato', 'date' => 'Data',
+        'updated' => 'Ultimo aggiornamento',
         'new_lead' => 'Inserisci una nuova segnalazione',
         'new_lead_sub' => 'Compila i dati del contatto e al resto pensiamo noi. Ti avviseremo quando la segnalazione sarà chiusa o persa.',
         'f_name' => 'Nome del contatto', 'f_company' => 'Azienda',
@@ -432,11 +447,13 @@ function partner_strings(string $lang): array
         'f_contact_hint' => 'Indica almeno email o telefono. Per un numero estero, inizia con + e il prefisso internazionale.',
         'f_vat' => 'Partita IVA (facoltativa)', 'f_vat_ph' => 'es. 01234567890',
         'f_vat_hint' => 'Inserendo la partita IVA il cliente resta riservato a te per 90 giorni.',
+        'f_zone' => 'Zona', 'f_zone_ph' => 'es. Napoli Nord',
+        'f_zone_hint' => 'La zona in cui si trova il cliente. Ci aiuta ad affidare la segnalazione alla persona giusta.',
         'f_message' => 'Note', 'f_message_ph' => 'Di cosa ha bisogno?',
         'f_send' => 'Invia segnalazione',
         'ok_created' => 'Grazie — abbiamo ricevuto la tua segnalazione. Ti faremo sapere come va a finire.',
-        'ok_dup_own' => 'Avevi già inserito questo cliente. Le tue note sono state aggiunte alla segnalazione esistente.',
-        'ok_dup_other' => 'Questo cliente è già presente con un’altra segnalazione. Le tue note sono state registrate, ma la segnalazione non è attribuita a te.',
+        'err_dup_own' => 'Non inserita: avevi già segnalato questo cliente, quindi non è stata creata una nuova segnalazione. Le tue note sono state aggiunte a quella che hai già.',
+        'err_dup_other' => 'Non inserita: questo cliente è già presente con un’altra segnalazione, quindi non ne è stata creata una nuova e questa non è attribuita a te. Le tue note sono state registrate sulla segnalazione esistente.',
         'err_required' => 'Inserisci il nome del contatto e almeno email o telefono.',
         'err_vat_taken' => 'Questa partita IVA è già stata inserita da un altro collaboratore. Tornerà disponibile il %s.',
         'err_generic' => 'Non è stato possibile salvare la segnalazione. Riprova.',
