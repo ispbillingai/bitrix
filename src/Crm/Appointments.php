@@ -98,6 +98,23 @@ final class Appointments
             'dedupe_key'     => "appt_confirm:$apptId:$whenTs",
         ]);
 
+        // ...and the same, now, to the AGENT. The customer was told immediately
+        // and the seller was not, which left the person who has to turn up
+        // finding out from a reminder hours later — or from the customer.
+        // "Reminders for both the lead and the agent, at the time of scheduling"
+        // is the client's wording, and this is the half that was missing.
+        (new Scheduler())->enqueue([
+            'entity_type'    => 'appointment',
+            'entity_id'      => $apptId,
+            'rule_key'       => 'appointment_agent_set',
+            'recipient_type' => 'agent',
+            'channel'        => 'both',
+            'due_at'         => date('Y-m-d H:i:s'),
+            'lang'           => $lang,
+            'payload'        => ['when' => $whenLabel],
+            'dedupe_key'     => "appt_agent_set:$apptId:$whenTs",
+        ]);
+
         // Reminders to both parties as the event approaches.
         $n = Automation::appointmentReminders($apptId, $whenTs, $whenLabel);
 
@@ -139,6 +156,18 @@ final class Appointments
              FROM appointments a LEFT JOIN users u ON u.id = a.agent_id
              $where ORDER BY (a.starts_at IS NULL) DESC, a.starts_at ASC, a.id DESC LIMIT $limit"
         )->fetchAll();
+    }
+
+    /** The appointments booked on one lead — shown inside the lead record. */
+    public static function forLead(int $leadId): array
+    {
+        $stmt = Db::pdo()->prepare(
+            'SELECT a.*, u.username AS agent_username, u.full_name AS agent_name
+               FROM appointments a LEFT JOIN users u ON u.id = a.agent_id
+              WHERE a.lead_id = ? ORDER BY COALESCE(a.starts_at, a.preferred_at) DESC, a.id DESC'
+        );
+        $stmt->execute([$leadId]);
+        return $stmt->fetchAll() ?: [];
     }
 
     public static function count(string $where = ''): int

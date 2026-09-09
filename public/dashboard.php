@@ -130,6 +130,7 @@ $techActions  = ['install_create', 'install_save', 'install_photos', 'install_ph
                  'assist_claim', 'ticket_reply', 'ticket_status'];
 $agentActions = [
     'lead_create', 'lead_move', 'lead_convert', 'lead_note', 'lead_edit', 'lead_quote',
+    'lead_appointment',
     'deal_move', 'deal_note', 'deal_invite',
     'appt_create', 'appt_schedule', 'appt_status',
     'task_complete', 'task_status', 'ticket_reply', 'ticket_status', 'ticket_open_staff', 'change_my_password',
@@ -757,6 +758,55 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $flash = $t('lead_saved');
                 $tab = 'leads';
                 break;
+
+            // ---------- an appointment, booked inside the lead ----------
+            // Named lead_* so the ownership guard above already applies: a seller
+            // can only book on a lead that is theirs.
+            case 'lead_appointment': {
+                $apLead = Leads::find((int)$_POST['id']);
+                $apWhen = trim((string)($_POST['starts_at'] ?? ''));
+                if (!$apLead || strtotime($apWhen) === false) {
+                    $_SESSION['dash_flash'] = [$t('ap_err_when'), 'err'];
+                    header('Location: ?tab=leads&lead=' . (int)$_POST['id']);
+                    exit;
+                }
+                // Whose diary it goes in: a seller books for themselves, an admin
+                // picks, and failing that it falls to whoever owns the lead.
+                $apAgent = $isAgent ? (int)$scopeId
+                    : ((int)($_POST['agent_id'] ?? 0) ?: (int)($apLead['assigned_to'] ?? 0));
+                if ($apAgent <= 0) {
+                    $_SESSION['dash_flash'] = [$t('ap_err_agent'), 'err'];
+                    header('Location: ?tab=leads&lead=' . (int)$apLead['id']);
+                    exit;
+                }
+                $apId = Appointments::request([
+                    'contact_id' => $apLead['contact_id'] ?: null,
+                    'lead_id'    => $apLead['id'],
+                    'agent_id'   => $apAgent,
+                    'title'      => $_POST['title'] ?? '',
+                    'location'   => $_POST['location'] ?? '',
+                    'notes'      => $_POST['notes'] ?? '',
+                    'name'       => $apLead['customer_name'],
+                    'phone'      => $apLead['customer_phone'],
+                    'email'      => $apLead['customer_email'],
+                    'lang'       => $apLead['lang'] ?? null,
+                ], $uid);
+                // Booked, not merely requested: confirming it here is what sends
+                // the customer their confirmation, the agent theirs, and queues
+                // the run-up reminders for both.
+                $apN = Appointments::schedule($apId, $apAgent, $apWhen, [
+                    'title'    => $_POST['title'] ?? '',
+                    'location' => $_POST['location'] ?? '',
+                ], $uid);
+                Activities::add('lead', (int)$apLead['id'], 'meeting',
+                    'Appuntamento fissato per ' . date('d/m/Y H:i', (int)strtotime($apWhen))
+                    . (trim((string)($_POST['location'] ?? '')) !== ''
+                        ? ' — ' . trim((string)$_POST['location']) : ''), $uid);
+                $_SESSION['dash_flash'] = [sprintf($t('ap_booked'),
+                    date('d/m/Y H:i', (int)strtotime($apWhen)), $apN), 'ok'];
+                header('Location: ?tab=leads&lead=' . (int)$apLead['id']);
+                exit;
+            }
 
             // ---------- quote requests ----------
             // The button inside the lead record. Named lead_* on purpose: that

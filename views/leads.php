@@ -367,6 +367,50 @@ $focus = $openLeadId > 0;
               <textarea name="body" rows="2" required></textarea></label>
             <button class="btn tiny ghost"><?= $h($t('save')) ?></button></form>
 
+          <?php // Book the visit from here, rather than retyping the customer on
+                // the Appointments tab. Saving it confirms the appointment: the
+                // customer and the seller are both told at once, and both are
+                // reminded again as it approaches. ?>
+          <h3 style="margin-top:18px"><?= $h($t('ap_h')) ?></h3>
+          <details class="drawer" style="margin-bottom:10px">
+            <summary class="btn tiny"><?= svg('appointments') ?> <?= $h($t('ap_book')) ?></summary>
+            <form method="post" class="card" style="margin-top:10px">
+              <input type="hidden" name="do" value="lead_appointment">
+              <input type="hidden" name="id" value="<?= $h($r['id']) ?>">
+              <div class="row">
+                <label class="fld"><span><?= $h($t('ap_when')) ?> *</span>
+                  <input type="datetime-local" name="starts_at" required></label>
+                <label class="fld"><span><?= $h($t('ap_where')) ?></span>
+                  <input name="location" placeholder="<?= $h($t('ap_where_ph')) ?>"></label>
+              </div>
+              <div class="row">
+                <label class="fld"><span><?= $h($t('ap_title')) ?></span>
+                  <input name="title" placeholder="<?= $h($t('ap_title_ph')) ?>"></label>
+                <?php if (empty($isAgent)): ?>
+                  <label class="fld"><span><?= $h($t('th_agent')) ?></span>
+                    <?php agent_select($h, $agents, 'agent_id', $r['assigned_to'], $t('assign_seller')); ?></label>
+                <?php endif; ?>
+              </div>
+              <label class="fld"><span><?= $h($t('f_notes')) ?></span>
+                <textarea name="notes" rows="2"></textarea></label>
+              <p class="muted small" style="margin:-8px 0 12px"><?= $h($t('ap_hint')) ?></p>
+              <button class="btn tiny"><?= svg('appointments') ?> <?= $h($t('ap_book')) ?></button>
+            </form>
+          </details>
+          <?php $leadAppts = \Glue\Crm\Appointments::forLead((int)$r['id']); ?>
+          <?php if (!$leadAppts): ?>
+            <div class="muted small"><?= $h($t('ap_none')) ?></div>
+          <?php else: foreach ($leadAppts as $ap): ?>
+            <div class="lb">
+              <span class="nm" style="min-width:0">
+                <b><?= $h($ap['starts_at'] ? date('d/m/Y H:i', strtotime((string)$ap['starts_at'])) : $t('ap_no_time')) ?></b>
+                <?php if (!empty($ap['location'])): ?><span class="muted small"> · <?= $h($ap['location']) ?></span><?php endif; ?>
+                <div class="muted small"><?= $h($ap['agent_name'] ?: ($ap['agent_username'] ?: '')) ?></div>
+              </span>
+              <span class="sc"><?= pill($h, (string)$ap['status'], $t) ?></span>
+            </div>
+          <?php endforeach; endif; ?>
+
           <?php // Ask the back office to price this customer. Everything they need
                 // — company, legal details, contacts — is already on the lead, so
                 // the only thing asked for here is what the quote must contain. ?>
