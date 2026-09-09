@@ -22,6 +22,9 @@ use Glue\Pay\SmallPay;
 
 $configured = SmallPay::configured();
 $on         = (bool)$cfg('smallpay.enabled', false);
+// The gateways this merchant can actually sell on — one service id each.
+$gateways       = SmallPay::gateways();
+$defaultGateway = SmallPay::defaultGateway();
 $filter     = (string)($_GET['f'] ?? 'past_due');
 $openId     = (int)($_GET['c'] ?? 0);
 $prefContact = (int)($_GET['contact'] ?? 0);
@@ -148,6 +151,18 @@ $here = function (array $over = []) use ($filter): string {
           </select>
           <small class="muted" id="payKindHint"><?= $h($t('pay_k_subscription_h')) ?></small>
         </label>
+        <?php // Which gateway collects. Only worth asking when the merchant has
+              // both services — with one, the choice is already made. ?>
+        <?php if (count($gateways) > 1): ?>
+          <label class="fld"><span><?= $h($t('pay_f_gateway')) ?></span>
+            <select name="gateway">
+              <?php foreach ($gateways as $g): ?>
+                <option value="<?= $h($g) ?>" <?= $defaultGateway === $g ? 'selected' : '' ?>><?= $h($t('pay_gw_' . $g)) ?></option>
+              <?php endforeach; ?>
+            </select>
+            <small class="muted"><?= $h($t('pay_f_gateway_h')) ?></small>
+          </label>
+        <?php endif; ?>
         <?php fld($h, 'description', $t('pay_f_desc'), '', $t('pay_f_desc_h')); ?>
       </div>
 
@@ -240,7 +255,10 @@ $here = function (array $over = []) use ($filter): string {
             </td>
             <td>
               <?= $h($c['description']) ?>
-              <div class="muted small"><?= $h(Contracts::cadenceText($c)) ?></div>
+              <div class="muted small"><?= $h(Contracts::cadenceText($c)) ?><?php
+                // Only when there is a choice to have made — on a one-gateway
+                // merchant this would just repeat itself on every row.
+                if (count($gateways) > 1): ?> · <?= $h($t('pay_gw_' . ($c['gateway'] ?: 'card'))) ?><?php endif; ?></div>
             </td>
             <td><?= $eur($c['amount_cents'] ?: $c['first_amount_cents'], $c['currency']) ?></td>
             <td>

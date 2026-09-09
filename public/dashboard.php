@@ -336,7 +336,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'leads_mailbox.host', 'leads_mailbox.port', 'leads_mailbox.user',
                     'leads_mailbox.pass', 'leads_mailbox.poll_minutes',
                     'smallpay.enabled', 'smallpay.env', 'smallpay.id_merchant', 'smallpay.unique_id',
-                    'smallpay.service_id', 'smallpay.domain', 'smallpay.reference_prefix',
+                    'smallpay.service_id', 'smallpay.service_id_sdd', 'smallpay.default_gateway',
+                    'smallpay.domain', 'smallpay.reference_prefix',
                     'smallpay.sync_minutes', 'smallpay.modify_installments',
                     'smallpay.notify_customer_on_failure',
                     'support.amount', 'support.cycles', 'support.description', 'support.features',
@@ -1207,6 +1208,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $c = PayContracts::open([
                     'kind'               => (string)($_POST['kind'] ?? 'subscription'),
+                    'gateway'            => (string)($_POST['gateway'] ?? ''),
                     'contact_id'         => $contactId,
                     'deal_id'            => $dealId,
                     'assigned_to'        => (int)($deal['assigned_to'] ?? $ct['assigned_to'] ?? 0),
@@ -1272,14 +1274,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $flash = $t('pay_cancelled');
                 $tab = 'payments';
                 break;
-            case 'test_smallpay':
+            case 'test_smallpay': {
                 // checkSellConfigs validates merchant + service + gateway without
                 // creating a position, so this is safe to press against the live
                 // account. It is the only SmallPay call that is.
-                (new \Glue\Pay\SmallPay())->checkSellConfig();
-                $flash = $t('test_ok') . ' · ' . $t('pay_test_ok');
+                //
+                // Once per gateway: each is a different service, and a service
+                // SmallPay has deactivated fails here and nowhere else until a
+                // customer is already looking at a broken checkout.
+                $ok = [];
+                foreach (\Glue\Pay\SmallPay::gateways() as $gw) {
+                    (new \Glue\Pay\SmallPay(null, $gw))->checkSellConfig();
+                    $ok[] = $t('pay_gw_' . $gw);
+                }
+                $flash = $t('test_ok') . ' · ' . $t('pay_test_ok') . ': ' . implode(', ', $ok);
                 $tab = 'settings';
                 break;
+            }
 
             case 'sibill_sync':
                 $s = SibillInvoices::sync();

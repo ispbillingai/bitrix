@@ -171,21 +171,30 @@ return [
     // card. Fill these from Settings → SmallPay; the connection test calls
     // checkSellConfigs, which validates the setup without creating anything.
     //
-    // The four identifiers all come from the SmallPay Market portal:
+    // The identifiers all come from the SmallPay Market portal:
     //   id_merchant / unique_id  -> Anagrafica
-    //   service_id               -> Servizi, column "Id Servizio crm"
+    //   service_id*              -> Servizi, column "Id Servizio crm"
     //   domain                   -> your container for paymentIds; agree it with
     //                               SmallPay and never change it afterwards,
     //                               because existing positions live under it.
     // unique_id is a shared secret: it is never sent, only hashed, and it is
     // what proves an inbound status callback really came from SmallPay.
+    //
+    // One service id PER GATEWAY. Nothing in the API chooses how a sale is
+    // collected — the service it is filed under does — so the merchant holds an
+    // "API Nexi" service (card) and an "API SDD" one (SEPA direct debit), and
+    // picking a gateway means signing with that service's id. Fill in only the
+    // ones the merchant actually has; default_gateway is used wherever nobody
+    // picks (the customer portal's support contracts, mainly).
     'smallpay' => [
         'enabled'     => false,
         'env'         => 'staging',   // staging | production
         'base_url'    => '',          // override the environment's base path; normally empty
         'id_merchant' => 0,
         'unique_id'   => '',
-        'service_id'  => '',
+        'service_id'     => '',       // type API, gateway NEXI — card
+        'service_id_sdd' => '',       // type API, gateway STRIPE_SDD — SEPA direct debit
+        'default_gateway' => 'card',  // card | sdd
         'domain'      => '',
         'timeout'     => 30,
 

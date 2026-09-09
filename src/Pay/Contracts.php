@@ -76,6 +76,11 @@ final class Contracts
         $kind = in_array($in['kind'] ?? '', ['subscription', 'installments', 'one_off'], true)
             ? (string)$in['kind'] : 'subscription';
 
+        // Card or SEPA direct debit. Normalised here, once: whatever is stored
+        // is what every later call about this position will sign with, so it
+        // must be a gateway the merchant really has a service for.
+        $gateway = SmallPay::resolveGateway($in['gateway'] ?? null);
+
         $amount = max(0, (int)($in['amount_cents'] ?? 0));
         $first  = max(0, (int)($in['first_amount_cents'] ?? 0));
         $cycles = max(0, (int)($in['total_cycles'] ?? 0));
@@ -103,12 +108,13 @@ final class Contracts
         $pdo = Db::pdo();
         $pdo->prepare(
             'INSERT INTO payment_contracts
-                (kind, reference, contact_id, deal_id, lead_id, assigned_to,
+                (kind, gateway, reference, contact_id, deal_id, lead_id, assigned_to,
                  customer_name, customer_phone, customer_email, lang, description,
                  currency, amount_cents, first_amount_cents, total_cycles, status, created_by)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         )->execute([
             $kind,
+            $gateway,
             // Placeholder: the real reference embeds the row id, which does not
             // exist yet. It has to be unique even so — reference is a UNIQUE key
             // and two agents can be saving at the same instant.
@@ -149,7 +155,7 @@ final class Contracts
         }
 
         Log::write('pay', 'contract_opened', 'payment_contract', $id, [
-            'reference' => $reference, 'kind' => $kind,
+            'reference' => $reference, 'kind' => $kind, 'gateway' => $gateway,
             'amount_cents' => $amount, 'first_amount_cents' => $first, 'cycles' => $cycles,
         ]);
         if ($c['deal_id']) {
@@ -165,7 +171,7 @@ final class Contracts
      */
     private static function file(array $c): array
     {
-        $api    = new SmallPay();
+        $api    = self::api($c);
         $ref    = (string)$c['reference'];
         $kind   = (string)$c['kind'];
         $amount = (int)$c['amount_cents'];
@@ -473,7 +479,7 @@ final class Contracts
             return $c; // never filed — there is nothing upstream to ask about
         }
         try {
-            $body = (new SmallPay())->retrievePosition((string)$c['reference']);
+            $body = self::api($c)->retrievePosition((string)$c['reference']);
         } catch (Throwable $e) {
             Db::pdo()->prepare('UPDATE payment_contracts SET last_error = ?, last_sync_at = NOW() WHERE id = ?')
                 ->execute([$e->getMessage(), $id]);
@@ -527,7 +533,7 @@ final class Contracts
                     continue;
                 }
                 $before = (string)$c['status'];
-                $body = (new SmallPay())->retrievePosition((string)$c['reference']);
+                $body = self::api($c)->retrievePosition((string)$c['reference']);
                 $r = self::applyPayload($c, $body, 'cron');
                 $out['checked']++;
                 if ($r['status'] !== $before || $r['newly_failed'] > 0 || $r['newly_paid'] > 0) {
@@ -556,7 +562,7 @@ final class Contracts
             return $c;
         }
         if ((string)$c['kind'] === 'subscription' && (string)$c['status'] !== 'draft') {
-            (new SmallPay())->unsubscribeFlexPay((string)$c['reference']);
+            self::api($c)->unsubscribeFlexPay((string)$c['reference']);
         }
         Db::pdo()->prepare("UPDATE payment_contracts SET status = 'cancelled', cancelled_at = NOW() WHERE id = ?")
             ->execute([$id]);
@@ -575,7 +581,7 @@ final class Contracts
     public static function regenerateFirstPayment(int $id, ?int $userId = null): array
     {
         $c = self::mustFind($id);
-        (new SmallPay())->regenerateFirstPayment((string)$c['reference']);
+        self::api($c)->regenerateFirstPayment((string)$c['reference']);
         Log::write('pay', 'first_payment_regenerated', 'payment_contract', $id, ['by' => $userId]);
         self::activity($c, 'A new first-payment link was sent by SmallPay', $userId);
         return self::sync($id);
@@ -589,7 +595,7 @@ final class Contracts
         if (!$ids) {
             throw new RuntimeException('Nothing to retry — no unpaid rates on this contract');
         }
-        $res = (new SmallPay())->relaunchInstallments($ids);
+        $res = self::api($c)->relaunchInstallments($ids);
         Log::write('pay', 'installments_relaunched', 'payment_contract', $id,
             ['installments' => $ids, 'by' => $userId] + self::batchCounts($res));
         self::activity($c, count($ids) . ' unpaid payment(s) retried', $userId);
@@ -604,7 +610,7 @@ final class Contracts
         if (!$chargeIds) {
             throw new RuntimeException('Choose which rates were paid in cash');
         }
-        $res = (new SmallPay())->payInCash($chargeIds);
+        $res = self::api($c)->payInCash($chargeIds);
         Log::write('pay', 'installments_paid_in_cash', 'payment_contract', $id,
             ['installments' => $chargeIds, 'by' => $userId] + self::batchCounts($res));
         self::activity($c, count($chargeIds) . ' payment(s) marked settled in cash', $userId);
@@ -709,6 +715,17 @@ final class Contracts
     }
 
     // ---- helpers ------------------------------------------------------------
+
+    /**
+     * The client bound to the gateway this contract was FILED on, not to
+     * whatever the default is today. SmallPay signs §3.5-3.9 with the service
+     * id, so retrying a rate on an SDD contract with the card service is an
+     * Unauthorized, not a wrong-but-working call.
+     */
+    private static function api(array $c): SmallPay
+    {
+        return new SmallPay(null, (string)($c['gateway'] ?? ''));
+    }
 
     private static function mustFind(int $id): array
     {

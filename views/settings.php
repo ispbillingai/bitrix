@@ -231,11 +231,25 @@ $pipelines = \Glue\Crm\Pipelines::all();
     secret_fld($h, 'smallpay.unique_id', $t('f_sp_unique'), $cfg('smallpay.unique_id', ''), $t('f_sp_unique_h'));
     ?>
   </div>
+  <?php // One service id per gateway: SmallPay has no way to choose the channel
+        // in a request, so the service a position is filed under is the choice. ?>
   <div class="row">
     <?php
     fld($h, 'smallpay.service_id', $t('f_sp_service'), $cfg('smallpay.service_id', ''), $t('f_sp_service_h'));
-    fld($h, 'smallpay.domain', $t('f_sp_domain'), $cfg('smallpay.domain', ''), $t('f_sp_domain_h'));
+    fld($h, 'smallpay.service_id_sdd', $t('f_sp_service_sdd'), $cfg('smallpay.service_id_sdd', ''), $t('f_sp_service_sdd_h'));
     ?>
+  </div>
+  <div class="row">
+    <label class="fld"><span><?= $h($t('f_sp_gateway')) ?></span>
+      <select name="smallpay.default_gateway">
+        <?php $spGw = (string)$cfg('smallpay.default_gateway', 'card');
+        foreach (['card', 'sdd'] as $g): ?>
+          <option value="<?= $g ?>" <?= $spGw === $g ? 'selected' : '' ?>><?= $h($t('pay_gw_' . $g)) ?></option>
+        <?php endforeach; ?>
+      </select>
+      <small class="muted"><?= $h($t('f_sp_gateway_h')) ?></small>
+    </label>
+    <?php fld($h, 'smallpay.domain', $t('f_sp_domain'), $cfg('smallpay.domain', ''), $t('f_sp_domain_h')); ?>
   </div>
   <div class="row">
     <?php

@@ -20,44 +20,71 @@ business, not ours.
 
 ## Setting it up
 
-Four identifiers, all from the SmallPay Market portal, entered in
+Identifiers from the SmallPay Market portal, entered in
 **Settings → SmallPay payments**:
 
 | Setting | Where it comes from |
 |---|---|
 | Merchant id (`id_merchant`) | Registry (*Anagrafica*) → **Id** |
 | Unique id (`unique_id`) | Registry → **Unique id**. **The shared secret**, see below |
-| Service id (`service_id`) | Services (*Servizi*) → column **Crm service id** |
+| Service id — card (`service_id`) | Services (*Servizi*) → column **Crm service id**, the API service on the NEXI gateway |
+| Service id — SEPA (`service_id_sdd`) | Same column, the API service on the SDD gateway. Empty if the merchant has none |
+| Default collection method (`default_gateway`) | `card` or `sdd`. Used where nobody picks — the portal's support contracts |
 | Domain (`domain`) | **Ours to choose.** Not issued by SmallPay |
 
 `domain` is caller-defined — SmallPay's own button snippet says so: *"domain -
 Identificativo del sito (definito dal chiamante)"*. It is just the container our
 paymentIds are unique within. Set once, then never changed.
 
-### The MichaelTech account (live since 2026-08-26)
+### The MichaelTech account
 
-Merchant id `3050`, domain `michaeltech`, service id **`00kSY00000HeG5t`**.
-`checkSellConfigs` passes: merchant, service and gateway are all accepted.
+Merchant id `3050`, domain `michaeltech`. *Associated services*, as of
+**2026-09-09**:
 
-**Use the API service, not the Open one.** *Associated services* lists two, and
-only the first is drivable from here:
+| Crm service id | Type | Duration | Installment | Name | Usable |
+|---|---|---|---|---|---|
+| `00kSY00000HsOGU` | **API** | 12 | €0.00 + IVA | API Nexi | **yes — card** |
+| `00kSY00000HsP2r` | **API** | 12 | €0.00 + IVA | API SDD | **yes — SEPA direct debit** |
+| `00kSY00000DkYYg` | Open | 24 | €24.90 + IVA | Nexi - SDD | no |
+| `00kSY00000HeG5t` | API | 12 | €5.00 + IVA | Chiavi API | **no — deactivated** |
 
-| Crm service id | Type | Duration | Installment | Name |
-|---|---|---|---|---|
-| `00kSY00000HeG5t` | **API** | 12 | €5.00 + IVA | Chiavi API |
-| `00kSY00000DkYYg` | Open | 24 | €24.90 + IVA | Nexi - SDD |
+Only **API / UComm / Ecommerce** services are drivable from here; the Open one
+is what the portal's own Sell screen uses and the API refuses it. That is what
+blocked the integration from 2026-07-30 until SmallPay provisioned an API
+service on 2026-08-26 — see *How it was unblocked* below.
 
-The Open one is the kind sold through the portal's own Sell screen; the API is
-refused for it (this is what blocked the integration from 2026-07-30 until
-SmallPay provisioned the API service on 2026-08-26 — see *How it was unblocked*
-below). Its €5.00 × 12 is SmallPay's own charge for API access, **not** a
-template for what customers pay: `createPosition` carries its own
+`00kSY00000HeG5t` was that first API service. SmallPay replaced it on
+2026-09-09 with the two free ones above, one per gateway, and deactivated it:
+`checkSellConfigs` on it now answers *500 — Service smallpay non in stato
+ATTIVO!*. **A deactivated service fails only at the moment of sale**, so press
+**Test SmallPay** (which checks every configured gateway) after any change on
+SmallPay's side, rather than finding out from a customer.
+
+A service's own price is SmallPay billing MichaelTech for API access — **not** a
+template for what customers pay. `createPosition` carries its own
 `totalAmount` / `firstPaymentAmount` / `totalRecurrences`, so a €24.90 support
-contract is filed as €24.90 against this service.
+contract is filed as €24.90 whichever service it goes through.
+
+#### Choosing the gateway
 
 The account's gateway list holds three, all ATTIVO: **NEXI**, **STRIPE** and
-**STRIPE_SDD** — so both card and SEPA direct-debit channels exist, and which
-one collects depends on the service.
+**STRIPE_SDD**. Nothing in a request selects one — spec v3.14 has no such field
+anywhere, and the customer gets no menu either: the cashier page renders exactly
+one form for the operation's single `channel` (NEXI → card, STRIPE_SDD → IBAN +
+mandate). The channel is stamped on the position at creation **from the service
+it is filed under**. So the service id *is* the gateway choice, and that is the
+whole mechanism:
+
+* `service_id` → API Nexi → the customer types a card.
+* `service_id_sdd` → API SDD → the customer types an IBAN and signs a mandate.
+
+Two consequences the code has to respect:
+
+1. The gateway is fixed when the position is filed, so it is stored on
+   `payment_contracts.gateway` — not re-read from settings later.
+2. Every §3.5–3.9 call (retry, cash, delete, cancel) signs `serviceSmallpay`,
+   so it must use the *same* service the position was filed under. That is what
+   `Contracts::api($c)` is for; using the other one is an Unauthorized.
 
 That is why the customer-facing copy in `lang/*.php` never names the payment
 instrument. "Your card has expired" is wrong for an SDD collection and "the
@@ -263,6 +290,7 @@ bin/pay-sync.php                   --check / --id=N / full refresh
 | `serviceSmallpay type not accepted` | the service is not type API / UComm / Ecommerce — you are pointed at the Open service, not the API one |
 | `serviceSmallpay not accepted for merchant: N` | same cause, as §3.3 words it |
 | `500 For input string: "<service id>"` | the service id does not exist — check for `o` vs `0` |
+| `500 Service smallpay non in stato ATTIVO!` | the service exists but SmallPay has deactivated it — it has been replaced; copy the new *Crm service id* from *Servizi* |
 | `Payment number … already exists` | that reference was filed before; the code adopts the existing position instead of opening a second |
 | `serviceSmallpay type not accepted` | the service must be of type API, UComm or Ecommerce |
 | `aliasGateway not accepted` | no gateway configured for the merchant in the Market portal |

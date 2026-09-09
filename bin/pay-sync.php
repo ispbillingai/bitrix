@@ -6,7 +6,7 @@ declare(strict_types=1);
  * (smallpay.sync_minutes); this is for setting the integration up and for
  * debugging, where you want the read to happen now and to print what came back.
  *
- *   php bin/pay-sync.php --check      # validate the credentials, create nothing
+ *   php bin/pay-sync.php --check      # validate every gateway, create nothing
  *   php bin/pay-sync.php              # refresh every live contract
  *   php bin/pay-sync.php --id=12      # refresh one, and show its rates
  *
@@ -43,9 +43,19 @@ try {
     }
 
     if (isset($opts['check'])) {
-        $api->checkSellConfig();
-        fwrite(STDOUT, "configuration accepted by SmallPay — merchant, service and gateway are set up\n");
-        exit(0);
+        // Once per gateway — each is a separate service, and one of them being
+        // deactivated is invisible until a customer is at the checkout.
+        $bad = 0;
+        foreach (SmallPay::gateways() as $gw) {
+            try {
+                (new SmallPay(null, $gw))->checkSellConfig();
+                fwrite(STDOUT, "$gw: accepted — merchant, service and gateway are set up\n");
+            } catch (Throwable $e) {
+                $bad++;
+                fwrite(STDERR, "$gw: REFUSED — " . $e->getMessage() . "\n");
+            }
+        }
+        exit($bad > 0 ? 1 : 0);
     }
 
     if (isset($opts['id'])) {

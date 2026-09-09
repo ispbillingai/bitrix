@@ -45,14 +45,41 @@ final class SmallPay
         self::ENV_STAGING    => 'https://api-staging.smallpay.it/market-api',
     ];
 
+    /**
+     * Which gateway collects the money. SmallPay has no request field to choose
+     * one (spec v3.14 §3.1): the merchant holds one API service per gateway and
+     * the service id we sign with IS the choice. Merchant 3050 has held both
+     * since 2026-09-09 — "API Nexi" (card) and "API SDD" (SEPA direct debit).
+     *
+     * Two things follow. The gateway is fixed when the position is filed, and
+     * every later call about it (§3.5-3.9 retry / cash / delete / cancel, which
+     * all sign serviceSmallpay) must use the SAME service — so Contracts
+     * remembers it per row rather than re-reading the setting.
+     */
+    public const GW_CARD = 'card';
+    public const GW_SDD  = 'sdd';
+
+    /** gateway => the smallpay.* setting holding that gateway's service id. */
+    private const SERVICE_KEYS = [
+        self::GW_CARD => 'service_id',
+        self::GW_SDD  => 'service_id_sdd',
+    ];
+
     private string $baseUrl;
     private int $idMerchant;
     private string $uniqueId;
     private string $service;
+    private string $gateway;
     private string $domain;
     private int $timeout;
 
-    public function __construct(?array $cfg = null)
+    /**
+     * $gateway picks which service to sign with; null takes the configured
+     * default. An unknown name falls back to that default, but a KNOWN gateway
+     * with no service id is kept as asked — requireService() then names it,
+     * which is a far better error than quietly collecting on the other channel.
+     */
+    public function __construct(?array $cfg = null, ?string $gateway = null)
     {
         $cfg = $cfg ?? Config::section('smallpay');
 
@@ -62,7 +89,10 @@ final class SmallPay
 
         $this->idMerchant = (int)($cfg['id_merchant'] ?? 0);
         $this->uniqueId   = trim((string)($cfg['unique_id'] ?? ''));
-        $this->service    = trim((string)($cfg['service_id'] ?? ''));
+        $this->gateway    = isset(self::SERVICE_KEYS[(string)$gateway])
+            ? (string)$gateway
+            : self::pickGateway($cfg);
+        $this->service    = self::serviceIds($cfg)[$this->gateway] ?? '';
         $this->domain     = trim((string)($cfg['domain'] ?? ''));
         $this->timeout    = max(5, (int)($cfg['timeout'] ?? 30));
 
@@ -80,7 +110,57 @@ final class SmallPay
         return (int)Config::get('smallpay.id_merchant', 0) > 0
             && trim((string)Config::get('smallpay.unique_id', '')) !== ''
             && trim((string)Config::get('smallpay.domain', '')) !== ''
-            && trim((string)Config::get('smallpay.service_id', '')) !== '';
+            && self::gateways() !== [];
+    }
+
+    /**
+     * The service ids actually filled in, keyed by gateway — in SERVICE_KEYS
+     * order, so "the first one" is a stable answer. A merchant may have one
+     * gateway or both.
+     */
+    private static function serviceIds(array $cfg): array
+    {
+        $out = [];
+        foreach (self::SERVICE_KEYS as $gw => $key) {
+            if (($id = trim((string)($cfg[$key] ?? ''))) !== '') {
+                $out[$gw] = $id;
+            }
+        }
+        return $out;
+    }
+
+    /** Which gateways this merchant can actually sell on right now. */
+    public static function gateways(): array
+    {
+        return array_keys(self::serviceIds(Config::section('smallpay')));
+    }
+
+    /**
+     * The gateway used when nobody picks one — the setting if it is usable,
+     * otherwise whichever gateway does have a service id.
+     */
+    public static function defaultGateway(): string
+    {
+        return self::pickGateway(Config::section('smallpay'));
+    }
+
+    /** Normalise a requested gateway to one this merchant can sell on. */
+    public static function resolveGateway(?string $want): string
+    {
+        $want = strtolower(trim((string)$want));
+        return in_array($want, self::gateways(), true) ? $want : self::defaultGateway();
+    }
+
+    private static function pickGateway(array $cfg): string
+    {
+        $ids  = self::serviceIds($cfg);
+        $want = strtolower(trim((string)($cfg['default_gateway'] ?? '')));
+        if (isset($ids[$want])) {
+            return $want;
+        }
+        // Nothing configured at all: answer card, and let requireService() be
+        // the one that complains — it can say which setting is missing.
+        return (string)(array_key_first($ids) ?? self::GW_CARD);
     }
 
     /** Is the integration switched on AND configured? Nothing charges anyone unless both. */
@@ -92,6 +172,12 @@ final class SmallPay
     public function domain(): string
     {
         return $this->domain;
+    }
+
+    /** The gateway this instance signs for — store it with anything it files. */
+    public function gateway(): string
+    {
+        return $this->gateway;
     }
 
     /** True when pointed at SmallPay's staging engine — shown in the UI so nobody mistakes a test for a sale. */
@@ -327,7 +413,10 @@ final class SmallPay
     private function requireService(): void
     {
         if ($this->service === '') {
-            throw new RuntimeException("SmallPay service_id is not set — copy 'Id Servizio crm' from Servizi in the SmallPay Market portal");
+            throw new RuntimeException(
+                "SmallPay: no service id for the '" . $this->gateway . "' gateway (Settings → SmallPay, "
+                . self::SERVICE_KEYS[$this->gateway] . ") — copy 'Id Servizio crm' from Servizi in the SmallPay Market portal"
+            );
         }
     }
 
