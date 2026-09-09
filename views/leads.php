@@ -34,7 +34,19 @@ $ym = preg_match('/^\d{4}-\d{2}$/', (string)($_GET['m'] ?? '')) ? (string)$_GET[
 $ymPrev = date('Y-m', strtotime($ym . '-01 -1 month'));
 $ymNext = date('Y-m', strtotime($ym . '-01 +1 month'));
 $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
+// Focus mode: ?lead=<id> asked for ONE lead, so the page shows that lead and
+// nothing else. Narrowing the list underneath was not enough — the board, the
+// entry forms and the source report still filled the screen above it, so
+// following "open the lead" still landed on what looked like the whole leads
+// page, which is exactly how it was reported.
+$focus = $openLeadId > 0;
 ?>
+<?php if ($focus): ?>
+  <div class="cu-top">
+    <a class="btn ghost tiny" href="?tab=leads">&larr; <?= $h($t('lead_back_all')) ?></a>
+    <h2 style="margin:0"><?= $h($t('nav_leads')) ?> <span class="muted small">#<?= (int)$openLeadId ?></span></h2>
+  </div>
+<?php else: ?>
 <h2><?= $h($t('nav_leads')) ?></h2>
 
 <?php if (empty($isAgent)): pipeline_filter($h, $t, $agents, 'leads', $filterAgentId ?? null, $partnerOpts, $partnerFilter); ?>
@@ -122,11 +134,16 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
   </div>
 </details>
 
+<?php endif; /* !$focus — the entry forms */ ?>
+
+<?php // The datalists stay in both modes: the lead EDIT form inside the drawer
+      // below suggests from them too. ?>
 <datalist id="zone-list"><?php foreach ($zones as $z): ?><option value="<?= $h($z) ?>"><?php endforeach; ?></datalist>
 <datalist id="src-list"><?php foreach ($sources as $s): ?><option value="<?= $h($s) ?>"><?php endforeach; ?></datalist>
 <datalist id="fair-list"><?php foreach ($fairs as $f): ?><option value="<?= $h($f) ?>"><?php endforeach; ?></datalist>
 <datalist id="faircity-list"><?php foreach ($fairCities as $fc): ?><option value="<?= $h($fc) ?>"><?php endforeach; ?></datalist>
 
+<?php if (!$focus): ?>
 <div class="kanban" id="kb-lead">
   <?php foreach ($stages as $s): $cards = $byStage[$s['code']] ?? []; ?>
     <div class="kcol">
@@ -170,8 +187,9 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
     </div>
   <?php endforeach; ?>
 </div>
+<?php endif; /* !$focus — the board */ ?>
 
-<?php if (empty($isAgent)): ?>
+<?php if (empty($isAgent) && !$focus): ?>
 <div class="panel" style="margin-top:22px">
   <div class="panel-h">
     <h3><?= svg('leads') ?><?= $h($t('src_report')) ?></h3>
@@ -205,6 +223,7 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
 </div>
 <?php endif; ?>
 
+<?php if (!$focus): ?>
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:22px">
   <h3 style="margin:0"><?= $h($t('all')) ?> · <?= count($rows) ?></h3>
   <?php if ($srcFilter !== ''): ?>
@@ -229,10 +248,11 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
       </select>
     </form>
   <?php endif; ?>
-  <?php if ($srcFilter !== '' || $zoneFilter !== '' || $partnerFilter || $openLeadId): ?>
+  <?php if ($srcFilter !== '' || $zoneFilter !== '' || $partnerFilter): ?>
     <a class="btn ghost tiny" href="?tab=leads"><?= $h($t('clear')) ?></a>
   <?php endif; ?>
 </div>
+<?php endif; /* !$focus — the list header and its filters */ ?>
 <?php if (!$rows): ?>
   <div class="empty"><?= $h($openLeadId ? $t('lead_not_here') : $t('none_yet')) ?></div>
 <?php endif; ?>
