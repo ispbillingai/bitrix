@@ -1577,7 +1577,7 @@ $cfg = fn(string $k, $d = '') => Config::get($k, $d);
 $agents = Auth::agents();
 $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_format((float)$n, 0);
 
-$views = ['overview', 'leads', 'deals', 'customers', 'contacts', 'appointments', 'tasks', 'tickets', 'documents',
+$views = ['overview', 'leads', 'deals', 'quotes', 'customers', 'contacts', 'appointments', 'tasks', 'tickets', 'documents',
           'installations', 'support',
           'invoices', 'payments', 'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents',
           'partners', 'devices', 'network_areas', 'settings', 'instructions'];
