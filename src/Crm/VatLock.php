@@ -87,27 +87,53 @@ final class VatLock
         Db::pdo()->prepare('DELETE FROM vat_claims WHERE lead_id = ?')->execute([$leadId]);
     }
 
-    /** "Thank you for entering a new lead…" to the enterer. Best-effort. */
-    public static function notifyThanks(string $ownerKind, int $ownerId, string $vat, string $customerName): void
+    /**
+     * "Thank you for entering a new lead…" to the enterer.
+     *
+     * Returns FALSE when it could not be delivered — which in practice means the
+     * account holding the claim has neither a phone nor an email on its profile.
+     * That case used to pass silently, and it is exactly how a lead entered under
+     * a shared office login reserved a customer for 90 days without anyone ever
+     * being told. The caller says so on screen now.
+     */
+    public static function notifyThanks(string $ownerKind, int $ownerId, string $vat, string $customerName): bool
     {
-        self::notify('vat_thanks', $ownerKind, $ownerId, [
+        return self::notify('vat_thanks', $ownerKind, $ownerId, [
             'vat' => self::normalize($vat), 'customer_name' => $customerName,
             'lock_days' => (string)self::days(),
             'until' => date('d/m/Y', time() + self::days() * 86400),
         ]);
     }
 
-    /** "VAT already entered by another associate…" to the blocked enterer. Best-effort. */
-    public static function notifyTaken(string $ownerKind, int $ownerId, string $vat, string $availableAt): void
+    /** "VAT already entered by another associate…" to the blocked enterer. */
+    public static function notifyTaken(string $ownerKind, int $ownerId, string $vat, string $availableAt): bool
     {
-        self::notify('vat_taken', $ownerKind, $ownerId, [
+        return self::notify('vat_taken', $ownerKind, $ownerId, [
             'vat' => self::normalize($vat), 'lock_days' => (string)self::days(),
             'available_date' => date('d/m/Y', strtotime($availableAt) ?: time()),
         ]);
     }
 
-    /** Send an editable template to an agent (users) or partner (partners) on both channels. */
-    private static function notify(string $ruleKey, string $ownerKind, int $ownerId, array $vars): void
+    /**
+     * The name behind a claim, for saying who was (or was not) reachable.
+     * Falls back to "agent #7" / "partner #3" when the row is gone.
+     */
+    public static function ownerLabel(string $ownerKind, int $ownerId): string
+    {
+        $table   = $ownerKind === 'partner' ? 'partners' : 'users';
+        $nameCol = $ownerKind === 'partner' ? 'name' : "COALESCE(NULLIF(full_name,''), username)";
+        $stmt = Db::pdo()->prepare("SELECT $nameCol FROM $table WHERE id = ?");
+        $stmt->execute([$ownerId]);
+        return (string)($stmt->fetchColumn() ?: ($ownerKind . ' #' . $ownerId));
+    }
+
+    /**
+     * Send an editable template to an agent (users) or partner (partners) on both
+     * channels. TRUE when at least one channel accepted it; FALSE when the owner
+     * is unknown, has no phone and no email, or both sends failed — the caller
+     * needs to be able to tell the difference between "sent" and "nowhere to go".
+     */
+    private static function notify(string $ruleKey, string $ownerKind, int $ownerId, array $vars): bool
     {
         try {
             $table = $ownerKind === 'partner' ? 'partners' : 'users';
@@ -116,7 +142,12 @@ final class VatLock
             $stmt->execute([$ownerId]);
             $who = $stmt->fetch();
             if (!$who) {
-                return;
+                self::logUndelivered($ruleKey, $ownerKind, $ownerId, 'unknown_owner');
+                return false;
+            }
+            if (trim((string)$who['phone']) === '' && trim((string)$who['email']) === '') {
+                self::logUndelivered($ruleKey, $ownerKind, $ownerId, 'no_channel');
+                return false;
             }
             $vars += [
                 'enterer_name' => (string)$who['name'],
@@ -125,15 +156,28 @@ final class VatLock
             ];
             $lang = Templates::lang(Config::get('app.default_lang', 'it'));
             $notifier = new Notifier();
+            $sent = false;
             if (trim((string)$who['phone']) !== '') {
-                $notifier->whatsapp((string)$who['phone'], Templates::whatsapp($ruleKey, $vars, $lang));
+                $sent = $notifier->whatsapp((string)$who['phone'], Templates::whatsapp($ruleKey, $vars, $lang)) || $sent;
             }
             if (trim((string)$who['email']) !== '') {
                 $mail = Templates::email($ruleKey, $vars, $lang);
-                $notifier->email((string)$who['email'], $mail['subject'], $mail['html']);
+                $sent = $notifier->email((string)$who['email'], $mail['subject'], $mail['html']) || $sent;
             }
+            if (!$sent) {
+                self::logUndelivered($ruleKey, $ownerKind, $ownerId, 'send_failed');
+            }
+            return $sent;
         } catch (Throwable) {
             // notification failure must never block lead entry
+            return false;
         }
+    }
+
+    /** Why a VAT notice never left, so the answer is in the log next time. */
+    private static function logUndelivered(string $ruleKey, string $ownerKind, int $ownerId, string $why): void
+    {
+        \Glue\Event\Log::write('crm', 'vat_notice_undelivered', null, null,
+            ['rule' => $ruleKey, 'owner_kind' => $ownerKind, 'owner_id' => $ownerId, 'reason' => $why]);
     }
 }

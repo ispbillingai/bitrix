@@ -413,11 +413,19 @@ final class Leads
      * $assignedTo scopes to one seller, $source to one origin, $zone to one area,
      * $partnerId to the leads one partner brought in (entered in their area or
      * through their referral link — both set referred_by_partner_id).
+     *
+     * $onlyId narrows it to a single lead — how "open this lead" links land on
+     * one from elsewhere in the CRM. It stacks with the scope conditions rather
+     * than replacing them, so a seller following a link to somebody else's lead
+     * still gets nothing: a deep link must not be a way around the scope.
      */
-    public static function all(int $limit = 300, ?int $assignedTo = null, ?string $source = null, ?string $zone = null, ?int $partnerId = null): array
+    public static function all(int $limit = 300, ?int $assignedTo = null, ?string $source = null, ?string $zone = null, ?int $partnerId = null, ?int $onlyId = null): array
     {
         $limit = max(1, min(1000, $limit));
         $conds = [];
+        if ($onlyId) {
+            $conds[] = 'l.id = ' . (int)$onlyId;
+        }
         if ($assignedTo) {
             $conds[] = 'l.assigned_to = ' . (int)$assignedTo;
         }

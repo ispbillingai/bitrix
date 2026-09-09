@@ -99,6 +99,8 @@ return [
     'welcome_img_bad' => 'Immagine non salvata: usa un file JPG, PNG o WebP.',
     'f_vat'          => 'Partita IVA',
     'f_vat_ph'       => 'es. 01234567890',
+    'vat_thanks_undeliverable' => '— la conferma dei 90 giorni non è stata inviata: %s non ha né telefono né email nel profilo.',
+    'lead_not_here'   => 'Questa segnalazione non è nel tuo elenco — potrebbe essere di un altro venditore.',
     'vat_taken_flash' => 'Lead NON salvato: la partita IVA %s è già stata inserita da un altro collaboratore. Tornerà disponibile il %s.',
     'lead_dup_flash' => 'Questo cliente ha già un lead aperto (#%d): la richiesta è stata aggiunta come nota su quel lead invece di aprirne un doppione. Aprilo per leggerla.',
     'lead_edit_dup_flash' => 'Modifiche NON salvate: quel telefono, email o partita IVA appartiene al lead #%d. Lavora su quel lead invece di copiarne i dati qui.',

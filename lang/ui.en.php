@@ -99,6 +99,8 @@ return [
     'welcome_img_bad' => 'Image not saved: use a JPG, PNG or WebP file.',
     'f_vat'          => 'VAT number',
     'f_vat_ph'       => 'e.g. 01234567890',
+    'vat_thanks_undeliverable' => '— the 90-day confirmation could not be sent: %s has no phone number and no email on their profile.',
+    'lead_not_here'   => 'That lead is not in your list — it may belong to another seller.',
     'vat_taken_flash' => 'Lead NOT saved: VAT number %s was already entered by another associate. It becomes available again on %s.',
     'lead_dup_flash' => 'This customer already has an open lead (#%d): the request was added as a note on that lead instead of opening a duplicate. Open it to read it.',
     'lead_edit_dup_flash' => 'Changes NOT saved: that phone, email or VAT number belongs to lead #%d. Work that lead instead of copying its details onto this one.',

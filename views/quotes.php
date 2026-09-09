@@ -132,7 +132,7 @@ $qColor = [QuoteRequests::OPEN => 'var(--amber)', QuoteRequests::READY => 'var(-
             <button class="btn tiny"><?= svg('send') ?> <?= $h($t($qst === QuoteRequests::SENT ? 'qt_resend' : 'qt_send')) ?></button>
           </form>
         <?php endif; ?>
-        <a class="btn ghost tiny" href="?tab=leads#lead-<?= (int)$q['lead_id'] ?>"><?= $h($t('qt_open_lead')) ?></a>
+        <a class="btn ghost tiny" href="?tab=leads&amp;lead=<?= (int)$q['lead_id'] ?>"><?= $h($t('qt_open_lead')) ?></a>
         <?php if (empty($isAgent) && $qst !== QuoteRequests::SENT && $qst !== QuoteRequests::CANCELLED): ?>
           <form method="post" style="display:inline" onsubmit="return confirm('<?= $h($t('qt_cancel_confirm')) ?>')">
             <input type="hidden" name="do" value="quote_cancel"><input type="hidden" name="id" value="<?= (int)$q['id'] ?>">

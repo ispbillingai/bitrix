@@ -21,7 +21,14 @@ $fairViews  = \Glue\Crm\FormViews::stats('fair');
 $fairUrl    = \Glue\Config::appBaseUrl() . '/fair.php';
 $srcFilter = mb_strtolower(trim((string)($_GET['src'] ?? '')));
 $zoneFilter = trim((string)($_GET['zone'] ?? ''));
-$rows = \Glue\Crm\Leads::all(300, $scopeId ?? null, $srcFilter ?: null, $zoneFilter ?: null, $partnerFilter);
+// ?lead=<id> — "open this lead", followed from the Quotes tab and anywhere else
+// that names one. It shows that lead alone, already expanded: linking to an
+// anchor on a collapsed <details> scrolled somewhere and opened nothing, which
+// reads as a dead button, and a lead older than the 300 most recent was not on
+// the page to scroll to at all.
+$openLeadId = (int)($_GET['lead'] ?? 0);
+$rows = \Glue\Crm\Leads::all(300, $scopeId ?? null, $srcFilter ?: null, $zoneFilter ?: null, $partnerFilter,
+    $openLeadId ?: null);
 // monthly per-source report (admin): ?m=YYYY-MM, defaults to the current month
 $ym = preg_match('/^\d{4}-\d{2}$/', (string)($_GET['m'] ?? '')) ? (string)$_GET['m'] : date('Y-m');
 $ymPrev = date('Y-m', strtotime($ym . '-01 -1 month'));
@@ -222,17 +229,19 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
       </select>
     </form>
   <?php endif; ?>
-  <?php if ($srcFilter !== '' || $zoneFilter !== '' || $partnerFilter): ?>
+  <?php if ($srcFilter !== '' || $zoneFilter !== '' || $partnerFilter || $openLeadId): ?>
     <a class="btn ghost tiny" href="?tab=leads"><?= $h($t('clear')) ?></a>
   <?php endif; ?>
 </div>
-<?php if (!$rows): ?><div class="empty"><?= $h($t('none_yet')) ?></div><?php endif; ?>
+<?php if (!$rows): ?>
+  <div class="empty"><?= $h($openLeadId ? $t('lead_not_here') : $t('none_yet')) ?></div>
+<?php endif; ?>
 <?php foreach ($rows as $r):
     $ag = $r['agent_name'] ?: $r['agent_username'];
     $msg = trim((string)($r['comments'] ?? ''));
     $timeline = \Glue\Crm\Activities::forEntity('lead', (int)$r['id'], 20);
     $quotes   = \Glue\Crm\QuoteRequests::forLead((int)$r['id']); ?>
-  <details class="drawer card" id="lead-<?= (int)$r['id'] ?>" style="padding:0;margin-bottom:8px">
+  <details class="drawer card" id="lead-<?= (int)$r['id'] ?>"<?= $openLeadId === (int)$r['id'] ? ' open' : '' ?> style="padding:0;margin-bottom:8px">
     <summary class="dw-sum">
       <?= avatar($h, $r['customer_name']) ?>
       <span class="dw-info"><b><?= $h($r['customer_name'] ?: ('#' . $r['id'])) ?></b>

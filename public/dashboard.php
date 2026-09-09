@@ -495,13 +495,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // ---------- leads ----------
             case 'lead_create':
+                // Who this lead is really being filed FOR. Read before the VAT is
+                // claimed, because it decides who the claim belongs to: an owner
+                // filing on behalf of a partner is recording that the PARTNER
+                // brought the customer, so the partner holds the 90 days and the
+                // partner is the one told about it. Claiming it for the office
+                // account instead put the reservation on a login that has no
+                // phone and no email, so the confirmation went nowhere at all.
+                // Admins only — sellers post this form too, and who earns the
+                // commission is not theirs to set.
+                $onBehalfOf = (!$isAgent && !empty($_POST['partner_id'])) ? (int)$_POST['partner_id'] : 0;
+                $vatKind = $onBehalfOf > 0 ? 'partner' : 'agent';
+                $vatOwner = $onBehalfOf > 0 ? $onBehalfOf : (int)$uid;
+
                 // 90-day VAT exclusivity: the first enterer of a VAT number owns
                 // it; someone else re-entering it is blocked and notified.
                 $vat = \Glue\Crm\VatLock::normalize((string)($_POST['vat_number'] ?? ''));
+                $vatWarn = '';
                 if ($vat !== '') {
-                    $vc = \Glue\Crm\VatLock::claim($vat, 'agent', (int)$uid);
+                    $vc = \Glue\Crm\VatLock::claim($vat, $vatKind, $vatOwner);
                     if (!$vc['ok']) {
-                        \Glue\Crm\VatLock::notifyTaken('agent', (int)$uid, $vat, (string)$vc['available_at']);
+                        \Glue\Crm\VatLock::notifyTaken($vatKind, $vatOwner, $vat, (string)$vc['available_at']);
                         if (!empty($vc['lead_id'])) {
                             Activities::add('lead', (int)$vc['lead_id'], 'system',
                                 "Blocked duplicate entry of VAT $vat (locked until " . date('d/m/Y', strtotime((string)$vc['available_at'])) . ')', $uid);
@@ -549,13 +563,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // commission is not theirs to set. Never onto a merged duplicate:
                 // that would hand a live lead somebody else already owns to a
                 // partner who happened to be named while re-typing it.
-                $onBehalfOf = (!$isAgent && !empty($_POST['partner_id'])) ? (int)$_POST['partner_id'] : 0;
+                // ($onBehalfOf is read further up — the VAT claim needs it first.)
                 if ($onBehalfOf > 0 && $dupLeadId === null) {
                     \Glue\Partner\Partners::setReferrer($newLeadId, $onBehalfOf, $uid);
                 }
                 if ($vat !== '' && !empty($vc['fresh'])) {
                     \Glue\Crm\VatLock::attachLead($vat, $newLeadId);
-                    \Glue\Crm\VatLock::notifyThanks('agent', (int)$uid, $vat, trim((string)($_POST['name'] ?? '')));
+                    // $leadName, not $_POST['name'] — the form posts the customer in
+                    // two boxes, so the old read handed the template an empty name.
+                    if (!\Glue\Crm\VatLock::notifyThanks($vatKind, $vatOwner, $vat, $leadName)) {
+                        // It could not be delivered — almost always because the
+                        // account holding the claim has neither phone nor email.
+                        // Silence here is what got reported as "the 90-day message
+                        // never arrived", so it is said on screen now.
+                        $vatWarn = ' ' . sprintf($t('vat_thanks_undeliverable'),
+                            \Glue\Crm\VatLock::ownerLabel($vatKind, $vatOwner));
+                    }
                 }
                 if ($dupLeadId !== null) {
                     // Two different stories for the seller: an OPEN twin means
@@ -564,13 +587,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $dupRow = Leads::find($dupLeadId);
                     $key = ($dupRow && (string)$dupRow['status'] === 'converted')
                         ? 'lead_dup_customer_flash' : 'lead_dup_flash';
-                    $flash = sprintf($t($key), $dupLeadId);
+                    $flash = sprintf($t($key), $dupLeadId) . $vatWarn;
                     // Amber, not red: the request was not thrown away, it was written
                     // onto the twin as a note. Red read as "refused" and sent sellers
                     // hunting for something the CRM had already filed.
                     $flashType = 'warn';
                 } else {
-                    $flash = $t('saved');
+                    $flash = $t('saved') . $vatWarn;
+                }
+                if ($vatWarn !== '' && $flashType === 'ok') {
+                    $flashType = 'warn';   // the lead saved; the confirmation did not go out
                 }
                 $tab = 'leads';
                 // Post/redirect/get, as the ticket actions below already do. Saving a
