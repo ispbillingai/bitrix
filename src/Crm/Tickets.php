@@ -449,22 +449,69 @@ final class Tickets
         }
     }
 
-    /** Contacts a staff member may start a conversation with (admin: everyone). */
-    public static function customersForStaff(?int $agentId = null): array
+    /**
+     * The customers a staff member may start a thread with, narrowed by what was
+     * typed. An admin may message anyone; an agent only the customers behind
+     * their own leads and deals.
+     *
+     * The search is the point. This list used to be an unfiltered
+     * "ORDER BY name ASC LIMIT 500" poured into a <select>, which on a registry
+     * of ten thousand contacts meant the dropdown ended somewhere inside the
+     * letter A — reported, exactly, as "it only shows those that start with A".
+     * Everyone from B onwards was unreachable, and because the POST validated
+     * against the same truncated list, they could not be reached by a hand-made
+     * request either. Callers now pass what the user typed and get matches from
+     * the whole table.
+     *
+     * @param string $q matched against name, company, email and phone
+     */
+    public static function searchCustomersForStaff(?int $agentId = null, string $q = '', int $limit = 25): array
     {
-        if ($agentId === null) {
-            return Db::pdo()->query(
-                'SELECT id, name, email, phone FROM contacts ORDER BY name ASC LIMIT 500'
-            )->fetchAll();
+        $limit = max(1, min(500, $limit));
+        $where = [];
+        $args  = [];
+        if ($agentId !== null) {
+            $where[] = '(EXISTS (SELECT 1 FROM deals d WHERE d.contact_id = c.id AND d.assigned_to = ?)
+                      OR EXISTS (SELECT 1 FROM leads l WHERE l.contact_id = c.id AND l.assigned_to = ?))';
+            $args[] = $agentId;
+            $args[] = $agentId;
+        }
+        $q = trim($q);
+        if ($q !== '') {
+            $where[] = '(c.name LIKE ? OR c.company LIKE ? OR c.email LIKE ? OR c.phone LIKE ?)';
+            $like = '%' . $q . '%';
+            array_push($args, $like, $like, $like, $like);
+        }
+        $sql = 'SELECT DISTINCT c.id, c.name, c.company, c.email, c.phone FROM contacts c'
+             . ($where ? ' WHERE ' . implode(' AND ', $where) : '')
+             . " ORDER BY c.name ASC LIMIT $limit";
+        $stmt = Db::pdo()->prepare($sql);
+        $stmt->execute($args);
+        return $stmt->fetchAll() ?: [];
+    }
+
+    /**
+     * May this staff member open a thread with this contact? Asked instead of
+     * "is the contact in the first 500 rows of the picker", which is not the
+     * same question and answered no for most of the registry.
+     */
+    public static function mayMessage(?int $agentId, int $contactId): bool
+    {
+        if ($contactId <= 0) {
+            return false;
+        }
+        if ($agentId === null) {   // admin: anyone on the books
+            $stmt = Db::pdo()->prepare('SELECT 1 FROM contacts WHERE id = ?');
+            $stmt->execute([$contactId]);
+            return (bool)$stmt->fetchColumn();
         }
         $stmt = Db::pdo()->prepare(
-            'SELECT DISTINCT c.id, c.name, c.email, c.phone FROM contacts c
-             WHERE EXISTS (SELECT 1 FROM deals d WHERE d.contact_id = c.id AND d.assigned_to = ?)
-                OR EXISTS (SELECT 1 FROM leads l WHERE l.contact_id = c.id AND l.assigned_to = ?)
-             ORDER BY c.name ASC LIMIT 500'
+            'SELECT 1 FROM contacts c WHERE c.id = ?
+               AND (EXISTS (SELECT 1 FROM deals d WHERE d.contact_id = c.id AND d.assigned_to = ?)
+                 OR EXISTS (SELECT 1 FROM leads l WHERE l.contact_id = c.id AND l.assigned_to = ?))'
         );
-        $stmt->execute([$agentId, $agentId]);
-        return $stmt->fetchAll();
+        $stmt->execute([$contactId, $agentId, $agentId]);
+        return (bool)$stmt->fetchColumn();
     }
 
     // ---- reads ----------------------------------------------------------------

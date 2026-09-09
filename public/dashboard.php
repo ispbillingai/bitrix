@@ -179,6 +179,30 @@ if (isset($_GET['sdl'])) {
     exit('Not found');
 }
 
+// ---- customer lookup for the "new message" picker (?find=contacts&q=...) ----
+// The picker cannot be a plain <select>: the registry is ten thousand contacts
+// deep, and a dropdown capped at 500 stopped inside the letter A. Same scope as
+// starting a thread — admins anyone, agents only their own customers.
+if (($_GET['find'] ?? '') === 'contacts') {
+    header('Content-Type: application/json');
+    $fq = trim((string)($_GET['q'] ?? ''));
+    if (mb_strlen($fq) < 2) {
+        echo json_encode([]);
+        exit;
+    }
+    echo json_encode(array_map(
+        fn(array $c): array => [
+            'id'    => (int)$c['id'],
+            'name'  => (string)($c['name'] ?: '#' . $c['id']),
+            'label' => trim(implode(' · ', array_filter([
+                (string)($c['company'] ?? ''), (string)($c['email'] ?? ''), (string)($c['phone'] ?? ''),
+            ], 'strlen'))),
+        ],
+        Tickets::searchCustomersForStaff($isAgent ? $scopeId : null, $fq, 25)
+    ), JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // ---- live chat poll (?poll=ticket&tk=<id>&after=<msgId>) ----
 // Returns messages newer than <after> as ready-to-append HTML, so an open
 // thread stays current without a page refresh. Same scope as viewing: admins
@@ -1194,8 +1218,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             case 'ticket_open_staff':
                 $contactId = (int)($_POST['contact_id'] ?? 0);
-                // Agents may only message their own customers.
-                $allowed = array_column(Tickets::customersForStaff($scopeId), 'id');
+                // Agents may only message their own customers. Asked directly:
+                // testing membership of the picker's first 500 rows refused most
+                // of the registry, whoever was asking.
+                $mayMessage = Tickets::mayMessage($isAgent ? $scopeId : null, $contactId);
                 $att = Tickets::storeUpload($_FILES['attachment'] ?? null, $attErr);
                 $tab = ($_POST['back'] ?? '') === 'messages' ? 'messages' : 'tickets';
                 if ($attErr !== null) {
@@ -1204,7 +1230,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     header('Location: ?tab=' . $tab);
                     exit;
                 }
-                if ($contactId && in_array($contactId, array_map('intval', $allowed), true)
+                if ($mayMessage
                     && (trim((string)($_POST['body'] ?? '')) !== '' || $att !== null)) {
                     $senderName = (string)($_SESSION['glue_user']['full_name'] ?? $_SESSION['glue_user']['username'] ?? 'Staff');
                     $newId = Tickets::openFromStaff($contactId, $isAgent ? 'agent' : 'admin', $uid, $senderName,

@@ -28,13 +28,15 @@ $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
   <form method="post" enctype="multipart/form-data">
     <input type="hidden" name="do" value="ticket_open_staff"><input type="hidden" name="back" value="<?= $h($backTab) ?>">
     <div class="tk-new-grid">
+      <?php // Type to find the customer. A <select> of every contact is not an
+            // option here — the registry is ten thousand deep, and the capped
+            // list this replaces ran out inside the letter A. ?>
       <label><?= $h($t('tk_to')) ?>
-        <select name="contact_id" required>
-          <option value=""><?= $h($t('tk_to')) ?>…</option>
-          <?php foreach (\Glue\Crm\Tickets::customersForStaff($scopeId ?? null) as $c): ?>
-            <option value="<?= (int)$c['id'] ?>"><?= $h($c['name'] ?: '#' . $c['id']) ?><?= $c['email'] ? ' · ' . $h($c['email']) : ($c['phone'] ? ' · ' . $h($c['phone']) : '') ?></option>
-          <?php endforeach; ?>
-        </select></label>
+        <span class="tk-pick">
+          <input type="text" id="tk-cust" autocomplete="off" placeholder="<?= $h($t('tk_to_ph')) ?>">
+          <input type="hidden" name="contact_id" id="tk-cust-id">
+          <div id="tk-cust-hits" class="tk-hits" hidden></div>
+        </span></label>
       <label><?= $h($t('tk_subject_l')) ?><input name="subject" maxlength="190" required></label>
     </div>
     <label><?= $h($t('tk_reply')) ?><textarea name="body" rows="3"></textarea></label>
@@ -232,3 +234,62 @@ $thread = $cur ? \Glue\Crm\Tickets::thread($sel) : [];
 .tk-closed{padding:13px 18px;border-top:1px solid var(--line)}
 @media (max-width:900px){.tk-wrap{flex-direction:column;height:auto}.tk-list{width:100%;max-height:260px;border-right:none;border-bottom:1px solid var(--line)}}
 </style>
+
+<style>
+.tk-pick{position:relative;display:block}
+.tk-hits{position:absolute;z-index:40;left:0;right:0;top:100%;margin-top:4px;max-height:260px;overflow-y:auto;
+  background:var(--surface,#161c28);border:1px solid var(--line,#28303f);border-radius:10px;box-shadow:0 10px 26px rgba(0,0,0,.35)}
+.tk-hits button{display:block;width:100%;text-align:left;padding:9px 12px;border:0;background:transparent;
+  color:inherit;font:inherit;cursor:pointer;border-bottom:1px solid var(--line,#28303f)}
+.tk-hits button:last-child{border-bottom:0}
+.tk-hits button:hover{background:var(--surface2,#1c2533)}
+.tk-hits .sub{display:block;font-size:11.5px;color:var(--muted,#8b95a7);margin-top:2px}
+.tk-hits .none{padding:9px 12px;font-size:12px;color:var(--muted,#8b95a7)}
+</style>
+<script>
+var TK_NONE = <?= json_encode($t('tk_to_none'), JSON_UNESCAPED_UNICODE) ?>;
+var TK_PICK = <?= json_encode($t('tk_to_pick'), JSON_UNESCAPED_UNICODE) ?>;
+(function(){
+  var box = document.getElementById('tk-cust'), hid = document.getElementById('tk-cust-id'),
+      hits = document.getElementById('tk-cust-hits');
+  if(!box) return;
+  var timer = null;
+  function close(){ hits.hidden = true; hits.innerHTML = ''; }
+  function render(list){
+    hits.innerHTML = '';
+    if(!list.length){
+      var d = document.createElement('div'); d.className = 'none';
+      d.textContent = TK_NONE;
+      hits.appendChild(d); hits.hidden = false; return;
+    }
+    list.forEach(function(c){
+      var b = document.createElement('button'); b.type = 'button';
+      b.appendChild(document.createTextNode(c.name));
+      if(c.label){ var sp = document.createElement('span'); sp.className = 'sub'; sp.textContent = c.label; b.appendChild(sp); }
+      b.addEventListener('click', function(){ box.value = c.name; hid.value = c.id; close(); });
+      hits.appendChild(b);
+    });
+    hits.hidden = false;
+  }
+  box.addEventListener('input', function(){
+    hid.value = '';                     // typing again invalidates the choice
+    var q = box.value.trim();
+    if(timer) clearTimeout(timer);
+    if(q.length < 2){ close(); return; }
+    timer = setTimeout(function(){
+      fetch('?find=contacts&q=' + encodeURIComponent(q), {credentials:'same-origin'})
+        .then(function(r){ return r.json(); }).then(render).catch(close);
+    }, 220);
+  });
+  box.addEventListener('keydown', function(e){ if(e.key === 'Escape') close(); });
+  document.addEventListener('click', function(e){
+    if(e.target !== box && !hits.contains(e.target)) close();
+  });
+  // Never post with a name typed but nobody actually chosen.
+  if(box.form){
+    box.form.addEventListener('submit', function(e){
+      if(!hid.value){ e.preventDefault(); box.focus(); alert(TK_PICK); }
+    });
+  }
+})();
+</script>
