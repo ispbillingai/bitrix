@@ -24,7 +24,8 @@ final class Leads
 {
     /**
      * Create a lead at the pipeline's first stage and schedule its automations.
-     * @param array $d name|phone|email|source|source_url|external_id|title|comments|company|lang
+     * @param array $d name|phone|email|source|source_url|external_id|title|comments|
+     *                  company|lang|contact_id|quiet
      * @return int new lead id
      */
     public static function create(array $d, ?int $actorId = null): int
@@ -75,10 +76,19 @@ final class Leads
                 return $dupId; // finally still releases the lock
             }
 
-            $contactId = Contacts::findOrCreate([
-                'name' => $name ?: 'Unknown', 'phone' => $phone, 'email' => $email,
-                'company' => $d['company'] ?? null, 'lang' => $lang, 'source' => $source,
-            ]);
+            // An explicit contact wins over matching one. The registry customer
+            // this lead is being raised FOR is already known by the caller, and
+            // findOrCreate can only match on phone or email — a customer with
+            // neither (there are plenty in the imported registry) would get a
+            // second contact row, and the lead would then hang off a twin the
+            // customer's own page never shows.
+            $contactId = (int)($d['contact_id'] ?? 0);
+            if ($contactId <= 0 || !Contacts::find($contactId)) {
+                $contactId = Contacts::findOrCreate([
+                    'name' => $name ?: 'Unknown', 'phone' => $phone, 'email' => $email,
+                    'company' => $d['company'] ?? null, 'lang' => $lang, 'source' => $source,
+                ]);
+            }
 
             $pipelineId = Pipelines::defaultId('lead');
             $firstStage = Pipelines::firstStageCode('lead');
@@ -117,11 +127,21 @@ final class Leads
             $pdo->prepare('SELECT RELEASE_LOCK(?)')->execute([$lockName]);
         }
 
-        Automation::welcome('lead', $leadId, $lang);
-        Automation::inactivity('lead', $leadId, $firstStage);
+        // 'quiet': the lead exists because the office needed somewhere to file
+        // internal work — a quote raised on a customer who is already ours —
+        // not because a stranger asked us for something. Welcoming them as a
+        // new lead and then nudging them for not replying would be wrong on
+        // both counts. Said out loud on the timeline so a lead with no
+        // automations never looks like one whose automations failed.
+        $quiet = !empty($d['quiet']);
+        if (!$quiet) {
+            Automation::welcome('lead', $leadId, $lang);
+            Automation::inactivity('lead', $leadId, $firstStage);
+        }
 
         Activities::add('lead', $leadId, 'system',
-            'Lead created from ' . $source . ($sourceUrl !== '' ? " ($sourceUrl)" : ''), $actorId);
+            'Lead created from ' . $source . ($sourceUrl !== '' ? " ($sourceUrl)" : '')
+            . ($quiet ? ' (internal — no welcome message sent)' : ''), $actorId);
         Log::write('crm', 'lead_created', 'lead', $leadId,
             ['source' => $source, 'source_url' => $sourceUrl, 'external_id' => $externalId,
              'name' => $name, 'phone' => $phone, 'email' => $email]);

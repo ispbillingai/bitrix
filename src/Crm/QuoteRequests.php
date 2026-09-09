@@ -142,6 +142,59 @@ final class QuoteRequests
     }
 
     /**
+     * A quote asked for from a CUSTOMER's page — "they want a price, raise it".
+     *
+     * Quote requests hang off leads, and a registry customer imported from the
+     * gestionale usually has none: 10,000 customers arrived as contacts, not as
+     * leads. So one is opened for them, QUIETLY (they are already a customer —
+     * welcoming them as a new lead and then nudging them for not replying would
+     * be nonsense) and against their EXISTING contact row, so the request shows
+     * up on the page it was asked from rather than on a twin.
+     *
+     * An open lead they already have is reused instead.
+     *
+     * @return array{ok:bool, id?:int, lead_id?:int, error?:string}
+     */
+    public static function forCustomer(int $contactId, ?int $userId, string $notes): array
+    {
+        $c = Contacts::find($contactId);
+        if (!$c) {
+            return ['ok' => false, 'error' => 'no_contact'];
+        }
+        if (trim($notes) === '') {
+            return ['ok' => false, 'error' => 'no_notes'];
+        }
+
+        $stmt = Db::pdo()->prepare(
+            "SELECT id FROM leads WHERE contact_id = ? AND status IN ('open','converted')
+              ORDER BY id DESC LIMIT 1"
+        );
+        $stmt->execute([$contactId]);
+        $leadId = (int)($stmt->fetchColumn() ?: 0);
+
+        if ($leadId <= 0) {
+            $leadId = Leads::create([
+                'contact_id' => $contactId,
+                'quiet'      => true,
+                'name'       => (string)($c['name'] ?? '') ?: 'Cliente',
+                'company'    => (string)($c['company'] ?? ''),
+                'phone'      => (string)($c['phone'] ?? ''),
+                'email'      => (string)($c['email'] ?? ''),
+                'vat_number' => (string)($c['vat_number'] ?? ''),
+                'lang'       => $c['lang'] ?? null,
+                'source'     => 'quote',
+                'title'      => 'Preventivo — ' . (string)($c['name'] ?? ''),
+            ], $userId);
+        }
+
+        $res = self::open($leadId, $userId, $notes);
+        if (empty($res['ok'])) {
+            return $res;
+        }
+        return ['ok' => true, 'id' => (int)$res['id'], 'lead_id' => $leadId];
+    }
+
+    /**
      * The lead these details already belong to, or null.
      *
      * Identity first, through the one duplicate rule the whole CRM shares
@@ -358,9 +411,12 @@ final class QuoteRequests
     // ---- notifications --------------------------------------------------------
 
     /**
-     * "The office receives a notification." Every active admin, by WhatsApp and
-     * email — the same door AssistRequests uses to reach the technicians, and for
-     * the same reason: the queue is only useful if somebody is told it grew.
+     * "The office receives a notification." ADMIN USERS ONLY, by WhatsApp and
+     * email — the client's rule, stated plainly: a quote request goes to the back
+     * office and to nobody else. Not the technicians, not the other sellers, not
+     * the customer. sendToStaff() is called with 'admin' and there is deliberately
+     * no fallback to another role if no admin is reachable: a quote request going
+     * to the wrong desk is worse than one sitting in the queue on screen.
      */
     private static function notifyOffice(int $id, array $lead, string $notes, ?int $userId): void
     {

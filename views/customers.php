@@ -214,6 +214,22 @@ if ($ov !== null):
   <div class="card">
     <h3><?= svg('quotes') ?> <?= $h($t('nav_quotes')) ?>
       <?php if ($cuQuotes): ?><span class="muted small">· <?= count($cuQuotes) ?></span><?php endif; ?></h3>
+    <?php // Raise one straight from here. A registry customer usually has no
+          // lead behind them — 10,000 arrived from the gestionale as contacts —
+          // and a quote request needs one, so forCustomer() opens a quiet lead
+          // against THIS contact rather than leaving the office with no way to
+          // price a customer who just asked for a price. ?>
+    <details class="drawer" style="margin-bottom:12px">
+      <summary class="btn tiny"><?= svg('quotes') ?> <?= $h($t('qt_request')) ?></summary>
+      <form method="post" class="card" style="margin-top:10px">
+        <input type="hidden" name="do" value="customer_quote">
+        <input type="hidden" name="id" value="<?= (int)$custId ?>">
+        <label class="fld"><span><?= $h($t('qt_notes')) ?> *</span>
+          <textarea name="notes" rows="3" required placeholder="<?= $h($t('qt_notes_ph')) ?>"></textarea></label>
+        <p class="muted small" style="margin:-8px 0 12px"><?= $h($t('qt_request_hint')) ?></p>
+        <button class="btn tiny"><?= svg('send') ?> <?= $h($t('qt_send_request')) ?></button>
+      </form>
+    </details>
     <?php if (!$cuQuotes): ?><p class="muted small"><?= $h($t('cu_no_quotes')) ?></p>
     <?php else: ?>
     <table><thead><tr>

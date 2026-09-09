@@ -1102,6 +1102,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // Open a customer's portal: mint the magic link, show it to the
             // admin (so they can open the area themselves to test messaging) and
             // send it to the customer on WhatsApp + email.
+            case 'customer_quote': { // ask the back office to price this customer
+                $cuId = (int)($_POST['id'] ?? 0);
+                $cq = \Glue\Crm\QuoteRequests::forCustomer($cuId, $uid, (string)($_POST['notes'] ?? ''));
+                $_SESSION['dash_flash'] = empty($cq['ok'])
+                    ? [$t('qt_err_' . ($cq['error'] ?? 'no_contact')), 'err']
+                    : [$t('qt_requested'), 'ok'];
+                header('Location: ?tab=customers&id=' . $cuId);
+                exit;
+            }
+
             case 'customer_portal_invite': {
                 $cuId  = (int)($_POST['id'] ?? 0);
                 $token = \Glue\Portal\Account::invite($cuId);
