@@ -41,7 +41,7 @@ return [
             . "See you then!",
 
         'appointment_agent_set' =>
-            "\U0001f4c5 New appointment booked: {customer_name} on {when} (#{id}).",
+            "📅 New appointment booked: {customer_name} on {when} (#{id}).",
 
         'appointment_agent' =>
             "⏰ Appointment reminder: {customer_name} on {when} (#{id}).",
@@ -235,8 +235,8 @@ return [
             'html'    => '<p>Hi {name},</p><p>This is a reminder of your appointment on <strong>{when}</strong>.</p>',
         ],
         'appointment_agent_set' => [
-            'subject' => 'New appointment: {customer_name} \u2014 {when}',
-            'html'    => '<p>\U0001f4c5 New appointment booked with <strong>{customer_name}</strong> '
+            'subject' => 'New appointment: {customer_name} — {when}',
+            'html'    => '<p>📅 New appointment booked with <strong>{customer_name}</strong> '
                 . 'on <strong>{when}</strong> (#{id}).</p>',
         ],
         'appointment_agent' => [

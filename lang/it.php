@@ -42,7 +42,7 @@ return [
             . "A presto!",
 
         'appointment_agent_set' =>
-            "\U0001f4c5 Nuovo appuntamento fissato: {customer_name} il {when} (#{id}).",
+            "📅 Nuovo appuntamento fissato: {customer_name} il {when} (#{id}).",
 
         'appointment_agent' =>
             "⏰ Promemoria appuntamento: {customer_name} il {when} (#{id}).",
@@ -239,8 +239,8 @@ return [
             'html'    => '<p>Ciao {name},</p><p>Ti ricordiamo il tuo appuntamento del <strong>{when}</strong>.</p>',
         ],
         'appointment_agent_set' => [
-            'subject' => 'Nuovo appuntamento: {customer_name} \u2014 {when}',
-            'html'    => '<p>\U0001f4c5 Nuovo appuntamento fissato con <strong>{customer_name}</strong> '
+            'subject' => 'Nuovo appuntamento: {customer_name} — {when}',
+            'html'    => '<p>📅 Nuovo appuntamento fissato con <strong>{customer_name}</strong> '
                 . 'il <strong>{when}</strong> (#{id}).</p>',
         ],
         'appointment_agent' => [
