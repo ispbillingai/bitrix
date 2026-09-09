@@ -122,18 +122,21 @@ if ($filterAgentId !== null) {
 // Admin-only too: ?partner=<id> narrows the Leads board to the leads one partner
 // brought in — entered in their own area or through their referral link.
 $filterPartnerId = (!$isAgent && !empty($_GET['partner'])) ? (int)$_GET['partner'] : null;
-$agentViews   = ['overview', 'leads', 'deals', 'appointments', 'tasks', 'messages', 'tickets', 'documents', 'instructions'];
+$agentViews   = ['overview', 'leads', 'deals', 'quotes', 'appointments', 'tasks', 'messages', 'tickets', 'documents', 'instructions'];
 $techViews    = ['devices', 'network_areas', 'installations', 'support', 'tickets'];
 // Technicians' POST whitelist: the installation-report flow, taking charge of
 // assistance requests, and replying on the tickets they claimed.
 $techActions  = ['install_create', 'install_save', 'install_photos', 'install_photo_del', 'install_send',
                  'assist_claim', 'ticket_reply', 'ticket_status'];
 $agentActions = [
-    'lead_create', 'lead_move', 'lead_convert', 'lead_note', 'lead_edit',
+    'lead_create', 'lead_move', 'lead_convert', 'lead_note', 'lead_edit', 'lead_quote',
     'deal_move', 'deal_note', 'deal_invite',
     'appt_create', 'appt_schedule', 'appt_status',
     'task_complete', 'task_status', 'ticket_reply', 'ticket_status', 'ticket_open_staff', 'change_my_password',
     'doc_create', 'doc_send', 'doc_void',
+    // Asking the office for a quote and sending back the answer is the seller's
+    // job; uploading the quote and cancelling a request are the office's.
+    'quote_scratch', 'quote_send',
 ];
 
 // ---- ticket attachment download (?dl=<message_id>) ----
@@ -155,7 +158,17 @@ if (isset($_GET['sdl'])) {
     $sdoc = SignDocs::find((int)$_GET['sdl']);
     // Admin: everything. Agent or tech: only the documents they raised — which
     // for a technician is their own installation reports.
-    if ($sdoc && ((!$isAgent && !$isTech) || (int)$sdoc['created_by'] === (int)$uid)) {
+    //
+    // Plus the one document a seller did NOT raise but must be able to read: the
+    // quote the office uploaded in answer to their own request. Without this the
+    // seller is asked to send a customer a PDF they cannot open themselves.
+    $sdocMine = $sdoc && (int)$sdoc['created_by'] === (int)$uid;
+    if ($sdoc && !$sdocMine && ($isAgent || $isTech)) {
+        $qown = $pdo->prepare('SELECT 1 FROM quote_requests WHERE document_id = ? AND requested_by = ?');
+        $qown->execute([(int)$sdoc['id'], (int)$uid]);
+        $sdocMine = (bool)$qown->fetchColumn();
+    }
+    if ($sdoc && ((!$isAgent && !$isTech) || $sdocMine)) {
         $wantSigned = ($_GET['k'] ?? 'orig') === 'signed';
         $path = $wantSigned ? SignDocs::signedPath($sdoc) : SignDocs::originalPath($sdoc);
         if ($path !== null) {
@@ -291,6 +304,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      'appt_' => ['appointments', 'agent_id'], 'task_' => ['tasks', 'assigned_to'],
                      'ticket_' => ['tickets', 'assigned_agent_id'],
                      'doc_' => ['sign_documents', 'created_by'],
+                     'quote_' => ['quote_requests', 'requested_by'],
                      'install_' => ['install_reports', 'created_by']];
         $needsOwner = null;
         foreach ($ownerCol as $prefix => $tc) {
@@ -693,6 +707,73 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $flash = $t('lead_saved');
                 $tab = 'leads';
                 break;
+
+            // ---------- quote requests ----------
+            // The button inside the lead record. Named lead_* on purpose: that
+            // prefix already carries the ownership guard above, so a seller can
+            // only ask for a quote on a lead that is actually theirs.
+            case 'lead_quote': {
+                $qr = \Glue\Crm\QuoteRequests::open(
+                    (int)$_POST['id'], $uid, (string)($_POST['notes'] ?? ''));
+                $_SESSION['dash_flash'] = empty($qr['ok'])
+                    ? [$t('qt_err_' . ($qr['error'] ?? 'no_lead')), 'err']
+                    : [$t('qt_requested'), 'ok'];
+                header('Location: ?tab=leads');
+                exit;
+            }
+            case 'quote_scratch': {
+                $qr = \Glue\Crm\QuoteRequests::fromScratch([
+                    'first_name' => $_POST['first_name'] ?? '', 'last_name' => $_POST['last_name'] ?? '',
+                    'company'    => $_POST['company'] ?? '',    'vat_number' => $_POST['vat_number'] ?? '',
+                    'phone'      => $_POST['phone'] ?? '',      'email'      => $_POST['email'] ?? '',
+                    'zone'       => $_POST['zone'] ?? '',       'source'     => $_POST['source'] ?? '',
+                    'lang'       => $_POST['lang'] ?? null,     'notes'      => $_POST['notes'] ?? '',
+                    // A seller's own entry stays in their scope, as on the Leads
+                    // tab; an office entry stays unassigned until someone takes it.
+                    'assign_to'  => $isAgent ? (int)$scopeId : 0,
+                ], $uid);
+                if (empty($qr['ok'])) {
+                    $_SESSION['dash_flash'] = [$t('qt_err_' . ($qr['error'] ?? 'no_identity')), 'err'];
+                } else {
+                    // Say which of the two happened — attached to a customer we
+                    // already had, or filed on a lead this form just created.
+                    $_SESSION['dash_flash'] = [sprintf(
+                        $t(!empty($qr['created']) ? 'qt_scratch_new' : 'qt_scratch_matched'),
+                        (int)$qr['lead_id']), 'ok'];
+                }
+                header('Location: ?tab=quotes');
+                exit;
+            }
+            case 'quote_upload': { // office only — the finished quote comes back
+                $qr = \Glue\Crm\QuoteRequests::attachQuote(
+                    (int)$_POST['id'], $_FILES['quote'] ?? null, $uid);
+                if (!empty($qr['ok'])) {
+                    $_SESSION['dash_flash'] = [$t('qt_uploaded'), 'ok'];
+                } else {
+                    // The upload rejections (no_file / too_big / bad_type) are the
+                    // signing flow's own and already have copy; the rest are ours.
+                    $qe = (string)($qr['error'] ?? 'save_failed');
+                    $qk = $t('qt_err_' . $qe) !== 'qt_err_' . $qe ? 'qt_err_' . $qe
+                        : ($t('dc_err_' . $qe) !== 'dc_err_' . $qe ? 'dc_err_' . $qe : 'qt_err_save_failed');
+                    $_SESSION['dash_flash'] = [$t($qk), 'err'];
+                }
+                header('Location: ?tab=quotes');
+                exit;
+            }
+            case 'quote_send': {
+                $qr = \Glue\Crm\QuoteRequests::sendToCustomer((int)$_POST['id'], $uid);
+                $_SESSION['dash_flash'] = empty($qr['ok'])
+                    ? [$t('qt_err_' . ($qr['error'] ?? 'no_quote')), 'err']
+                    : [$t('qt_sent'), 'ok'];
+                header('Location: ?tab=quotes');
+                exit;
+            }
+            case 'quote_cancel': { // office only
+                $_SESSION['dash_flash'] = \Glue\Crm\QuoteRequests::cancel((int)$_POST['id'], $uid)
+                    ? [$t('qt_cancelled'), 'ok'] : [$t('not_allowed'), 'err'];
+                header('Location: ?tab=quotes');
+                exit;
+            }
 
             // ---------- deals ----------
             case 'deal_create':
@@ -1554,6 +1635,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
     $brand = (string)\Glue\Config::get('app.company_name', '') ?: $t('app_title');
     $nav = [
         'overview' => 'nav_overview', 'leads' => 'nav_leads', 'deals' => 'nav_deals',
+        'quotes' => 'nav_quotes',
         'customers' => 'nav_customers',
         'contacts' => 'nav_contacts', 'appointments' => 'nav_appointments', 'tasks' => 'nav_tasks',
         'tickets' => 'nav_tickets', 'documents' => 'nav_documents', 'installations' => 'nav_installations',
@@ -1566,7 +1648,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
         'events' => 'nav_events', 'agents' => 'nav_agents', 'partners' => 'nav_partners', 'instructions' => 'nav_instr', 'settings' => 'nav_settings',
     ];
     if ($isAgent) { // agents only see their own work
-        $nav = array_intersect_key($nav, array_flip(['overview', 'leads', 'deals', 'appointments', 'tasks', 'messages', 'documents', 'instructions']));
+        $nav = array_intersect_key($nav, array_flip(['overview', 'leads', 'deals', 'quotes', 'appointments', 'tasks', 'messages', 'documents', 'instructions']));
     } elseif ($isTech) { // technical-area users: devices, install reports, support queue, own tickets
         $nav = array_intersect_key($nav, array_flip(['devices', 'installations', 'support', 'tickets']));
     } ?>

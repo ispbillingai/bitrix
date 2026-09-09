@@ -230,8 +230,9 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
 <?php foreach ($rows as $r):
     $ag = $r['agent_name'] ?: $r['agent_username'];
     $msg = trim((string)($r['comments'] ?? ''));
-    $timeline = \Glue\Crm\Activities::forEntity('lead', (int)$r['id'], 20); ?>
-  <details class="drawer card" style="padding:0;margin-bottom:8px">
+    $timeline = \Glue\Crm\Activities::forEntity('lead', (int)$r['id'], 20);
+    $quotes   = \Glue\Crm\QuoteRequests::forLead((int)$r['id']); ?>
+  <details class="drawer card" id="lead-<?= (int)$r['id'] ?>" style="padding:0;margin-bottom:8px">
     <summary class="dw-sum">
       <?= avatar($h, $r['customer_name']) ?>
       <span class="dw-info"><b><?= $h($r['customer_name'] ?: ('#' . $r['id'])) ?></b>
@@ -336,6 +337,41 @@ $srcReport = empty($isAgent) ? \Glue\Crm\Leads::sourceReport($ym) : [];
             <label class="fld"><span><?= $h($t('add_note')) ?></span>
               <textarea name="body" rows="2" required></textarea></label>
             <button class="btn tiny ghost"><?= $h($t('save')) ?></button></form>
+
+          <?php // Ask the back office to price this customer. Everything they need
+                // — company, legal details, contacts — is already on the lead, so
+                // the only thing asked for here is what the quote must contain. ?>
+          <h3 style="margin-top:18px"><?= $h($t('qt_h')) ?></h3>
+          <details class="drawer" style="margin-bottom:10px">
+            <summary class="btn tiny"><?= svg('quotes') ?> <?= $h($t('qt_request')) ?></summary>
+            <form method="post" class="card" style="margin-top:10px">
+              <input type="hidden" name="do" value="lead_quote">
+              <input type="hidden" name="id" value="<?= $h($r['id']) ?>">
+              <label class="fld"><span><?= $h($t('qt_notes')) ?> *</span>
+                <textarea name="notes" rows="3" required placeholder="<?= $h($t('qt_notes_ph')) ?>"></textarea></label>
+              <p class="muted small" style="margin:-8px 0 12px"><?= $h($t('qt_request_hint')) ?></p>
+              <button class="btn tiny"><?= svg('send') ?> <?= $h($t('qt_send_request')) ?></button>
+            </form>
+          </details>
+          <?php if (!$quotes): ?>
+            <div class="muted small"><?= $h($t('qt_none_lead')) ?></div>
+          <?php else: foreach ($quotes as $q): $qst = (string)$q['status']; ?>
+            <div class="lb" style="align-items:flex-start;gap:10px">
+              <span class="nm" style="min-width:0">
+                <b>#<?= (int)$q['id'] ?></b>
+                <span class="muted small"> · <?= $h(short_time($q['created_at'])) ?>
+                  <?= $h($q['requester_name'] ?: ($q['requester_username'] ?: '')) ?></span>
+                <div class="muted small note-clip l2"><?= $h($q['notes']) ?></div>
+                <?php if (!empty($q['document_id'])): ?>
+                  <div class="small" style="margin-top:3px">
+                    <a href="?sdl=<?= (int)$q['document_id'] ?>&k=orig"><?= $h($q['doc_title'] ?: $t('qt_quote')) ?></a>
+                    <?php if (!empty($q['signed_at'])): ?> · ✅ <?= $h(short_time($q['signed_at'])) ?><?php endif; ?>
+                  </div>
+                <?php endif; ?>
+              </span>
+              <span class="sc"><span class="pill"><?= $h($t('qt_st_' . $qst)) ?></span></span>
+            </div>
+          <?php endforeach; endif; ?>
         </div>
         <div>
           <?php $acc = \Glue\Portal\Account::accessStats((int)$r['contact_id']); ?>

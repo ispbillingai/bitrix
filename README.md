@@ -44,6 +44,15 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 - **Appointments**: requests come in → staff assign a seller and confirm a time →
   reminders fire to **both** parties before the event.
 - **Tasks + KPI**: assign work to sellers, score on completion, leaderboard.
+- **Quotes** (`views/quotes.php`): a seller asks the back office to price
+  something and the finished quote comes back down the same wire. Two doors, one
+  queue: a **Request quote** button inside the lead record (the lead already
+  carries the company and the legal details, so the seller writes only what the
+  quote must contain), and a **from-scratch form** for a customer the CRM has
+  never seen — matched on company/VAT or phone/name, and a new lead is created
+  and the request filed on it when nothing matches. The office is notified,
+  uploads the quote against the request, and the seller sends it to the customer
+  through the signing flow, so it can be read *and signed* on the spot.
 - **Partner area** (`public/partner.php`): partners log into their own page —
   not the CRM — and do exactly three things. They **enter their own leads**
   (typed in, or brought in by sharing their `request.php?ref=CODE` link); they
@@ -54,7 +63,10 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
   is the finish line here. They are **messaged only when a lead ends** — closed
   or lost — and never on the rungs in between. Entering a partita IVA reserves
   that customer for them for 90 days; re-typing a customer who is already in the
-  system files the note on the existing lead but never transfers ownership.
+  system is **refused** — the note is filed on the existing lead, but no new
+  referral is created and ownership never transfers, and the partner is told
+  exactly that rather than thanked for a lead that does not exist. Each lead
+  shows its **zone** and when its status last moved.
 - **Documents (electronic signature)**: upload a PDF, send it for signature, the
   customer confirms with a one-time code, and the CRM seals the result itself —
   a CAdES-signed PDF holding a signature certificate plus the original document,
@@ -84,6 +96,7 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 | Closing: thank-you + notify logistics | won stage → `thank_you` + `logistics_notify` |
 | KPI / score evaluation | `Crm\Tasks` (kpi_score/weight) + leaderboard |
 | Partner enters their own leads, sees only their status, hears only about closed/lost | `partner.php` → `Partner\Partners::submitLead` / `::outcome` / `::notifyOutcome` → `partner_lead_won`/`partner_lead_lost` |
+| Seller asks the back office for a quote; office uploads it; seller sends it for signature | `views/leads.php` (in-lead button) + `views/quotes.php` (from scratch) → `Crm\QuoteRequests` → `Sign\Documents` |
 | Manual interrupt / silence any automation | move the record's stage; pending reminders auto-cancel |
 | Mass WhatsApp/email marketing | `campaign.php` + `Campaign\Sender` (throttled) |
 | Sign a document with an OTP, in-house | `views/documents.php` → `Sign\Documents` → `Sign\Signer` (CAdES) → `public/sign.php` / `public/verify.php` |
@@ -124,7 +137,8 @@ views/                     dashboard page partials (overview, leads, deals, …)
 src/
   Bootstrap, Config, Db, Settings, Auth, Event/Log
   Crm/   Pipelines, Contacts, Leads, LeadIntake, Deals, Appointments, Tasks,
-         Tickets, Automation, Activities, EntityResolver   — the CRM domain
+         Tickets, QuoteRequests, Automation, Activities, EntityResolver
+         — the CRM domain
   Partner/ Partners (accounts, lead entry, referrals, commissions, outcome notice)
   Pay/     SmallPay (REST client), Contracts (lifecycle + reconciliation)
   Portal/  Account (customer login + magic link), Otp (signing codes)
