@@ -386,7 +386,7 @@ final class Articles
      * @return array{ok:bool, stock?:float, error?:string}
      */
     public static function moveStock(int $id, string $mode, string $qty, string $note = '',
-                                     ?int $userId = null, ?string $reason = null): array
+                                     ?int $userId = null, ?string $reason = null, bool $checkLow = true): array
     {
         $a = self::find($id);
         if (!$a) {
@@ -426,7 +426,12 @@ final class Articles
 
         Log::write('crm', 'article_stock_moved', 'article', $id,
             ['delta' => $delta, 'stock' => $new, 'reason' => $reason ?? $why, 'by' => $userId]);
-        self::checkLowStock([$id]);
+        // A caller moving many articles at once (an accepted quote) passes false
+        // and runs ONE check afterwards, so the office gets one digest, not one
+        // message per line.
+        if ($checkLow) {
+            self::checkLowStock([$id]);
+        }
         return ['ok' => true, 'stock' => $new];
     }
 

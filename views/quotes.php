@@ -17,6 +17,13 @@
 
 use Glue\Crm\QuoteRequests;
 
+// ?build=<id> opens one request as an editable quote document — admin only.
+$buildId = (int)($_GET['build'] ?? 0);
+if ($buildId > 0 && empty($isAgent)) {
+    require __DIR__ . '/quote_builder.php';
+    return;
+}
+
 // An agent sees the requests they made; the office sees the whole queue.
 $qScope  = $isAgent ? (int)$scopeId : null;
 $qRows   = QuoteRequests::all($qScope);
@@ -25,7 +32,8 @@ $zones   = \Glue\Crm\Leads::zones();
 $sources = \Glue\Crm\Leads::sources();
 
 $qColor = [QuoteRequests::OPEN => 'var(--amber)', QuoteRequests::READY => 'var(--accent)',
-           QuoteRequests::SENT => 'var(--green)', QuoteRequests::CANCELLED => 'var(--muted)'];
+           QuoteRequests::SENT => 'var(--green)', QuoteRequests::CANCELLED => 'var(--muted)',
+           QuoteRequests::ACCEPTED => 'var(--green)'];
 ?>
 <h2><?= $h($t('nav_quotes')) ?></h2>
 <p class="muted small" style="margin:-6px 0 14px"><?= $h($t('qt_sub')) ?></p>
@@ -114,7 +122,12 @@ $qColor = [QuoteRequests::OPEN => 'var(--amber)', QuoteRequests::READY => 'var(-
       </td>
       <td class="small muted"><?= $h(short_time($q['created_at'])) ?></td>
       <td style="text-align:right;white-space:nowrap">
-        <?php if (empty($isAgent) && $qst !== QuoteRequests::CANCELLED): ?>
+        <?php // The main way now: build it from the warehouse and generate the PDF.
+              // Uploading a finished PDF stays as the alternative next to it. ?>
+        <?php if (empty($isAgent) && !in_array($qst, [QuoteRequests::CANCELLED, QuoteRequests::ACCEPTED], true)): ?>
+          <a class="btn tiny" href="?tab=quotes&amp;build=<?= (int)$q['id'] ?>"><?= svg('pen') ?> <?= $h($t('qt_build')) ?></a>
+        <?php endif; ?>
+        <?php if (empty($isAgent) && !in_array($qst, [QuoteRequests::CANCELLED, QuoteRequests::ACCEPTED], true)): ?>
           <details class="drawer" style="display:inline-block;text-align:left">
             <summary class="btn ghost tiny"><?= $h($t($qst === QuoteRequests::OPEN ? 'qt_upload' : 'qt_replace')) ?></summary>
             <form method="post" enctype="multipart/form-data" class="card" style="margin-top:8px;min-width:260px">
@@ -126,7 +139,7 @@ $qColor = [QuoteRequests::OPEN => 'var(--amber)', QuoteRequests::READY => 'var(-
             </form>
           </details>
         <?php endif; ?>
-        <?php if (!empty($q['document_id']) && $qst !== QuoteRequests::CANCELLED): ?>
+        <?php if (!empty($q['document_id']) && !in_array($qst, [QuoteRequests::CANCELLED, QuoteRequests::ACCEPTED], true)): ?>
           <form method="post" style="display:inline" onsubmit="return confirm('<?= $h($t('qt_send_confirm')) ?>')">
             <input type="hidden" name="do" value="quote_send"><input type="hidden" name="id" value="<?= (int)$q['id'] ?>">
             <button class="btn tiny"><?= svg('send') ?> <?= $h($t($qst === QuoteRequests::SENT ? 'qt_resend' : 'qt_send')) ?></button>
@@ -139,7 +152,7 @@ $qColor = [QuoteRequests::OPEN => 'var(--amber)', QuoteRequests::READY => 'var(-
         <?php if (!empty($q['contact_id'])): ?>
           <a class="btn ghost tiny" href="?tab=customers&amp;id=<?= (int)$q['contact_id'] ?>"><?= $h($t('qt_open_customer')) ?></a>
         <?php endif; ?>
-        <?php if (empty($isAgent) && $qst !== QuoteRequests::SENT && $qst !== QuoteRequests::CANCELLED): ?>
+        <?php if (empty($isAgent) && !in_array($qst, [QuoteRequests::SENT, QuoteRequests::CANCELLED, QuoteRequests::ACCEPTED], true)): ?>
           <form method="post" style="display:inline" onsubmit="return confirm('<?= $h($t('qt_cancel_confirm')) ?>')">
             <input type="hidden" name="do" value="quote_cancel"><input type="hidden" name="id" value="<?= (int)$q['id'] ?>">
             <button class="btn ghost tiny" style="color:var(--red)"><?= $h($t('qt_cancel')) ?></button>

@@ -44,6 +44,8 @@ final class QuoteRequests
     public const READY = 'ready';
     public const SENT = 'sent';
     public const CANCELLED = 'cancelled';
+    /** Signed by the customer. Terminal: the stock has been drawn. */
+    public const ACCEPTED = 'accepted';
 
     // ---- asking ---------------------------------------------------------------
 
@@ -258,6 +260,12 @@ final class QuoteRequests
             return ['ok' => false, 'error' => 'no_contact'];
         }
 
+        // Once signed, the document on file IS the agreement — an upload must not
+        // quietly point the request at a different one.
+        if (!empty($r['stock_applied_at'])) {
+            return ['ok' => false, 'error' => 'accepted'];
+        }
+
         $title = trim((string)Config::get('crm.quote_title', '')) ?: 'Preventivo';
         $who   = trim((string)($lead['customer_name'] ?? ''));
         $doc = SignDocs::create([
@@ -311,7 +319,7 @@ final class QuoteRequests
     public static function cancel(int $id, ?int $userId = null): bool
     {
         $r = self::find($id);
-        if (!$r || (string)$r['status'] === self::SENT) {
+        if (!$r || in_array((string)$r['status'], [self::SENT, self::ACCEPTED], true)) {
             return false;
         }
         Db::pdo()->prepare('UPDATE quote_requests SET status = ? WHERE id = ?')
@@ -319,6 +327,311 @@ final class QuoteRequests
         Activities::add('lead', (int)$r['lead_id'], 'system', "Quote request #$id cancelled", $userId);
         Log::write('crm', 'quote_cancelled', 'lead', (int)$r['lead_id'], ['request_id' => $id, 'by' => $userId]);
         return true;
+    }
+
+    // ---- building the quote ------------------------------------------------------
+
+    /** The priced lines of a request, with the stock each article has now. */
+    public static function lines(int $id): array
+    {
+        $s = Db::pdo()->prepare(
+            'SELECT ql.*, a.stock, a.stock_available
+               FROM quote_lines ql LEFT JOIN articles a ON a.id = ql.article_id
+              WHERE ql.quote_request_id = ? ORDER BY ql.sort, ql.id'
+        );
+        $s->execute([$id]);
+        return $s->fetchAll() ?: [];
+    }
+
+    /**
+     * Replace the lines and the quote-level fields in one go — the builder posts
+     * the whole table, so there is no per-row round trip to fall out of step.
+     *
+     * An article line keeps the catalogue's CODE (it is the link to the shelf)
+     * but the office may reword the description and set its own price: the
+     * catalogue is where the price starts, not where it has to end.
+     *
+     * @param array $rows lines[i][kind|article_id|code|description|qty|price|discount|vat]
+     * @param array $head discount_pct | valid_until | customer_notes
+     * @return array{ok:bool, lines?:int, error?:string}
+     */
+    public static function saveLines(int $id, array $rows, array $head, ?int $userId = null): array
+    {
+        $r = self::find($id);
+        if (!$r) {
+            return ['ok' => false, 'error' => 'not_found'];
+        }
+        if (!empty($r['stock_applied_at'])) {
+            return ['ok' => false, 'error' => 'accepted'];
+        }
+        if ((string)$r['status'] === self::CANCELLED) {
+            return ['ok' => false, 'error' => 'cancelled'];
+        }
+
+        $clean = [];
+        foreach (array_values($rows) as $row) {
+            if (!is_array($row)) {
+                continue;
+            }
+            $kind = ($row['kind'] ?? '') === 'service' ? 'service' : 'article';
+            $aid  = (int)($row['article_id'] ?? 0);
+            $art  = ($kind === 'article' && $aid > 0) ? Articles::find($aid) : null;
+            if ($kind === 'article' && !$art) {
+                $kind = 'service';   // an article that no longer exists prints as a plain line
+            }
+            $desc = trim((string)($row['description'] ?? ''));
+            if ($desc === '' && $art) {
+                $desc = (string)($art['description'] ?: $art['code']);
+            }
+            $qty = self::num((string)($row['qty'] ?? ''));
+            if ($desc === '' || $qty <= 0) {
+                continue;
+            }
+            $clean[] = [
+                'kind'         => $kind,
+                'article_id'   => $art ? $aid : null,
+                'code'         => $art ? (string)$art['code'] : (trim((string)($row['code'] ?? '')) ?: null),
+                'description'  => mb_substr($desc, 0, 255),
+                'qty'          => $qty,
+                'unit_price'   => max(0.0, self::num((string)($row['price'] ?? '0'))),
+                'discount_pct' => min(100.0, max(0.0, self::num((string)($row['discount'] ?? '0')))),
+                'vat_rate'     => min(100.0, max(0.0, self::num((string)($row['vat'] ?? '22')))),
+            ];
+        }
+
+        $vu = trim((string)($head['valid_until'] ?? ''));
+        $vu = ($vu !== '' && strtotime($vu)) ? date('Y-m-d', (int)strtotime($vu)) : null;
+
+        $pdo = Db::pdo();
+        $pdo->beginTransaction();
+        try {
+            $pdo->prepare('DELETE FROM quote_lines WHERE quote_request_id = ?')->execute([$id]);
+            $ins = $pdo->prepare(
+                'INSERT INTO quote_lines (quote_request_id, sort, kind, article_id, code, description,
+                                          qty, unit_price, discount_pct, vat_rate)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            );
+            foreach ($clean as $i => $l) {
+                $ins->execute([$id, $i, $l['kind'], $l['article_id'], $l['code'], $l['description'],
+                               $l['qty'], $l['unit_price'], $l['discount_pct'], $l['vat_rate']]);
+            }
+            $pdo->prepare('UPDATE quote_requests SET discount_pct = ?, valid_until = ?, customer_notes = ? WHERE id = ?')
+                ->execute([
+                    min(100.0, max(0.0, self::num((string)($head['discount_pct'] ?? '0')))),
+                    $vu,
+                    trim((string)($head['customer_notes'] ?? '')) ?: null,
+                    $id,
+                ]);
+            $pdo->commit();
+        } catch (Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+
+        Log::write('crm', 'quote_lines_saved', 'lead', (int)$r['lead_id'],
+            ['request_id' => $id, 'lines' => count($clean), 'by' => $userId]);
+        return ['ok' => true, 'lines' => count($clean)];
+    }
+
+    /**
+     * Price the lines. Each line: qty x price, less its own discount; then the
+     * quote-level discount on everything; VAT computed per rate on what is left,
+     * which is how an Italian invoice computes it. Every line is rounded to the
+     * cent before it is summed, so the printed lines add up to the printed total.
+     */
+    public static function totals(array $lines, float $docDiscount = 0.0): array
+    {
+        $dd  = min(100.0, max(0.0, $docDiscount));
+        $out = ['lines' => [], 'gross' => 0.0, 'after_lines' => 0.0, 'net' => 0.0, 'vat' => [],
+                'vat_total' => 0.0, 'total' => 0.0, 'doc_discount_pct' => $dd];
+        foreach ($lines as $l) {
+            $gross = (float)$l['qty'] * (float)$l['unit_price'];
+            $after = round($gross * (1 - (float)$l['discount_pct'] / 100), 2);
+            $net   = round($after * (1 - $dd / 100), 2);
+            $l['gross']      = round($gross, 2);
+            $l['line_total'] = $after;
+            $l['net']        = $net;
+            $out['lines'][]      = $l;
+            $out['gross']       += $gross;
+            $out['after_lines'] += $after;
+            $out['net']         += $net;
+            $rate = number_format((float)$l['vat_rate'], 2, '.', '');
+            $out['vat'][$rate] = ['base' => ($out['vat'][$rate]['base'] ?? 0.0) + $net, 'tax' => 0.0];
+        }
+        ksort($out['vat']);
+        foreach ($out['vat'] as $rate => $v) {
+            $out['vat'][$rate]['tax'] = round($v['base'] * (float)$rate / 100, 2);
+            $out['vat_total'] += $out['vat'][$rate]['tax'];
+        }
+        $out['gross']       = round($out['gross'], 2);
+        $out['after_lines'] = round($out['after_lines'], 2);
+        $out['net']         = round($out['net'], 2);
+        $out['vat_total']   = round($out['vat_total'], 2);
+        $out['total']       = round($out['net'] + $out['vat_total'], 2);
+        return $out;
+    }
+
+    /**
+     * Render the lines to a PDF and attach it — the document the seller then
+     * sends through the existing signing flow.
+     *
+     * Regenerating replaces the file, and the version it replaces is VOIDED if
+     * the customer has not signed it: two signable versions of one quote is how
+     * a customer ends up accepting the wrong price. A version they HAVE signed
+     * cannot be replaced at all.
+     *
+     * @return array{ok:bool, document_id?:int, number?:string, error?:string}
+     */
+    public static function generateDocument(int $id, ?int $userId = null): array
+    {
+        $r = self::find($id);
+        if (!$r) {
+            return ['ok' => false, 'error' => 'not_found'];
+        }
+        if (!empty($r['stock_applied_at'])) {
+            return ['ok' => false, 'error' => 'accepted'];
+        }
+        if ((string)$r['status'] === self::CANCELLED) {
+            return ['ok' => false, 'error' => 'cancelled'];
+        }
+        $lines = self::lines($id);
+        if (!$lines) {
+            return ['ok' => false, 'error' => 'no_lines'];
+        }
+        $lead = Leads::find((int)$r['lead_id']);
+        if (!$lead || (int)($lead['contact_id'] ?? 0) <= 0) {
+            return ['ok' => false, 'error' => 'no_contact'];
+        }
+        $contact = Contacts::find((int)$lead['contact_id']) ?: [];
+
+        $old = !empty($r['document_id']) ? SignDocs::find((int)$r['document_id']) : null;
+        if ($old && (string)$old['status'] === 'signed') {
+            return ['ok' => false, 'error' => 'accepted'];
+        }
+
+        $number = (string)($r['number'] ?? '') ?: sprintf('P%s-%04d', date('Y'), $id);
+        $valid  = (string)($r['valid_until'] ?? '') ?: date('Y-m-d', strtotime('+30 days'));
+        $r['number']      = $number;
+        $r['valid_until'] = $valid;
+
+        $totals = self::totals($lines, (float)($r['discount_pct'] ?? 0));
+        $bytes  = QuotePdf::build($r, $lead, $contact, $totals);
+
+        $who = trim((string)($lead['customer_name'] ?? '')) ?: (string)($contact['name'] ?? '');
+        $doc = SignDocs::createFromBytes([
+            'title'      => "Preventivo $number" . ($who !== '' ? " — $who" : ''),
+            'contact_id' => (int)$lead['contact_id'],
+            'lang'       => $lead['lang'] ?? null,
+        ], $bytes, "Preventivo-$number.pdf", $userId);
+        if (empty($doc['ok'])) {
+            return ['ok' => false, 'error' => (string)($doc['error'] ?? 'save_failed')];
+        }
+
+        if ($old && in_array((string)$old['status'], ['draft', 'sent', 'viewed'], true)) {
+            SignDocs::void((int)$old['id'], $userId, 'Sostituito da una nuova versione del preventivo ' . $number);
+        }
+
+        Db::pdo()->prepare(
+            'UPDATE quote_requests SET document_id = ?, status = ?, ready_at = NOW(), generated_at = NOW(),
+                    number = ?, valid_until = ? WHERE id = ?'
+        )->execute([(int)$doc['id'], self::READY, $number, $valid, $id]);
+
+        Activities::add('lead', (int)$r['lead_id'], 'system',
+            "Preventivo $number composto nel CRM: " . count($lines) . ' righe, totale EUR '
+            . number_format($totals['total'], 2, ',', '.'), $userId);
+        Log::write('crm', 'quote_generated', 'lead', (int)$r['lead_id'],
+            ['request_id' => $id, 'number' => $number, 'document_id' => (int)$doc['id'],
+             'total' => $totals['total'], 'replaced' => $old ? (int)$old['id'] : null, 'by' => $userId]);
+
+        self::notifyRequester($id, $lead);
+        return ['ok' => true, 'document_id' => (int)$doc['id'], 'number' => $number];
+    }
+
+    /**
+     * The customer signed. If what they signed is a quote, it is now ACCEPTED,
+     * and its article lines are drawn from stock — the client's "crucially".
+     *
+     * Once only, and claimed before anything moves: the UPDATE ... WHERE
+     * stock_applied_at IS NULL either takes the quote or finds it taken, so a
+     * replayed signature, a retry or two requests racing cannot draw the stock
+     * twice. Each line then moves on its own; one that fails (the article was
+     * deleted meanwhile) is logged and does not stop the others, because the
+     * claim has been made and a half-applied quote is recoverable while a
+     * double-applied one silently is not.
+     *
+     * Called from Sign\Documents after the seal, inside a try — a stock problem
+     * must never undo a signature that has already been sealed.
+     */
+    public static function onDocumentSigned(int $documentId): void
+    {
+        $pdo = Db::pdo();
+        $s   = $pdo->prepare('SELECT * FROM quote_requests WHERE document_id = ? LIMIT 1');
+        $s->execute([$documentId]);
+        $r = $s->fetch();
+        if (!$r) {
+            return;   // a signed document that is not a quote — nothing to do here
+        }
+
+        $claim = $pdo->prepare(
+            'UPDATE quote_requests SET stock_applied_at = NOW(), accepted_at = COALESCE(accepted_at, NOW()),
+                    status = ? WHERE id = ? AND stock_applied_at IS NULL'
+        );
+        $claim->execute([self::ACCEPTED, (int)$r['id']]);
+        if ($claim->rowCount() === 0) {
+            return;   // already applied
+        }
+
+        $lead   = Leads::find((int)$r['lead_id']) ?: [];
+        $who    = trim((string)($lead['customer_name'] ?? '')) ?: ('#' . (int)$r['lead_id']);
+        $number = (string)($r['number'] ?? '') ?: ('#' . (int)$r['id']);
+
+        $drawn = [];
+        $fail  = [];
+        foreach (self::lines((int)$r['id']) as $l) {
+            if ($l['kind'] !== 'article' || empty($l['article_id'])) {
+                continue;   // a service is not on a shelf
+            }
+            try {
+                $mv = Articles::moveStock((int)$l['article_id'], 'unload', (string)$l['qty'],
+                    "Preventivo $number accettato — $who", null, 'quote', false);
+                if (!empty($mv['ok'])) {
+                    $drawn[] = (int)$l['article_id'];
+                } else {
+                    $fail[] = ['article_id' => (int)$l['article_id'], 'error' => $mv['error'] ?? '?'];
+                }
+            } catch (Throwable $e) {
+                $fail[] = ['article_id' => (int)$l['article_id'], 'error' => $e->getMessage()];
+            }
+        }
+        // One restock check for the whole quote, not one digest per line.
+        if ($drawn) {
+            Articles::checkLowStock($drawn);
+        }
+
+        Activities::add('lead', (int)$r['lead_id'], 'system',
+            "Preventivo $number firmato dal cliente — accettato. "
+            . ($drawn ? count($drawn) . ' articoli scaricati dal magazzino.' : 'Nessun articolo di magazzino.')
+            . ($fail ? ' ATTENZIONE: ' . count($fail) . ' righe non scaricate, vedi registro eventi.' : ''));
+        Log::write('crm', $fail ? 'quote_accepted_partial' : 'quote_accepted', 'lead', (int)$r['lead_id'],
+            ['request_id' => (int)$r['id'], 'number' => $number, 'drawn' => $drawn, 'failed' => $fail]);
+    }
+
+    /** "12,50" / "12.50" / "1.234,56" -> float. The office types Italian. */
+    private static function num(string $raw): float
+    {
+        $v = trim($raw);
+        if ($v === '') {
+            return 0.0;
+        }
+        $v = (string)preg_replace('/[^0-9,.\-]/', '', $v);
+        $lastComma = strrpos($v, ',');
+        $lastDot   = strrpos($v, '.');
+        if ($lastComma !== false && ($lastDot === false || $lastComma > $lastDot)) {
+            $v = str_replace(',', '.', str_replace('.', '', $v));
+        } else {
+            $v = str_replace(',', '', $v);
+        }
+        return (float)$v;
     }
 
     // ---- reads ----------------------------------------------------------------

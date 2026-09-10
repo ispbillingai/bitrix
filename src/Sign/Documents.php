@@ -489,6 +489,15 @@ final class Documents
             'uid' => (string)$doc['uid'], 'signed_sha256' => $result['sha256'],
         ]);
 
+        // A signed QUOTE is an accepted quote: its articles leave the warehouse
+        // now. Wrapped, because nothing about stock is allowed to undo a
+        // signature that is already sealed and on disk.
+        try {
+            \Glue\Crm\QuoteRequests::onDocumentSigned($id);
+        } catch (\Throwable $e) {
+            Log::write('crm', 'quote_accept_stock_failed', 'sign_document', $id, ['error' => $e->getMessage()]);
+        }
+
         // Send the customer their copy.
         (new Scheduler())->enqueue([
             'entity_type'    => 'contact',

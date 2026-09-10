@@ -204,6 +204,30 @@ if (($_GET['find'] ?? '') === 'contacts') {
     exit;
 }
 
+// ---- article lookup for the quote builder (?find=articles&q=...) ----
+// Office only: sellers never build quotes, and the builder is where prices are
+// set. Priced from the LIST (listino) — the discounts go on top of that.
+if (($_GET['find'] ?? '') === 'articles') {
+    header('Content-Type: application/json');
+    $fq = trim((string)($_GET['q'] ?? ''));
+    if ($isAgent || $isTech || mb_strlen($fq) < 2) {
+        echo json_encode([]);
+        exit;
+    }
+    echo json_encode(array_map(
+        fn(array $a): array => [
+            'id'          => (int)$a['id'],
+            'code'        => (string)$a['code'],
+            'description' => (string)($a['description'] ?? ''),
+            'price'       => (float)$a['list_price'],
+            'vat'         => $a['vat_rate'] !== null ? (float)$a['vat_rate'] : 22.0,
+            'available'   => (float)$a['stock_available'],
+        ],
+        \Glue\Crm\Articles::search(['q' => $fq], 1, 20)['rows']
+    ), JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // ---- live chat poll (?poll=ticket&tk=<id>&after=<msgId>) ----
 // Returns messages newer than <after> as ready-to-append HTML, so an open
 // thread stays current without a page refresh. Same scope as viewing: admins
@@ -934,6 +958,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['dash_flash'] = \Glue\Crm\QuoteRequests::cancel((int)$_POST['id'], $uid)
                     ? [$t('qt_cancelled'), 'ok'] : [$t('not_allowed'), 'err'];
                 header('Location: ?tab=quotes');
+                exit;
+            }
+            case 'quote_lines_save': { // office only — the quote builder
+                $qid = (int)($_POST['id'] ?? 0);
+                $qs  = \Glue\Crm\QuoteRequests::saveLines($qid, (array)($_POST['lines'] ?? []), [
+                    'discount_pct'   => $_POST['discount_pct'] ?? '',
+                    'valid_until'    => $_POST['valid_until'] ?? '',
+                    'customer_notes' => $_POST['customer_notes'] ?? '',
+                ], $uid);
+                if (empty($qs['ok'])) {
+                    $_SESSION['dash_flash'] = [$t('qt_err_' . ($qs['error'] ?? 'not_found')), 'err'];
+                    header('Location: ?tab=quotes&build=' . $qid);
+                    exit;
+                }
+                if (($_POST['then'] ?? '') === 'generate') {
+                    $qg = \Glue\Crm\QuoteRequests::generateDocument($qid, $uid);
+                    if (!empty($qg['ok'])) {
+                        $_SESSION['dash_flash'] = [sprintf($t('qt_generated'), (string)$qg['number']), 'ok'];
+                        header('Location: ?tab=quotes');
+                        exit;
+                    }
+                    $qe = (string)($qg['error'] ?? 'save_failed');
+                    $_SESSION['dash_flash'] = [$t('qt_err_' . $qe) !== 'qt_err_' . $qe
+                        ? $t('qt_err_' . $qe) : $t('qt_err_save_failed'), 'err'];
+                } else {
+                    $_SESSION['dash_flash'] = [$t('qt_lines_saved'), 'ok'];
+                }
+                header('Location: ?tab=quotes&build=' . $qid);
                 exit;
             }
 
