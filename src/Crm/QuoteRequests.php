@@ -46,6 +46,8 @@ final class QuoteRequests
     public const CANCELLED = 'cancelled';
     /** Signed by the customer. Terminal: the stock has been drawn. */
     public const ACCEPTED = 'accepted';
+    /** The seller looked at the generated quote and sent it back for changes. */
+    public const REVISION = 'revision';
 
     // ---- asking ---------------------------------------------------------------
 
@@ -301,6 +303,10 @@ final class QuoteRequests
         if (!$r || empty($r['document_id'])) {
             return ['ok' => false, 'error' => 'no_quote'];
         }
+        // The file on it is the version the seller asked to have changed.
+        if ((string)$r['status'] === self::REVISION) {
+            return ['ok' => false, 'error' => 'revision'];
+        }
         if (!SignDocs::send((int)$r['document_id'], $userId)) {
             return ['ok' => false, 'error' => 'send_failed'];
         }
@@ -312,6 +318,70 @@ final class QuoteRequests
             "Quote #$id sent to the customer for review and signature", $userId);
         Log::write('crm', 'quote_sent', 'lead', (int)$r['lead_id'],
             ['request_id' => $id, 'document_id' => (int)$r['document_id'], 'by' => $userId]);
+        return ['ok' => true];
+    }
+
+    /**
+     * The seller looked at the generated quote and wants something changed
+     * before it goes out — the client's "view file and request modification",
+     * next to "send to the customer". It goes back to the office with what
+     * should change; the office edits it in the builder and regenerates, which
+     * puts it back to READY and tells the seller again (notifyRequester).
+     *
+     * Allowed on a quote that exists and has not been signed: READY (not sent
+     * yet), SENT (the customer came back with changes) or already REVISION (the
+     * seller adds to their request). While a change is pending the old file
+     * cannot be sent — sendToCustomer() refuses.
+     *
+     * The office hears about it by WhatsApp and email — admins only, the same
+     * rule every quote notification follows.
+     *
+     * @return array{ok:bool, error?:string}
+     */
+    public static function requestRevision(int $id, ?int $userId, string $note): array
+    {
+        $r = self::find($id);
+        if (!$r) {
+            return ['ok' => false, 'error' => 'not_found'];
+        }
+        if (empty($r['document_id'])
+            || !in_array((string)$r['status'], [self::READY, self::SENT, self::REVISION], true)) {
+            return ['ok' => false, 'error' => 'not_ready'];
+        }
+        $note = trim($note);
+        if ($note === '') {
+            return ['ok' => false, 'error' => 'no_revise_note'];
+        }
+
+        Db::pdo()->prepare(
+            'UPDATE quote_requests SET status = ?, revision_note = ?, revision_requested_at = NOW(),
+                    revision_by = ? WHERE id = ?'
+        )->execute([self::REVISION, $note, $userId ?: null, $id]);
+
+        $number = (string)($r['number'] ?? '') ?: ('#' . $id);
+        Activities::add('lead', (int)$r['lead_id'], 'system',
+            "Modifica richiesta al preventivo $number:\n" . $note, $userId);
+        Log::write('crm', 'quote_revision_requested', 'lead', (int)$r['lead_id'],
+            ['request_id' => $id, 'by' => $userId]);
+
+        try {
+            $lead  = Leads::find((int)$r['lead_id']) ?: [];
+            $who   = trim((string)($lead['customer_name'] ?? '')) ?: ('#' . (int)$r['lead_id']);
+            $agent = self::staffName($userId);
+            $brand = (string)Config::get('app.company_name', 'CRM');
+            $link  = Config::appBaseUrl() . '/dashboard.php?tab=quotes&build=' . $id;
+            $text  = "✏️ $brand — $agent chiede una modifica al preventivo $number per $who:\n"
+                   . $note . "\n\nApri il preventivo: $link";
+            $html  = '<p>✏️ <b>' . htmlspecialchars($agent, ENT_QUOTES) . '</b> chiede una modifica al preventivo <b>'
+                   . htmlspecialchars($number, ENT_QUOTES) . '</b> per ' . htmlspecialchars($who, ENT_QUOTES) . ':</p>'
+                   . '<p>' . nl2br(htmlspecialchars($note, ENT_QUOTES)) . '</p>'
+                   . '<p><a href="' . htmlspecialchars($link, ENT_QUOTES) . '">Apri il preventivo nel CRM</a></p>';
+            self::sendToStaff('admin', $text, "Modifica richiesta — preventivo $number", $html);
+        } catch (Throwable $e) {
+            // The request is recorded either way; a failed message must not lose it.
+            Log::write('crm', 'quote_revision_notify_failed', 'lead', (int)$r['lead_id'],
+                ['request_id' => $id, 'error' => $e->getMessage()]);
+        }
         return ['ok' => true];
     }
 
@@ -718,7 +788,7 @@ final class QuoteRequests
     public static function openCount(): int
     {
         return (int)Db::pdo()->query(
-            "SELECT COUNT(*) FROM quote_requests WHERE status = 'open'"
+            "SELECT COUNT(*) FROM quote_requests WHERE status IN ('open','revision')"
         )->fetchColumn();
     }
 

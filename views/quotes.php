@@ -33,13 +33,14 @@ $sources = \Glue\Crm\Leads::sources();
 
 $qColor = [QuoteRequests::OPEN => 'var(--amber)', QuoteRequests::READY => 'var(--accent)',
            QuoteRequests::SENT => 'var(--green)', QuoteRequests::CANCELLED => 'var(--muted)',
-           QuoteRequests::ACCEPTED => 'var(--green)'];
+           QuoteRequests::ACCEPTED => 'var(--green)',
+           QuoteRequests::REVISION => 'var(--amber)'];
 ?>
 <h2><?= $h($t('nav_quotes')) ?></h2>
 <p class="muted small" style="margin:-6px 0 14px"><?= $h($t('qt_sub')) ?></p>
 
 <div class="grid" style="margin-bottom:16px">
-  <?php foreach ([QuoteRequests::OPEN => 'clock', QuoteRequests::READY => 'documents',
+  <?php foreach ([QuoteRequests::OPEN => 'clock', QuoteRequests::REVISION => 'pen', QuoteRequests::READY => 'documents',
                   QuoteRequests::SENT => 'send'] as $qk => $qic): ?>
     <div class="tile">
       <div class="tile-top"><?= svg($qic) ?><span><?= $h($t('qt_st_' . $qk)) ?></span></div>
@@ -105,7 +106,10 @@ $qColor = [QuoteRequests::OPEN => 'var(--amber)', QuoteRequests::READY => 'var(-
         </div>
         <div class="muted small"><?= phone_link($h, $q['customer_phone']) ?> <?= $h($q['customer_email']) ?></div>
       </td>
-      <td><div class="note-clip l4" style="max-width:320px;white-space:pre-wrap"><?= $h($q['notes']) ?></div></td>
+      <td><div class="note-clip l4" style="max-width:320px;white-space:pre-wrap"><?= $h($q['notes']) ?></div>
+        <?php if ($qst === QuoteRequests::REVISION && !empty($q['revision_note'])): ?>
+          <div class="small" style="margin-top:6px;color:var(--amber);white-space:pre-wrap;max-width:320px">✏️ <?= $h($q['revision_note']) ?></div>
+        <?php endif; ?></td>
       <td class="small"><?= $h($q['requester_name'] ?: ($q['requester_username'] ?: '—')) ?></td>
       <td><span class="pill" style="color:<?= $qColor[$qst] ?? 'var(--muted)' ?>"><?= $h($t('qt_st_' . $qst)) ?></span></td>
       <td class="small">
@@ -139,17 +143,37 @@ $qColor = [QuoteRequests::OPEN => 'var(--amber)', QuoteRequests::READY => 'var(-
             </form>
           </details>
         <?php endif; ?>
-        <?php if (!empty($q['document_id']) && !in_array($qst, [QuoteRequests::CANCELLED, QuoteRequests::ACCEPTED], true)): ?>
+        <?php // Look before sending: the file exactly as the customer will get it. ?>
+        <?php if (!empty($q['document_id']) && $qst !== QuoteRequests::CANCELLED): ?>
+          <a class="btn ghost tiny" href="?sdl=<?= (int)$q['document_id'] ?>&amp;k=orig" target="_blank"><?= svg('eye') ?> <?= $h($t('qt_view')) ?></a>
+        <?php endif; ?>
+        <?php // Not while a change is pending: the file on it is the one being fixed. ?>
+        <?php if (!empty($q['document_id']) && !in_array($qst, [QuoteRequests::CANCELLED, QuoteRequests::ACCEPTED, QuoteRequests::REVISION], true)): ?>
           <form method="post" style="display:inline" onsubmit="return confirm('<?= $h($t('qt_send_confirm')) ?>')">
             <input type="hidden" name="do" value="quote_send"><input type="hidden" name="id" value="<?= (int)$q['id'] ?>">
             <button class="btn tiny"><?= svg('send') ?> <?= $h($t($qst === QuoteRequests::SENT ? 'qt_resend' : 'qt_send')) ?></button>
           </form>
         <?php endif; ?>
+        <?php // ...or send it BACK to the office — "view file and request modification",
+              // in the seller's own area. The office edits it in the builder. ?>
+        <?php if (!empty($isAgent) && !empty($q['document_id']) && in_array($qst, [QuoteRequests::READY, QuoteRequests::SENT], true)): ?>
+          <details class="drawer" style="display:inline-block;text-align:left">
+            <summary class="btn ghost tiny"><?= svg('pen') ?> <?= $h($t('qt_revise')) ?></summary>
+            <form method="post" class="card" style="margin-top:8px;min-width:280px;white-space:normal">
+              <input type="hidden" name="do" value="quote_revise">
+              <input type="hidden" name="id" value="<?= (int)$q['id'] ?>">
+              <label class="fld"><span><?= $h($t('qt_revise_what')) ?></span>
+                <textarea name="note" rows="3" required placeholder="<?= $h($t('qt_revise_ph')) ?>"></textarea></label>
+              <p class="muted small" style="margin:-6px 0 10px"><?= $h($t('qt_revise_hint')) ?></p>
+              <button class="btn tiny"><?= $h($t('qt_revise_send')) ?></button>
+            </form>
+          </details>
+        <?php endif; ?>
         <a class="btn ghost tiny" href="?tab=leads&amp;lead=<?= (int)$q['lead_id'] ?>"><?= $h($t('qt_open_lead')) ?></a>
         <?php // Straight to the person's own page, where the quote, the chat and
               // everything else about them sits together. Works whether or not
               // they are in the gestionale registry. ?>
-        <?php if (!empty($q['contact_id'])): ?>
+        <?php if (empty($isAgent) && !empty($q['contact_id'])): // the customer page is office-only ?>
           <a class="btn ghost tiny" href="?tab=customers&amp;id=<?= (int)$q['contact_id'] ?>"><?= $h($t('qt_open_customer')) ?></a>
         <?php endif; ?>
         <?php if (empty($isAgent) && !in_array($qst, [QuoteRequests::SENT, QuoteRequests::CANCELLED, QuoteRequests::ACCEPTED], true)): ?>

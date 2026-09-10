@@ -57,7 +57,12 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
   the seller sends it through the signing flow, so it can be read *and signed*
   on the spot. **Stock is drawn when the customer signs** — once only, never
   when the quote is merely built or sent. Uploading a finished PDF remains an
-  alternative.
+  alternative. Before it goes out the seller can **open the PDF** and, if
+  something is wrong, **send it back with a change request**: the quote turns
+  *Change requested*, the office is told (WhatsApp + email, admins only) and
+  finds the note above the lines in the builder, and regenerating puts it back
+  to *Ready* and tells the seller. The version sent back cannot go to the
+  customer.
 - **Partner area** (`public/partner.php`): partners log into their own page —
   not the CRM — and do exactly three things. They **enter their own leads**
   (typed in, or brought in by sharing their `request.php?ref=CODE` link); they

@@ -137,7 +137,7 @@ $agentActions = [
     'doc_create', 'doc_send', 'doc_void',
     // Asking the office for a quote and sending back the answer is the seller's
     // job; uploading the quote and cancelling a request are the office's.
-    'quote_scratch', 'quote_send',
+    'quote_scratch', 'quote_send', 'quote_revise',
 ];
 
 // ---- ticket attachment download (?dl=<message_id>) ----
@@ -959,6 +959,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $_SESSION['dash_flash'] = empty($qr['ok'])
                     ? [$t('qt_err_' . ($qr['error'] ?? 'no_quote')), 'err']
                     : [$t('qt_sent'), 'ok'];
+                header('Location: ?tab=quotes');
+                exit;
+            }
+            // The seller sends the generated quote back for changes. Owner-guarded
+            // by the quote_ prefix above: only the seller who asked for it.
+            case 'quote_revise': {
+                $qr = \Glue\Crm\QuoteRequests::requestRevision((int)$_POST['id'], $uid, (string)($_POST['note'] ?? ''));
+                $_SESSION['dash_flash'] = empty($qr['ok'])
+                    ? [$t('qt_err_' . ($qr['error'] ?? 'not_ready')), 'err']
+                    : [$t('qt_revised'), 'ok'];
                 header('Location: ?tab=quotes');
                 exit;
             }

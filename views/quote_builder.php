@@ -96,6 +96,16 @@ $row = function (array $l, string $i) use ($h, $t, $num, $pr): string {
     <div class="muted small" style="margin-top:8px"><?= $h($reqBy) ?> · <?= $h(short_time($q['created_at'])) ?></div>
   </div>
 
+  <?php // The seller sent the generated quote back: what they want changed sits
+        // right above the lines it is about. Regenerating clears the status. ?>
+  <?php if ((string)$q['status'] === QuoteRequests::REVISION && !empty($q['revision_note'])): ?>
+  <div class="card" style="border-color:var(--amber)">
+    <h3 style="color:var(--amber)">✏️ <?= $h($t('qt_revision_h')) ?></h3>
+    <div style="white-space:pre-wrap;line-height:1.55"><?= $h($q['revision_note']) ?></div>
+    <div class="muted small" style="margin-top:8px"><?= $h($reqBy) ?> · <?= $h(short_time($q['revision_requested_at'])) ?></div>
+  </div>
+  <?php endif; ?>
+
   <form method="post" class="card" id="qb-form">
     <input type="hidden" name="do" value="quote_lines_save">
     <input type="hidden" name="id" value="<?= (int)$q['id'] ?>">
