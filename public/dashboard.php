@@ -206,7 +206,11 @@ if (($_GET['find'] ?? '') === 'contacts') {
 
 // ---- article lookup for the quote builder (?find=articles&q=...) ----
 // Office only: sellers never build quotes, and the builder is where prices are
-// set. Priced from the LIST (listino) — the discounts go on top of that.
+// set. Priced from the LISTINO, the discounts going on top of it; where the
+// gestionale has no listino but does have price list 4, that is the price.
+// Where it has neither — 2,239 articles, CASH.0536 among them — the price is 0
+// and 'source' says 'none', so the builder can SAY there is no price rather
+// than let a 0,00 line slide onto a document the customer signs.
 if (($_GET['find'] ?? '') === 'articles') {
     header('Content-Type: application/json');
     $fq = trim((string)($_GET['q'] ?? ''));
@@ -219,7 +223,11 @@ if (($_GET['find'] ?? '') === 'articles') {
             'id'          => (int)$a['id'],
             'code'        => (string)$a['code'],
             'description' => (string)($a['description'] ?? ''),
-            'price'       => (float)$a['list_price'],
+            'listino'     => (float)$a['list_price'],
+            'vendita'     => (float)($a['sale_price4'] ?? 0),
+            'price'       => (float)$a['list_price'] > 0 ? (float)$a['list_price'] : (float)($a['sale_price4'] ?? 0),
+            'source'      => (float)$a['list_price'] > 0 ? 'listino'
+                           : ((float)($a['sale_price4'] ?? 0) > 0 ? 'vendita' : 'none'),
             'vat'         => $a['vat_rate'] !== null ? (float)$a['vat_rate'] : 22.0,
             'available'   => (float)$a['stock_available'],
         ],

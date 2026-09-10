@@ -61,6 +61,9 @@ $row = function (array $l, string $i) use ($h, $t, $num, $pr): string {
       <div class="muted small qb-avail"><?= $h($t('qt_avail')) ?> <span class="qb-avail-n"><?= $h($num($avail)) ?></span><span
         class="qb-short" hidden style="color:var(--amber)"> · <?= $h($t('qt_short')) ?></span></div>
     <?php endif; ?>
+    <?php if ($isArt): ?>
+      <div class="small qb-noprice" style="color:var(--amber)"<?= (float)($l['unit_price'] ?? 0) > 0 ? ' hidden' : '' ?>><?= $h($t('qt_no_price')) ?></div>
+    <?php endif; ?>
   </td>
   <td><input class="qb-n qb-qty" name="lines[<?= $h($i) ?>][qty]" value="<?= $h($num($l['qty'] ?? 1)) ?>" inputmode="decimal"></td>
   <td><input class="qb-n qb-price" name="lines[<?= $h($i) ?>][price]" value="<?= $h($pr($l['unit_price'] ?? 0)) ?>" inputmode="decimal"></td>
@@ -145,7 +148,7 @@ $row = function (array $l, string $i) use ($h, $t, $num, $pr): string {
       <?php endif; ?>
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn ghost" name="then" value="save"><?= $h($t('qt_save_draft')) ?></button>
-        <button class="btn" name="then" value="generate"><?= svg('documents') ?> <?= $h($t('qt_generate')) ?></button>
+        <button class="btn" name="then" value="generate" id="qb-gen"><?= svg('documents') ?> <?= $h($t('qt_generate')) ?></button>
       </div>
     </fieldset>
   </form>
@@ -215,6 +218,10 @@ $row = function (array $l, string $i) use ($h, $t, $num, $pr): string {
 <script>
 var QB_NONE  = <?= json_encode($t('qt_no_article'), JSON_UNESCAPED_UNICODE) ?>;
 var QB_AVAIL = <?= json_encode($t('qt_avail'), JSON_UNESCAPED_UNICODE) ?>;
+var QB_NOPRICE = <?= json_encode($t('qt_no_price_short'), JSON_UNESCAPED_UNICODE) ?>;
+var QB_LISTINO = <?= json_encode($t('qt_listino'), JSON_UNESCAPED_UNICODE) ?>;
+var QB_VENDITA = <?= json_encode($t('qt_vendita'), JSON_UNESCAPED_UNICODE) ?>;
+var QB_ZERO    = <?= json_encode($t('qt_zero_confirm'), JSON_UNESCAPED_UNICODE) ?>;
 (function () {
   var body = document.getElementById('qb-body');
   if (!body) return;
@@ -246,6 +253,8 @@ var QB_AVAIL = <?= json_encode($t('qt_avail'), JSON_UNESCAPED_UNICODE) ?>;
       gross += g; net += n; vat[v] = (vat[v] || 0) + n;
       var sh = tr.querySelector('.qb-short'), av = tr.dataset.avail;
       if (sh) sh.hidden = !(av !== undefined && av !== '' && q > parseFloat(av));
+      var np = tr.querySelector('.qb-noprice');
+      if (np) np.hidden = p > 0;
     });
     var vt = 0;
     Object.keys(vat).forEach(function (r) { vt += r2(vat[r] * parseFloat(r) / 100); });
@@ -297,7 +306,12 @@ var QB_AVAIL = <?= json_encode($t('qt_avail'), JSON_UNESCAPED_UNICODE) ?>;
             var st = document.createElement('strong'); st.textContent = a.code; b.appendChild(st);
             b.appendChild(document.createTextNode(' — ' + a.description));
             var sp = document.createElement('span'); sp.className = 'sub';
-            sp.textContent = QB_AVAIL + ' ' + a.available.toLocaleString('it-IT') + ' · EUR ' + eur(a.price);
+            var prices = [];
+            if (a.listino > 0) prices.push(QB_LISTINO + ' EUR ' + eur(a.listino));
+            if (a.vendita > 0) prices.push(QB_VENDITA + ' EUR ' + eur(a.vendita));
+            sp.textContent = QB_AVAIL + ' ' + a.available.toLocaleString('it-IT') + ' · '
+              + (prices.length ? prices.join(' · ') : QB_NOPRICE);
+            if (!prices.length) sp.style.color = 'var(--amber)';
             b.appendChild(sp);
             b.addEventListener('click', function () {
               close(); box.value = '';
@@ -312,6 +326,10 @@ var QB_AVAIL = <?= json_encode($t('qt_avail'), JSON_UNESCAPED_UNICODE) ?>;
                 var n = tr.querySelector('.qb-avail-n');
                 if (n) n.textContent = a.available.toLocaleString('it-IT');
               });
+              if (a.source === 'none') {
+                var last = body.lastElementChild, pr = last && last.querySelector('.qb-price');
+                if (pr) { pr.focus(); pr.select(); }
+              }
             });
             hits.appendChild(b);
           });
@@ -327,6 +345,17 @@ var QB_AVAIL = <?= json_encode($t('qt_avail'), JSON_UNESCAPED_UNICODE) ?>;
   document.addEventListener('click', function (e) {
     if (e.target !== box && !hits.contains(e.target)) close();
   });
+  // A 0,00 line may be a deliberate freebie, so it is asked about, not refused.
+  var gen = document.getElementById('qb-gen');
+  if (gen) {
+    gen.addEventListener('click', function (e) {
+      var zero = 0;
+      body.querySelectorAll('tr.qb-row').forEach(function (tr) {
+        if (num(tr.querySelector('.qb-price').value) <= 0) zero++;
+      });
+      if (zero > 0 && !confirm(QB_ZERO.replace('%d', zero))) e.preventDefault();
+    });
+  }
   recompute();
 })();
 </script>
