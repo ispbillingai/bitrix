@@ -17,29 +17,37 @@ use Glue\Sign\Pdf;
  * base-14 fonts only reach it through an encoding detour, and a legal document
  * is the wrong place to find out a renderer disagrees.
  *
- * The table repeats its header on every page, and the totals and the
- * acceptance note never split from the page they start on.
+ * Every page carries the quote number and its page number in the footer, the
+ * table repeats its header on every page it continues onto, and the totals and
+ * the acceptance note never split from the page they start on. A product code
+ * is never broken mid-token — it is an identifier, and "CASH-SELF106" over a
+ * lone "0" reads as a different product.
  */
 final class QuotePdf
 {
     private const M    = 42.0;   // page margin
-    private const FOOT = 44.0;   // keep-clear at the page bottom
+    private const FOOT = 44.0;   // keep-clear at the page bottom (the footer lives in it)
     private const RH   = 11.0;   // line height inside a table row
 
     private Pdf $pdf;
     private float $y = self::M;
+    private int $pageNo = 1;
+    private string $number;
     /** @var array<string,string> */
     private array $L;
     /** @var array<string,array<string,float>> */
     private array $cols;
 
-    private function __construct(string $title, string $lang)
+    private function __construct(string $title, string $lang, string $number)
     {
         $this->pdf = new Pdf($title, (string)Config::get('app.company_name', 'CRM'));
         $this->pdf->addPage();
+        $this->number = $number;
 
         $it = [
             'title'       => 'PREVENTIVO',
+            'doc_ref'     => 'Preventivo',
+            'page'        => 'Pagina %d',
             'number'      => 'N.',
             'date'        => 'Data',
             'valid'       => 'Valido fino al',
@@ -66,6 +74,8 @@ final class QuotePdf
         ];
         $en = [
             'title'       => 'QUOTE',
+            'doc_ref'     => 'Quote',
+            'page'        => 'Page %d',
             'number'      => 'No.',
             'date'        => 'Date',
             'valid'       => 'Valid until',
@@ -92,14 +102,17 @@ final class QuotePdf
         $this->L = $lang === 'en' ? $en : $it;
 
         // Text columns carry a left x and a width; number columns a right edge.
+        // Laid out from the right so every numeric column fits its widest real
+        // value ("123.456,78" in bold) with a clear gap to its neighbour, and
+        // the code column is wide enough for the catalogue's longest codes.
         $R = Pdf::A4_W - self::M;
         $this->cols = [
-            'code'  => ['x' => self::M,        'w' => 66.0],
-            'desc'  => ['x' => self::M + 70.0, 'w' => 176.0],
-            'qty'   => ['r' => self::M + 70.0 + 176.0 + 40.0],
-            'price' => ['r' => $R - 170.0],
-            'disc'  => ['r' => $R - 128.0],
-            'vat'   => ['r' => $R - 88.0],
+            'code'  => ['x' => self::M,        'w' => 90.0],
+            'desc'  => ['x' => self::M + 94.0, 'w' => 187.0],
+            'qty'   => ['r' => $R - 200.0],
+            'price' => ['r' => $R - 140.0],
+            'disc'  => ['r' => $R - 102.0],
+            'vat'   => ['r' => $R - 66.0],
             'total' => ['r' => $R],
         ];
     }
@@ -114,7 +127,7 @@ final class QuotePdf
     {
         $lang   = ($lead['lang'] ?? 'it') === 'en' ? 'en' : 'it';
         $number = (string)($q['number'] ?? '');
-        $b      = new self('Preventivo ' . $number, $lang);
+        $b      = new self('Preventivo ' . $number, $lang, $number);
         $L      = $b->L;
         $R      = Pdf::A4_W - self::M;
         $navy   = [0.1, 0.13, 0.35];
@@ -210,6 +223,7 @@ final class QuotePdf
         $b->y += 10;
         $b->paragraphPaged($L['accept'], self::M, Pdf::A4_W - 2 * self::M, 8.5, $grey);
 
+        $b->footer();   // the last page's footer; earlier ones were drawn at each break
         return $b->pdf->render();
     }
 
@@ -234,13 +248,26 @@ final class QuotePdf
         $this->y += 5;
     }
 
-    /** One priced line; wraps code and description, repeats the header on a new page. */
+    /** One priced line; wraps the description, repeats the header on a new page. */
     private function tableRow(array $l): void
     {
         $c     = $this->cols;
         $sz    = 8.5;
         $isArt = ($l['kind'] ?? '') === 'article';
-        $codeLines = $isArt ? Pdf::wrap((string)($l['code'] ?? ''), $c['code']['w'], Pdf::FONT_REGULAR, $sz)
+        $code  = (string)($l['code'] ?? '');
+
+        // A product code is an identifier: shrink it until its longest token
+        // fits rather than let the wrap cut it. Only a code that contains spaces
+        // can still go onto a second line, and then only at a space.
+        $codeSz = $sz;
+        if ($isArt && $code !== '') {
+            $widest = static fn(float $s): float => max(array_map(
+                static fn(string $w): float => Pdf::widthOf($w, Pdf::FONT_REGULAR, $s), explode(' ', $code)));
+            while ($codeSz > 6.0 && $widest($codeSz) > $c['code']['w']) {
+                $codeSz -= 0.5;
+            }
+        }
+        $codeLines = $isArt ? Pdf::wrap($code, $c['code']['w'], Pdf::FONT_REGULAR, $codeSz)
                             : [$this->L['service']];
         $descLines = Pdf::wrap((string)$l['description'], $c['desc']['w'], Pdf::FONT_REGULAR, $sz);
         $codeLines = $codeLines ?: [''];
@@ -248,14 +275,13 @@ final class QuotePdf
         $h = max(count($codeLines), count($descLines)) * self::RH + 6;
 
         if ($this->y + $h > Pdf::A4_H - self::FOOT) {
-            $this->pdf->addPage();
-            $this->y = self::M;
+            $this->newPage();
             $this->tableHead();
         }
 
         $y = $this->y + 9;
         foreach ($codeLines as $i => $s) {
-            $this->pdf->text($c['code']['x'], $y + $i * self::RH, $s, Pdf::FONT_REGULAR, $sz,
+            $this->pdf->text($c['code']['x'], $y + $i * self::RH, $s, Pdf::FONT_REGULAR, $isArt ? $codeSz : $sz,
                 $isArt ? [0, 0, 0] : [0.4, 0.4, 0.45]);
         }
         foreach ($descLines as $i => $s) {
@@ -317,9 +343,32 @@ final class QuotePdf
     private function ensure(float $need): void
     {
         if ($this->y + $need > Pdf::A4_H - self::FOOT) {
-            $this->pdf->addPage();
-            $this->y = self::M;
+            $this->newPage();
         }
+    }
+
+    /** Close the current page with its footer and start the next one. */
+    private function newPage(): void
+    {
+        $this->footer();
+        $this->pdf->addPage();
+        $this->pageNo++;
+        $this->y = self::M;
+    }
+
+    /**
+     * Quote number left, page number right, under a hairline — so a page that
+     * comes loose from the rest (page 2 is often nothing but the totals) still
+     * says which quote it belongs to.
+     */
+    private function footer(): void
+    {
+        $y   = Pdf::A4_H - 22.0;
+        $rgb = [0.5, 0.5, 0.55];
+        $this->pdf->line(self::M, $y - 10, Pdf::A4_W - self::M, $y - 10, 0.3, [0.85, 0.85, 0.88]);
+        $this->pdf->text(self::M, $y, $this->L['doc_ref'] . ' ' . $this->number, Pdf::FONT_REGULAR, 7.5, $rgb);
+        $this->pdf->textRight(Pdf::A4_W - self::M, $y, sprintf($this->L['page'], $this->pageNo),
+            Pdf::FONT_REGULAR, 7.5, $rgb);
     }
 
     private static function eur($n): string
