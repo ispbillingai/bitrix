@@ -67,6 +67,13 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
   referral is created and ownership never transfers, and the partner is told
   exactly that rather than thanked for a lead that does not exist. Each lead
   shows its **zone** and when its status last moved.
+- **Warehouse** (`views/articles.php`): the gestionale’s ARTICO catalogue —
+  ~7,600 articles with prices, VAT, shelf, supplier and stock — searchable by
+  code, barcode, description, supplier code or shelf, with filters for in
+  stock / negative / on order / serial-tracked. **Read only**: the export is a
+  full snapshot and the cron re-imports it every 15 minutes, so the gestionale
+  stays the source of truth. Cost price, margin and stock value are admin-only;
+  sellers see list and sale prices and availability.
 - **Documents (electronic signature)**: upload a PDF, send it for signature, the
   customer confirms with a one-time code, and the CRM seals the result itself —
   a CAdES-signed PDF holding a signature certificate plus the original document,
@@ -101,6 +108,7 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 | Mass WhatsApp/email marketing | `campaign.php` + `Campaign\Sender` (throttled) |
 | Sign a document with an OTP, in-house | `views/documents.php` → `Sign\Documents` → `Sign\Signer` (CAdES) → `public/sign.php` / `public/verify.php` |
 | Charge a card / monthly support contract | `views/payments.php` → `Pay\Contracts` → `Pay\SmallPay` → `webhooks/smallpay-status.php` |
+| Warehouse: the gestionale catalogue, searchable, with stock | `bin/import-articoli.php` (cron) → `Crm\ArticleImport` → `Crm\Articles` → `views/articles.php` |
 | Bitrix24 sync | **optional** `Sync\BitrixSync`, off by default |
 
 ## Layout
