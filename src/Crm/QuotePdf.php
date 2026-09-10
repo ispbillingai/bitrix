@@ -256,19 +256,46 @@ final class QuotePdf
         $isArt = ($l['kind'] ?? '') === 'article';
         $code  = (string)($l['code'] ?? '');
 
-        // A product code is an identifier: shrink it until its longest token
-        // fits rather than let the wrap cut it. Only a code that contains spaces
-        // can still go onto a second line, and then only at a space.
+        // A product code is an identifier, so it is never cut mid-token. First
+        // shrink it (down to 6.5pt) to get the whole code onto one line. If it is
+        // too long even then, break it only AFTER a separator (- . / _) or at a
+        // space: "COMM-ECOBOT-" over "CLEANING-SYSTEM-4" still reads as one
+        // code, "COMM-ECOBOT-CLEANING-SYSTEM-" over a lone "4" does not. A run of
+        // characters wider than the whole column is the only thing ever split,
+        // as a last resort.
         $codeSz = $sz;
         if ($isArt && $code !== '') {
-            $widest = static fn(float $s): float => max(array_map(
-                static fn(string $w): float => Pdf::widthOf($w, Pdf::FONT_REGULAR, $s), explode(' ', $code)));
-            while ($codeSz > 6.0 && $widest($codeSz) > $c['code']['w']) {
+            while ($codeSz > 6.5 && Pdf::widthOf($code, Pdf::FONT_REGULAR, $codeSz) > $c['code']['w']) {
                 $codeSz -= 0.5;
             }
         }
-        $codeLines = $isArt ? Pdf::wrap($code, $c['code']['w'], Pdf::FONT_REGULAR, $codeSz)
-                            : [$this->L['service']];
+        $pack = static function (string $s, float $w, float $size): array {
+            preg_match_all('/[^\s\-.\/_]*[\-.\/_]|[^\s\-.\/_]+|\s+/u', $s, $m);
+            $out = [];
+            $cur = '';
+            foreach ($m[0] as $tok) {
+                if (trim($tok) === '') {                  // a space: kept only mid-line
+                    $cur .= $cur === '' ? '' : ' ';
+                    continue;
+                }
+                if ($cur !== '' && Pdf::widthOf($cur . $tok, Pdf::FONT_REGULAR, $size) > $w) {
+                    $out[] = rtrim($cur);
+                    $cur = '';
+                }
+                if (Pdf::widthOf($tok, Pdf::FONT_REGULAR, $size) > $w) {   // no break point inside
+                    foreach (Pdf::wrap($tok, $w, Pdf::FONT_REGULAR, $size) as $piece) {
+                        $out[] = $piece;
+                    }
+                    continue;
+                }
+                $cur .= $tok;
+            }
+            if (trim($cur) !== '') {
+                $out[] = rtrim($cur);
+            }
+            return $out ?: [''];
+        };
+        $codeLines = $isArt ? $pack($code, $c['code']['w'], $codeSz) : [$this->L['service']];
         $descLines = Pdf::wrap((string)$l['description'], $c['desc']['w'], Pdf::FONT_REGULAR, $sz);
         $codeLines = $codeLines ?: [''];
         $descLines = $descLines ?: [''];
