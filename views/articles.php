@@ -2,18 +2,75 @@
 /**
  * Magazzino — the article registry the gestionale's ARTICO export fills.
  *
- * Read only, and it says so on the page: the export is a full snapshot and the
- * cron re-imports it every fifteen minutes, so anything typed here would be
- * gone by the next file. Staff come here to FIND an article — by code, by
- * barcode, by what it is called, by supplier — and to see what is on the shelf.
+ * Staff come here to FIND an article — by code, by barcode, by what it is
+ * called, by supplier — and to see what is on the shelf. Admins can also add
+ * products, edit them and remove them.
  *
- * Cost price and stock value are the office's business, not the sales floor's,
- * so agents see the list and sale prices and admins see everything.
+ * Two ownerships, and the page is explicit about which it is looking at (see
+ * Crm\Articles): a gestionale row is refreshed from the export every fifteen
+ * minutes, while a CRM row is kept here and the import leaves it alone. Editing
+ * a gestionale row takes it over, and the form says so before you save.
+ *
+ * Cost price, margin and stock value are the office's business, not the sales
+ * floor's, so agents see list and sale prices and admins see everything. Only
+ * admins get the add/edit/remove controls.
  *
  * In scope: $t, $h, $isAgent.
  */
 
 use Glue\Crm\Articles;
+
+/** The add/edit form. $ed is the article being edited, or null for a new one. */
+function article_form(array $cats, array $sups, callable $h, callable $t, ?array $ed = null): void { ?>
+  <form method="post" class="card" style="margin-top:10px">
+    <input type="hidden" name="do" value="<?= $ed ? 'article_edit' : 'article_create' ?>">
+    <?php if ($ed): ?><input type="hidden" name="id" value="<?= (int)$ed['id'] ?>"><?php endif; ?>
+    <?php if ($ed && (string)$ed['origin'] === 'gestionale'): ?>
+      <p class="muted small" style="margin:0 0 14px;color:var(--amber)"><?= $h($t('ar_detach_warn')) ?></p>
+    <?php endif; ?>
+    <div class="row">
+      <label class="fld"><span><?= $h($t('ar_code')) ?> *</span>
+        <input name="code" value="<?= $h($ed['code'] ?? '') ?>" required></label>
+      <label class="fld"><span><?= $h($t('ar_barcode')) ?></span>
+        <input name="barcode" value="<?= $h($ed['barcode'] ?? '') ?>"></label>
+    </div>
+    <label class="fld"><span><?= $h($t('ar_desc')) ?> *</span>
+      <input name="description" value="<?= $h($ed['description'] ?? '') ?>" required></label>
+    <div class="row">
+      <label class="fld"><span><?= $h($t('ar_list')) ?></span>
+        <input name="list_price" value="<?= $ed ? $h(rtrim(rtrim(number_format((float)$ed['list_price'], 4, ',', ''), '0'), ',')) : '' ?>" placeholder="0,00"></label>
+      <label class="fld"><span><?= $h($t('ar_cost')) ?></span>
+        <input name="cost_price" value="<?= $ed ? $h(rtrim(rtrim(number_format((float)$ed['cost_price'], 4, ',', ''), '0'), ',')) : '' ?>" placeholder="0,00"></label>
+      <label class="fld"><span><?= $h($t('ar_sale')) ?></span>
+        <input name="sale_price4" value="<?= $ed && $ed['sale_price4'] !== null ? $h(rtrim(rtrim(number_format((float)$ed['sale_price4'], 4, ',', ''), '0'), ',')) : '' ?>" placeholder="0,00"></label>
+      <label class="fld"><span><?= $h($t('ar_vat')) ?></span>
+        <input name="vat_rate" value="<?= $ed && $ed['vat_rate'] !== null ? $h(rtrim(rtrim(number_format((float)$ed['vat_rate'], 2, ',', ''), '0'), ',')) : '22' ?>" placeholder="22"></label>
+    </div>
+    <div class="row">
+      <label class="fld"><span><?= $h($t('ar_category')) ?></span>
+        <input name="category" list="ar-cats" value="<?= $h($ed['category'] ?? '') ?>"></label>
+      <label class="fld"><span><?= $h($t('ar_subcategory')) ?></span>
+        <input name="subcategory" value="<?= $h($ed['subcategory'] ?? '') ?>"></label>
+      <label class="fld"><span><?= $h($t('ar_location')) ?></span>
+        <input name="location" value="<?= $h($ed['location'] ?? '') ?>"></label>
+    </div>
+    <div class="row">
+      <label class="fld"><span><?= $h($t('ar_supplier')) ?></span>
+        <input name="supplier" list="ar-sups" value="<?= $h($ed['supplier'] ?? '') ?>"></label>
+      <label class="fld"><span><?= $h($t('ar_supplier_code')) ?> 1</span>
+        <input name="supplier_code1" value="<?= $h($ed['supplier_code1'] ?? '') ?>"></label>
+      <label class="fld"><span><?= $h($t('ar_supplier_code')) ?> 2</span>
+        <input name="supplier_code2" value="<?= $h($ed['supplier_code2'] ?? '') ?>"></label>
+    </div>
+    <label class="fld" style="flex-direction:row;align-items:center;gap:8px">
+      <input type="checkbox" name="has_serials" value="1" style="width:auto"<?= $ed && (int)$ed['has_serials'] === 1 ? ' checked' : '' ?>>
+      <span style="margin:0"><?= $h($t('ar_serials')) ?></span></label>
+    <p class="muted small" style="margin:6px 0 12px"><?= $h($t('ar_stock_note')) ?></p>
+    <button class="btn"><?= $h($t('save')) ?></button>
+  </form>
+  <datalist id="ar-cats"><?php foreach ($cats as $c): ?><option value="<?= $h($c) ?>"><?php endforeach; ?></datalist>
+  <datalist id="ar-sups"><?php foreach ($sups as $c): ?><option value="<?= $h($c) ?>"><?php endforeach; ?></datalist>
+<?php }
 
 $isAdminHere = empty($isAgent);
 $money = fn($n): string => number_format((float)$n, 2, ',', '.');
@@ -38,8 +95,36 @@ if ($a !== null):
     <?php else: ?>
       <span class="pill"><?= $h($t('ar_no_stock')) ?></span>
     <?php endif; ?>
+    <?php if ((string)$a['origin'] === 'crm'): ?>
+      <span class="pill" title="<?= $h($t('ar_origin_crm_h')) ?>"><?= $h($t('ar_origin_crm')) ?></span>
+    <?php endif; ?>
+    <?php if ((int)$a['archived'] === 1): ?>
+      <span class="pill pill-down"><?= $h($t('ar_archived')) ?></span>
+    <?php endif; ?>
   </h2>
+  <?php if ($isAdminHere): ?>
+  <span class="cu-acts">
+    <?php if ((int)$a['archived'] === 1): ?>
+      <form method="post" style="display:inline"><input type="hidden" name="do" value="article_restore">
+        <input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
+        <button class="btn tiny"><?= $h($t('ar_restore')) ?></button></form>
+    <?php else: ?>
+      <form method="post" style="display:inline"
+            onsubmit="return confirm('<?= $h((string)$a['origin'] === 'crm' ? $t('ar_del_confirm') : $t('ar_archive_confirm')) ?>')">
+        <input type="hidden" name="do" value="article_delete"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
+        <button class="btn ghost tiny" style="color:var(--red)">
+          <?= $h((string)$a['origin'] === 'crm' ? $t('delete') : $t('ar_archive')) ?></button></form>
+    <?php endif; ?>
+  </span>
+  <?php endif; ?>
 </div>
+
+<?php if ($isAdminHere && (int)$a['archived'] === 0): ?>
+  <details class="drawer" style="margin-bottom:14px">
+    <summary class="btn ghost"><?= svg('pen') ?> <?= $h($t('ar_edit')) ?></summary>
+    <?php article_form(Articles::categories(), Articles::suppliers(), $h, $t, $a); ?>
+  </details>
+<?php endif; ?>
 
 <div class="cu-cols">
 <div class="cu-main">
@@ -66,6 +151,13 @@ if ($a !== null):
       </td></tr>
       <tr><td class="muted"><?= $h($t('ar_location')) ?></td><td><?= $a['location'] ? '<strong>' . $h($a['location']) . '</strong>' : $dash ?></td></tr>
       <tr><td class="muted"><?= $h($t('ar_serials')) ?></td><td><?= $h($t((int)$a['has_serials'] === 1 ? 'yes' : 'no')) ?></td></tr>
+      <tr><td class="muted"><?= $h($t('ar_origin')) ?></td><td>
+        <?= $h((string)$a['origin'] === 'crm' ? $t('ar_origin_crm') : $t('ar_origin_gest')) ?>
+        <?php if (!empty($a['crm_edited_at'])): ?>
+          <div class="muted small"><?= $h($t('ar_edited')) ?> <?= $h(short_time($a['crm_edited_at'])) ?></div>
+        <?php endif; ?>
+        <div class="muted small"><?= $h((string)$a['origin'] === 'crm' ? $t('ar_origin_crm_h') : $t('ar_origin_gest_h')) ?></div>
+      </td></tr>
     </tbody></table>
   </div>
 
@@ -152,7 +244,17 @@ if ($a !== null):
 ?>
 <div class="cu-top">
   <h2 style="margin:0"><?= $h($t('nav_articles')) ?></h2>
-  <span class="muted small"><?= $h($t('ar_readonly')) ?></span>
+  <span class="muted small"><?= $h($t('ar_sub')) ?></span>
+  <?php if ($isAdminHere): ?>
+    <span class="cu-acts">
+      <details class="drawer">
+        <summary class="btn"><?= svg('articles') ?> <?= $h($t('ar_new')) ?></summary>
+        <div class="card" style="position:absolute;right:20px;z-index:6;width:min(760px,94vw);margin-top:8px;padding:0">
+          <?php article_form(Articles::categories(), Articles::suppliers(), $h, $t, null); ?>
+        </div>
+      </details>
+    </span>
+  <?php endif; ?>
 </div>
 
 <div class="grid stats">
@@ -183,6 +285,8 @@ if ($a !== null):
   <?= $chip('negative', $t('ar_f_negative'), $cnt['negative']) ?>
   <?= $chip('ordered', $t('ar_f_ordered'), $cnt['ordered']) ?>
   <?= $chip('serials', $t('ar_f_serials'), $cnt['serials']) ?>
+  <?= $chip('crm', $t('ar_f_crm'), $cnt['crm']) ?>
+  <?php if ($cnt['archived'] > 0): ?><?= $chip('archived', $t('ar_f_archived'), $cnt['archived']) ?><?php endif; ?>
   <form method="get" class="inline" style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
     <input type="hidden" name="tab" value="articles">
     <input type="hidden" name="state" value="<?= $h($st) ?>">
@@ -228,7 +332,11 @@ if ($a !== null):
         <strong><?= $h($qty($s)) ?></strong></td>
       <td style="text-align:right"><?= $h($money($r['list_price'])) ?></td>
       <?php if ($isAdminHere): ?><td style="text-align:right" class="muted"><?= $h($money($r['cost_price'])) ?></td><?php endif; ?>
-      <td style="text-align:right"><a class="btn ghost tiny" href="?tab=articles&id=<?= (int)$r['id'] ?>"><?= $h($t('cu_open')) ?></a></td>
+      <td style="text-align:right;white-space:nowrap">
+        <?php if ((string)$r['origin'] === 'crm'): ?>
+          <span class="pill" title="<?= $h($t('ar_origin_crm_h')) ?>"><?= $h($t('ar_origin_crm')) ?></span>
+        <?php endif; ?>
+        <a class="btn ghost tiny" href="?tab=articles&id=<?= (int)$r['id'] ?>"><?= $h($t('cu_open')) ?></a></td>
     </tr>
   <?php endforeach; ?>
   </tbody>
@@ -256,6 +364,7 @@ if ($a !== null):
 .cu-side .card{margin:0}
 .pill-up{background:rgba(62,207,142,.15);color:#3ecf8e}
 .pill-down{background:rgba(240,82,82,.15);color:#f05252}
+.cu-acts{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;position:relative}
 @media (max-width:1000px){.cu-cols{flex-direction:column}.cu-side{width:100%}}
 </style>
 <?php endif; ?>

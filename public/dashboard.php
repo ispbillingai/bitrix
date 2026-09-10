@@ -759,6 +759,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $tab = 'leads';
                 break;
 
+            // ---------- warehouse: products the CRM owns ----------
+            // Admin only (the tab is in $agentViews so sellers can LOOK things
+            // up, but the catalogue is not theirs to rewrite).
+            case 'article_create': {
+                $ar = \Glue\Crm\Articles::create($_POST, $uid);
+                $_SESSION['dash_flash'] = empty($ar['ok'])
+                    ? [$t('ar_err_' . ($ar['error'] ?? 'no_code')), 'err']
+                    : [$t('ar_created_ok'), 'ok'];
+                header('Location: ?tab=articles' . (!empty($ar['id']) ? '&id=' . (int)$ar['id'] : ''));
+                exit;
+            }
+            case 'article_edit': {
+                $ar = \Glue\Crm\Articles::update((int)($_POST['id'] ?? 0), $_POST, $uid);
+                $_SESSION['dash_flash'] = empty($ar['ok'])
+                    ? [$t('ar_err_' . ($ar['error'] ?? 'not_found')), 'err']
+                    : [!empty($ar['detached']) ? $t('ar_saved_detached') : $t('ar_saved'), 'ok'];
+                header('Location: ?tab=articles&id=' . (int)($_POST['id'] ?? 0));
+                exit;
+            }
+            case 'article_delete': {
+                $ar = \Glue\Crm\Articles::delete((int)($_POST['id'] ?? 0), $uid);
+                if (empty($ar['ok'])) {
+                    $_SESSION['dash_flash'] = [$t('ar_err_not_found'), 'err'];
+                    header('Location: ?tab=articles');
+                    exit;
+                }
+                // An archived gestionale article still exists — land on it, so it
+                // is obvious it was hidden rather than destroyed.
+                $_SESSION['dash_flash'] = [$ar['archived'] ? $t('ar_archived_ok') : $t('ar_deleted_ok'), 'ok'];
+                header('Location: ?tab=articles' . ($ar['archived'] ? '&id=' . (int)$_POST['id'] : ''));
+                exit;
+            }
+            case 'article_restore': {
+                \Glue\Crm\Articles::restore((int)($_POST['id'] ?? 0), $uid);
+                $_SESSION['dash_flash'] = [$t('ar_restored_ok'), 'ok'];
+                header('Location: ?tab=articles&id=' . (int)($_POST['id'] ?? 0));
+                exit;
+            }
+
             // ---------- an appointment, booked inside the lead ----------
             // Named lead_* so the ownership guard above already applies: a seller
             // can only book on a lead that is theirs.

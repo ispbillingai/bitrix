@@ -20,9 +20,14 @@ use RuntimeException;
  * than one row, because compatible consumables carry the maker's barcode.
  * Codice is unique across the whole file, so it is the identity.
  *
- * Unlike customers there is no staff-owned field here: the gestionale owns
- * every column, the file is the whole truth, and a re-import converges the
- * entire row. That makes the upsert a plain INSERT … ON DUPLICATE KEY UPDATE.
+ * The gestionale owns every column of every row it ships, the file is the whole
+ * truth for those, and a re-import converges the entire row.
+ *
+ * The exception is ownership, added in migration 048 when the warehouse became
+ * editable: a row with origin='crm' was created or edited in the CRM, and the
+ * import must leave it completely alone — not converge its columns, not prune
+ * it. Without that, a product typed into the CRM would be reverted or deleted
+ * by the next snapshot within fifteen minutes, without a word to anybody.
  *
  * Known faults in the export, handled rather than fixed: barcodes arrive with
  * trailing spaces (trimmed); 8 rows have no description (kept — the code is
@@ -118,8 +123,13 @@ final class ArticleImport
             'stock_initial', 'stock', 'stock_ordered', 'stock_available',
             'has_serials', 'has_image', 'last_movement',
         ];
+        // Every column converges from the file — UNLESS the CRM owns the row.
+        // A product added or edited here carries origin='crm', and the whole
+        // point of that flag is that the next snapshot must not quietly undo
+        // somebody's work. IF(origin='crm', <keep>, VALUES(<take>)) does it in
+        // one statement, so the upsert stays a single round trip per row.
         $update = implode(', ', array_map(
-            static fn(string $c) => "$c = VALUES($c)",
+            static fn(string $c) => "$c = IF(articles.origin = 'crm', articles.$c, VALUES($c))",
             array_slice($cols, 1) // everything but the key
         ));
         $upsert = $pdo->prepare(
@@ -163,16 +173,25 @@ final class ArticleImport
             }
             if ($prune) {
                 // The file is a full snapshot: a code it no longer carries is an
-                // article the gestionale deleted. Nothing in the CRM references
-                // articles yet, so pruning is a plain delete — when something
-                // does (deal lines, tickets), add a kept-because-linked guard
-                // here like CustomerImport::prune has.
+                // article the gestionale deleted. CRM-owned products are not in
+                // the file BY DEFINITION — they were never in it — so prune must
+                // never touch them, or adding a product here would be a way of
+                // scheduling its own deletion. (When deal lines or report lines
+                // start pointing at articles, add a kept-because-linked guard
+                // here too, like CustomerImport::prune has.)
                 $gone = array_diff_key($existing, $seenCodes);
-                $out['pruned'] = count($gone);
-                if (!$dryRun && $gone) {
-                    $del = $pdo->prepare('DELETE FROM articles WHERE code = ?');
+                $out['pruned'] = 0;
+                if ($gone) {
+                    $del = $pdo->prepare("DELETE FROM articles WHERE code = ? AND origin = 'gestionale'");
                     foreach (array_keys($gone) as $code) {
+                        if ($dryRun) {
+                            $chk = $pdo->prepare("SELECT 1 FROM articles WHERE code = ? AND origin = 'gestionale'");
+                            $chk->execute([$code]);
+                            $out['pruned'] += $chk->fetchColumn() ? 1 : 0;
+                            continue;
+                        }
                         $del->execute([$code]);
+                        $out['pruned'] += $del->rowCount();
                     }
                 }
             }
