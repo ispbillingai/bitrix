@@ -70,9 +70,13 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 - **Warehouse** (`views/articles.php`): the gestionale’s ARTICO catalogue —
   ~7,600 articles with prices, VAT, shelf, supplier and stock — searchable by
   code, barcode, description, supplier code or shelf, with filters for in
-  stock / negative / on order / serial-tracked. **Read only**: the export is a
-  full snapshot and the cron re-imports it every 15 minutes, so the gestionale
-  stays the source of truth. Cost price, margin and stock value are admin-only;
+  stock / negative / on order / serial-tracked. Products can be **added, edited and removed**, and **stock can be loaded,
+  unloaded or counted** - every change recorded as a movement. Ownership is
+  split so the 15-minute import never undoes it: editing a product takes over
+  its data, correcting a quantity takes over only its stock (prices keep
+  following the gestionale), and a removed gestionale product is hidden rather
+  than deleted. A **minimum stock** per product sends the office one restock
+  alert when it is crossed. Cost price, margin and stock value are admin-only;
   sellers see list and sale prices and availability.
 - **Documents (electronic signature)**: upload a PDF, send it for signature, the
   customer confirms with a one-time code, and the CRM seals the result itself —
@@ -108,7 +112,7 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 | Mass WhatsApp/email marketing | `campaign.php` + `Campaign\Sender` (throttled) |
 | Sign a document with an OTP, in-house | `views/documents.php` → `Sign\Documents` → `Sign\Signer` (CAdES) → `public/sign.php` / `public/verify.php` |
 | Charge a card / monthly support contract | `views/payments.php` → `Pay\Contracts` → `Pay\SmallPay` → `webhooks/smallpay-status.php` |
-| Warehouse: the gestionale catalogue, searchable, with stock | `bin/import-articoli.php` (cron) → `Crm\ArticleImport` → `Crm\Articles` → `views/articles.php` |
+| Warehouse: the gestionale catalogue plus CRM products, editable stock, restock alerts | `bin/import-articoli.php` (cron) → `Crm\ArticleImport` → `Crm\Articles` → `views/articles.php` |
 | Bitrix24 sync | **optional** `Sync\BitrixSync`, off by default |
 
 ## Layout
