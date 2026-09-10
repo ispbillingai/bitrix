@@ -255,11 +255,17 @@ final class Articles
         // "Adding a product must take current stock levels into account": the
         // quantity on hand is part of creating it, recorded as the first
         // movement so the ledger starts where the shelf does.
-        if (trim((string)($d['reorder_threshold'] ?? '')) !== '') {
-            self::setThreshold($id, (string)$d['reorder_threshold'], $userId);
-        }
+        //
+        // ORDER MATTERS: stock first, threshold second. The other way round the
+        // threshold's own check ran against a row still at zero, so creating a
+        // product with 10 on hand and a minimum of 3 paged every admin "reorder
+        // now" for something that had never been low — and the opening stock
+        // then "recovered" it a moment later. Found by the live test.
         if (trim((string)($d['stock'] ?? '')) !== '') {
             self::moveStock($id, 'set', (string)$d['stock'], 'Giacenza iniziale', $userId, 'initial');
+        }
+        if (trim((string)($d['reorder_threshold'] ?? '')) !== '') {
+            self::setThreshold($id, (string)$d['reorder_threshold'], $userId);
         }
         return ['ok' => true, 'id' => $id];
     }
