@@ -122,7 +122,7 @@ if ($filterAgentId !== null) {
 // Admin-only too: ?partner=<id> narrows the Leads board to the leads one partner
 // brought in — entered in their own area or through their referral link.
 $filterPartnerId = (!$isAgent && !empty($_GET['partner'])) ? (int)$_GET['partner'] : null;
-$agentViews   = ['overview', 'leads', 'deals', 'quotes', 'appointments', 'tasks', 'messages', 'tickets', 'documents', 'instructions'];
+$agentViews   = ['overview', 'leads', 'deals', 'quotes', 'articles', 'appointments', 'tasks', 'messages', 'tickets', 'documents', 'instructions'];
 $techViews    = ['devices', 'network_areas', 'installations', 'support', 'tickets'];
 // Technicians' POST whitelist: the installation-report flow, taking charge of
 // assistance requests, and replying on the tickets they claimed.
@@ -1689,7 +1689,7 @@ $cfg = fn(string $k, $d = '') => Config::get($k, $d);
 $agents = Auth::agents();
 $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_format((float)$n, 0);
 
-$views = ['overview', 'leads', 'deals', 'quotes', 'customers', 'contacts', 'appointments', 'tasks', 'tickets', 'documents',
+$views = ['overview', 'leads', 'deals', 'quotes', 'customers', 'articles', 'contacts', 'appointments', 'tasks', 'tickets', 'documents',
           'installations', 'support',
           'invoices', 'payments', 'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents',
           'partners', 'devices', 'network_areas', 'settings', 'instructions'];
@@ -1748,7 +1748,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
     $nav = [
         'overview' => 'nav_overview', 'leads' => 'nav_leads', 'deals' => 'nav_deals',
         'quotes' => 'nav_quotes',
-        'customers' => 'nav_customers',
+        'customers' => 'nav_customers', 'articles' => 'nav_articles',
         'contacts' => 'nav_contacts', 'appointments' => 'nav_appointments', 'tasks' => 'nav_tasks',
         'tickets' => 'nav_tickets', 'documents' => 'nav_documents', 'installations' => 'nav_installations',
         'support' => 'nav_support',
@@ -1760,7 +1760,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
         'events' => 'nav_events', 'agents' => 'nav_agents', 'partners' => 'nav_partners', 'instructions' => 'nav_instr', 'settings' => 'nav_settings',
     ];
     if ($isAgent) { // agents only see their own work
-        $nav = array_intersect_key($nav, array_flip(['overview', 'leads', 'deals', 'quotes', 'appointments', 'tasks', 'messages', 'documents', 'instructions']));
+        $nav = array_intersect_key($nav, array_flip(['overview', 'leads', 'deals', 'quotes', 'articles', 'appointments', 'tasks', 'messages', 'documents', 'instructions']));
     } elseif ($isTech) { // technical-area users: devices, install reports, support queue, own tickets
         $nav = array_intersect_key($nav, array_flip(['devices', 'installations', 'support', 'tickets']));
     } ?>
