@@ -797,6 +797,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: ?tab=articles&id=' . (int)($_POST['id'] ?? 0));
                 exit;
             }
+            case 'article_stock': { // admin only — load / unload / set what is on the shelf
+                $ar = \Glue\Crm\Articles::moveStock((int)($_POST['id'] ?? 0),
+                    (string)($_POST['mode'] ?? 'set'), (string)($_POST['qty'] ?? ''),
+                    (string)($_POST['note'] ?? ''), $uid);
+                $_SESSION['dash_flash'] = empty($ar['ok'])
+                    ? [$t('ar_err_' . ($ar['error'] ?? 'no_qty')), 'err']
+                    : [sprintf($t('ar_stock_ok'), rtrim(rtrim(number_format((float)$ar['stock'], 2, ',', '.'), '0'), ',')), 'ok'];
+                header('Location: ?tab=articles&id=' . (int)($_POST['id'] ?? 0));
+                exit;
+            }
+            case 'article_stock_release': {
+                $_SESSION['dash_flash'] = \Glue\Crm\Articles::releaseStock((int)($_POST['id'] ?? 0), $uid)
+                    ? [$t('ar_stock_released'), 'ok'] : [$t('not_allowed'), 'err'];
+                header('Location: ?tab=articles&id=' . (int)($_POST['id'] ?? 0));
+                exit;
+            }
+            case 'article_threshold': {
+                \Glue\Crm\Articles::setThreshold((int)($_POST['id'] ?? 0),
+                    (string)($_POST['reorder_threshold'] ?? ''), $uid);
+                $_SESSION['dash_flash'] = [$t('ar_threshold_ok'), 'ok'];
+                header('Location: ?tab=articles&id=' . (int)($_POST['id'] ?? 0));
+                exit;
+            }
 
             // ---------- an appointment, booked inside the lead ----------
             // Named lead_* so the ownership guard above already applies: a seller

@@ -62,6 +62,14 @@ function article_form(array $cats, array $sups, callable $h, callable $t, ?array
       <label class="fld"><span><?= $h($t('ar_supplier_code')) ?> 2</span>
         <input name="supplier_code2" value="<?= $h($ed['supplier_code2'] ?? '') ?>"></label>
     </div>
+    <?php if (!$ed): // edits go through the stock box on the product page instead ?>
+    <div class="row">
+      <label class="fld"><span><?= $h($t('ar_stock_initial')) ?></span>
+        <input name="stock" placeholder="0" inputmode="decimal"></label>
+      <label class="fld"><span><?= $h($t('ar_threshold')) ?></span>
+        <input name="reorder_threshold" placeholder="<?= $h($t('ar_threshold_ph')) ?>" inputmode="decimal"></label>
+    </div>
+    <?php endif; ?>
     <label class="fld" style="flex-direction:row;align-items:center;gap:8px">
       <input type="checkbox" name="has_serials" value="1" style="width:auto"<?= $ed && (int)$ed['has_serials'] === 1 ? ' checked' : '' ?>>
       <span style="margin:0"><?= $h($t('ar_serials')) ?></span></label>
@@ -200,6 +208,14 @@ if ($a !== null):
         <tr><td class="muted"><?= $h($t('ar_st_value')) ?></td>
           <td>EUR <?= $h($money((float)$a['stock'] * (float)$a['cost_price'])) ?></td></tr>
       <?php endif; ?>
+      <tr><td class="muted"><?= $h($t('ar_threshold')) ?></td><td>
+        <?php if ($a['reorder_threshold'] !== null): ?>
+          <?= $h($qty($a['reorder_threshold'])) ?>
+          <?php if ((float)$a['stock'] <= (float)$a['reorder_threshold']): ?>
+            <span class="pill pill-down"><?= $h($t('ar_low')) ?></span>
+          <?php endif; ?>
+        <?php else: ?><?= $dash ?><?php endif; ?>
+      </td></tr>
       <tr><td class="muted"><?= $h($t('ar_last_move')) ?></td>
         <td><?= $a['last_movement'] ? $h(date('d/m/Y', strtotime((string)$a['last_movement']))) : $dash ?></td></tr>
     </tbody></table>
@@ -207,7 +223,74 @@ if ($a !== null):
       <p class="muted small" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line);color:var(--amber)">
         <?= $h($t('ar_negative_note')) ?></p>
     <?php endif; ?>
+    <p class="muted small" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--line)">
+      <?= $h((string)$a['stock_owner'] === 'crm' || (string)$a['origin'] === 'crm'
+            ? $t('ar_stock_owner_crm') : $t('ar_stock_owner_gest')) ?></p>
   </div>
+
+  <?php if ($isAdminHere && (int)$a['archived'] === 0): ?>
+  <div class="card">
+    <h3><?= svg('pen') ?> <?= $h($t('ar_move')) ?></h3>
+    <form method="post">
+      <input type="hidden" name="do" value="article_stock">
+      <input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
+      <div class="row">
+        <label class="fld"><span><?= $h($t('ar_move_mode')) ?></span>
+          <select name="mode">
+            <option value="load"><?= $h($t('ar_mode_load')) ?></option>
+            <option value="unload"><?= $h($t('ar_mode_unload')) ?></option>
+            <option value="set"><?= $h($t('ar_mode_set')) ?></option>
+          </select></label>
+        <label class="fld" style="max-width:120px"><span><?= $h($t('ar_qty')) ?></span>
+          <input name="qty" required inputmode="decimal" placeholder="0"></label>
+      </div>
+      <label class="fld"><span><?= $h($t('f_notes')) ?></span>
+        <input name="note" placeholder="<?= $h($t('ar_move_note_ph')) ?>"></label>
+      <?php if ((string)$a['origin'] === 'gestionale' && (string)$a['stock_owner'] === 'gestionale'): ?>
+        <p class="muted small" style="margin:-4px 0 10px;color:var(--amber)"><?= $h($t('ar_stock_takeover')) ?></p>
+      <?php endif; ?>
+      <button class="btn tiny"><?= $h($t('save')) ?></button>
+    </form>
+    <?php if ((string)$a['origin'] === 'gestionale' && (string)$a['stock_owner'] === 'crm'): ?>
+      <form method="post" style="margin-top:10px"
+            onsubmit="return confirm('<?= $h($t('ar_stock_release_confirm')) ?>')">
+        <input type="hidden" name="do" value="article_stock_release">
+        <input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
+        <button class="btn ghost tiny"><?= $h($t('ar_stock_release')) ?></button>
+      </form>
+    <?php endif; ?>
+  </div>
+
+  <div class="card">
+    <h3><?= svg('alert') ?> <?= $h($t('ar_threshold')) ?></h3>
+    <form method="post" style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap">
+      <input type="hidden" name="do" value="article_threshold">
+      <input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
+      <label class="fld" style="margin:0;max-width:140px"><span><?= $h($t('ar_threshold_min')) ?></span>
+        <input name="reorder_threshold" inputmode="decimal"
+               value="<?= $a['reorder_threshold'] !== null ? $h($qty($a['reorder_threshold'])) : '' ?>"
+               placeholder="<?= $h($t('ar_threshold_ph')) ?>"></label>
+      <button class="btn tiny"><?= $h($t('save')) ?></button>
+    </form>
+    <p class="muted small" style="margin:10px 0 0"><?= $h($t('ar_threshold_hint')) ?></p>
+  </div>
+  <?php endif; ?>
+
+  <?php $movs = Articles::movements((int)$a['id']); if ($movs): ?>
+  <div class="card">
+    <h3><?= svg('events') ?> <?= $h($t('ar_movements')) ?></h3>
+    <?php foreach ($movs as $m): $d = (float)$m['delta']; ?>
+      <div class="lb">
+        <span class="nm" style="min-width:0">
+          <span style="color:<?= $d < 0 ? 'var(--red)' : 'var(--green)' ?>"><?= $d > 0 ? '+' : '' ?><?= $h($qty($d)) ?></span>
+          <span class="muted small">→ <?= $h($qty($m['stock_after'])) ?> · <?= $h($t('ar_reason_' . $m['reason'])) ?></span>
+          <?php if (!empty($m['note'])): ?><div class="muted small"><?= $h($m['note']) ?></div><?php endif; ?>
+        </span>
+        <span class="mini"><?= $h(short_time($m['created_at'])) ?><br><?= $h((string)$m['user_name']) ?></span>
+      </div>
+    <?php endforeach; ?>
+  </div>
+  <?php endif; ?>
 
   <div class="card">
     <h3><?= svg('contacts') ?> <?= $h($t('ar_supplier')) ?></h3>
@@ -279,12 +362,20 @@ if ($a !== null):
   </p>
 <?php endif; ?>
 
+<?php if ($cnt['low'] > 0 && $st !== 'low'): ?>
+  <div class="flash flash-warn" style="margin-bottom:12px">
+    <?= $h(sprintf($t('ar_low_banner'), $cnt['low'])) ?>
+    <a href="<?= $h($keep(['state' => 'low', 'p' => null])) ?>"><?= $h($t('ar_low_see')) ?></a>
+  </div>
+<?php endif; ?>
+
 <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-bottom:14px">
   <?= $chip('all', $t('ar_f_all'), $cnt['total']) ?>
   <?= $chip('in_stock', $t('ar_f_in_stock'), $cnt['in_stock']) ?>
   <?= $chip('negative', $t('ar_f_negative'), $cnt['negative']) ?>
   <?= $chip('ordered', $t('ar_f_ordered'), $cnt['ordered']) ?>
   <?= $chip('serials', $t('ar_f_serials'), $cnt['serials']) ?>
+  <?= $chip('low', $t('ar_f_low'), $cnt['low']) ?>
   <?= $chip('crm', $t('ar_f_crm'), $cnt['crm']) ?>
   <?php if ($cnt['archived'] > 0): ?><?= $chip('archived', $t('ar_f_archived'), $cnt['archived']) ?><?php endif; ?>
   <form method="get" class="inline" style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap">
@@ -329,7 +420,10 @@ if ($a !== null):
       <td class="small"><?= $r['category'] ? $h($r['category']) : $dash ?></td>
       <td class="small"><?= $r['location'] ? $h($r['location']) : $dash ?></td>
       <td style="text-align:right;color:<?= $s < 0 ? 'var(--red)' : ($s > 0 ? 'var(--green)' : 'var(--muted)') ?>">
-        <strong><?= $h($qty($s)) ?></strong></td>
+        <strong><?= $h($qty($s)) ?></strong>
+        <?php if ($r['reorder_threshold'] !== null && $s <= (float)$r['reorder_threshold']): ?>
+          <div class="small" style="color:var(--amber)"><?= $h($t('ar_low')) ?> · min <?= $h($qty($r['reorder_threshold'])) ?></div>
+        <?php endif; ?></td>
       <td style="text-align:right"><?= $h($money($r['list_price'])) ?></td>
       <?php if ($isAdminHere): ?><td style="text-align:right" class="muted"><?= $h($money($r['cost_price'])) ?></td><?php endif; ?>
       <td style="text-align:right;white-space:nowrap">

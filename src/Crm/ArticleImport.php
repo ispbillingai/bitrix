@@ -128,8 +128,14 @@ final class ArticleImport
         // point of that flag is that the next snapshot must not quietly undo
         // somebody's work. IF(origin='crm', <keep>, VALUES(<take>)) does it in
         // one statement, so the upsert stays a single round trip per row.
+        // ...and the stock columns have an owner of their own (migration 049):
+        // a quantity corrected in the CRM must survive even on a product whose
+        // prices and description still come from the gestionale.
+        $stockCols = ['stock_initial', 'stock', 'stock_ordered', 'stock_available'];
         $update = implode(', ', array_map(
-            static fn(string $c) => "$c = IF(articles.origin = 'crm', articles.$c, VALUES($c))",
+            static fn(string $c) => in_array($c, $stockCols, true)
+                ? "$c = IF(articles.origin = 'crm' OR articles.stock_owner = 'crm', articles.$c, VALUES($c))"
+                : "$c = IF(articles.origin = 'crm', articles.$c, VALUES($c))",
             array_slice($cols, 1) // everything but the key
         ));
         $upsert = $pdo->prepare(
@@ -214,6 +220,14 @@ final class ArticleImport
             )->execute([basename($path), $sha, $out['total'], $out['created'], $out['updated'], $out['skipped'], $userId]);
             $pdo->commit();
             Log::write('crm', 'articles_imported', null, null, $out);
+            // Stock just moved for up to every article in the catalogue, so this
+            // is the moment something may have crossed its restock threshold.
+            // Never allowed to fail the import that has already committed.
+            try {
+                $out['low_alerted'] = Articles::checkLowStock();
+            } catch (\Throwable $e) {
+                Log::write('crm', 'low_stock_check_failed', null, null, ['error' => $e->getMessage()]);
+            }
         }
         return $out;
     }
