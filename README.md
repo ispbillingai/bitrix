@@ -50,9 +50,14 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
   carries the company and the legal details, so the seller writes only what the
   quote must contain), and a **from-scratch form** for a customer the CRM has
   never seen — matched on company/VAT or phone/name, and a new lead is created
-  and the request filed on it when nothing matches. The office is notified,
-  uploads the quote against the request, and the seller sends it to the customer
-  through the signing flow, so it can be read *and signed* on the spot.
+  and the request filed on it when nothing matches. The office is notified
+  and **builds** the quote on the request: items drawn from the warehouse
+  (priced from the list, stock shown), services such as a support contract,
+  a discount per line and on the whole quote. The CRM generates the PDF and
+  the seller sends it through the signing flow, so it can be read *and signed*
+  on the spot. **Stock is drawn when the customer signs** — once only, never
+  when the quote is merely built or sent. Uploading a finished PDF remains an
+  alternative.
 - **Partner area** (`public/partner.php`): partners log into their own page —
   not the CRM — and do exactly three things. They **enter their own leads**
   (typed in, or brought in by sharing their `request.php?ref=CODE` link); they
@@ -107,7 +112,7 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 | Closing: thank-you + notify logistics | won stage → `thank_you` + `logistics_notify` |
 | KPI / score evaluation | `Crm\Tasks` (kpi_score/weight) + leaderboard |
 | Partner enters their own leads, sees only their status, hears only about closed/lost | `partner.php` → `Partner\Partners::submitLead` / `::outcome` / `::notifyOutcome` → `partner_lead_won`/`partner_lead_lost` |
-| Seller asks the back office for a quote; office uploads it; seller sends it for signature | `views/leads.php` (in-lead button) + `views/quotes.php` (from scratch) → `Crm\QuoteRequests` → `Sign\Documents` |
+| Seller asks the back office for a quote; office builds it from the warehouse (PDF generated); seller sends it; signing draws the stock | `views/leads.php` (in-lead button) + `views/quotes.php` (from scratch) → `Crm\QuoteRequests` → `Sign\Documents` |
 | Manual interrupt / silence any automation | move the record's stage; pending reminders auto-cancel |
 | Mass WhatsApp/email marketing | `campaign.php` + `Campaign\Sender` (throttled) |
 | Sign a document with an OTP, in-house | `views/documents.php` → `Sign\Documents` → `Sign\Signer` (CAdES) → `public/sign.php` / `public/verify.php` |
