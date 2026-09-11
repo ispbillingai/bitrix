@@ -256,6 +256,15 @@ final class CustomerImport
         if ($phone2 === $phone) {
             $phone2 = null;
         }
+        // A cell holding a number phone() could not read: the file says nothing
+        // reliable about it, and contactFields() must not read that as "removed".
+        $phonesUnusable = false;
+        foreach (['phone_mobile', 'phone_land', 'phone_other'] as $col) {
+            $cell = $get($col);
+            if (strlen((string)preg_replace('/\D+/', '', $cell)) >= 6 && self::phone($cell) === '') {
+                $phonesUnusable = true;
+            }
+        }
 
         // The gestionale packs several addresses into one cell ("a@x.it, b@y.it")
         // — 508 rows do. The first valid one becomes THE email (portal login,
@@ -288,6 +297,7 @@ final class CustomerImport
             'pec'             => filter_var($get('pec'), FILTER_VALIDATE_EMAIL) ? $get('pec') : null,
             'phone'           => $phone ?: null,
             'phone2'          => $phone2,
+            'phones_unusable' => $phonesUnusable,
             'email'           => $email,
             'address'         => $addr !== '' ? mb_substr($addr, 0, 190) : null,
             'city'            => $get('city') !== '' ? mb_substr($get('city'), 0, 120) : null,
@@ -408,6 +418,14 @@ final class CustomerImport
             $cur  = trim((string)($existing[$k] ?? ''));
             $was  = trim((string)($existing['gest_' . $k] ?? ''));
             $new  = $g[$k] ?? null;
+            // The row had a phone cell we could not read (two numbers glued
+            // together): no news about this number — neither follow it to
+            // nothing nor forget what the import wrote before. A reassigned
+            // code still loses the previous holder's number.
+            if ($new === null && $k !== 'email' && !empty($g['phones_unusable']) && !$reassigned) {
+                $set['gest_' . $k] = $existing['gest_' . $k] ?? null;
+                continue;
+            }
             $take = $reassigned
                 || ($cur === '' && $new !== null)
                 || ($was !== '' && $cur === $was);
@@ -552,21 +570,61 @@ final class CustomerImport
      * Italian number in E.164: 0972 35294 -> +39097235294). Here both kinds pass
      * through the same rule: international prefix respected, else +39 + digits
      * verbatim. Anything shorter than 6 digits is gestionale noise, not a number.
+     *
+     * The gestionale also packs two numbers into one cell — "0818817744/1483",
+     * or with nothing between them at all: "347564877008183" is a mobile with
+     * the start of a landline glued on. Joining every digit made numbers that
+     * reach nobody (or somebody else), so the cell is split on / , ; and the
+     * first part that can be a real number wins. An unseparated run too long
+     * for one number is read as the country code typed without its + when that
+     * fits ("393493543274"), cut to its mobile when it starts with 3, and
+     * otherwise dropped rather than stored wrong — rowToFields() then flags the
+     * cell as unreadable, and contactFields() leaves the card's number alone.
      */
     public static function phone(string $raw): string
     {
-        $raw = trim($raw);
+        foreach (preg_split('#[/,;]+#', trim($raw)) ?: [] as $i => $part) {
+            // After the first, a part must stand on its own: "0982/81207" is not
+            // an area code and a number, and "81207" alone reaches nobody.
+            $p = self::onePhone(trim($part), $i > 0);
+            if ($p !== '') {
+                return $p;
+            }
+        }
+        return '';
+    }
+
+    private static function onePhone(string $raw, bool $mustStandAlone): string
+    {
         $digits = preg_replace('/\D+/', '', $raw) ?? '';
         if (strlen($digits) < 6) {
             return '';
         }
         if (str_starts_with($raw, '+')) {
-            return '+' . $digits;
+            return self::plausible('+' . $digits);
         }
         if (str_starts_with($digits, '00')) {
-            return '+' . substr($digits, 2);
+            return self::plausible('+' . substr($digits, 2));
+        }
+        if ($mustStandAlone && !in_array($digits[0], ['0', '3'], true)) {
+            return '';
+        }
+        if (strlen($digits) > 11) {
+            if (str_starts_with($digits, '39') && self::plausible('+' . $digits) !== '') {
+                return '+' . $digits;
+            }
+            return $digits[0] === '3' ? '+39' . substr($digits, 0, 10) : '';
         }
         return '+39' . $digits;
+    }
+
+    /** $p when it can be a real number (Italian: 6-11 digits after +39), else ''. */
+    private static function plausible(string $p): string
+    {
+        if (str_starts_with($p, '+39')) {
+            return preg_match('/^\+39\d{6,11}$/', $p) ? $p : '';
+        }
+        return preg_match('/^\+\d{8,15}$/', $p) ? $p : '';
     }
 
     /** @return array<string,int> our field name -> column index */
