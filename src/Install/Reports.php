@@ -49,6 +49,52 @@ final class Reports
         return $id;
     }
 
+    /**
+     * The contacts behind LEADS that match a search — the second list in the
+     * "new report" picker, next to the registry.
+     *
+     * The registry (contacts.is_customer = 1) is who the gestionale knows. A
+     * customer the seller signed last week is still only a lead, and an
+     * installation is often the first thing that happens to them: searching the
+     * registry alone, the installer found the lead on the Leads tab and could
+     * not put it on the report.
+     *
+     * Open and converted leads only — a junked one is not being installed.
+     * $agentId limits it to that seller's own leads: an agent who also installs
+     * keeps a seller's scope over the other sellers' customers.
+     *
+     * @return array<int,array> id (the contact), name, company, phone, email, lead_id
+     */
+    public static function leadContacts(string $q, ?int $agentId = null, int $limit = 15): array
+    {
+        $q = trim($q);
+        if ($q === '') {
+            return [];
+        }
+        $like  = '%' . $q . '%';
+        $scope = $agentId ? ' AND l.assigned_to = ?' : '';
+        $args  = $agentId ? [$agentId] : [];
+        array_push($args, $like, $like, $like, $like, $like, $like, $like, $like, $like);
+        $limit = max(1, min(50, $limit));
+
+        $s = Db::pdo()->prepare(
+            "SELECT c.id, c.name, c.company, c.phone, c.email,
+                    (SELECT MAX(l2.id) FROM leads l2 WHERE l2.contact_id = c.id) AS lead_id
+               FROM contacts c
+              WHERE c.is_customer = 0
+                AND EXISTS (SELECT 1 FROM leads l WHERE l.contact_id = c.id
+                               AND l.status IN ('open', 'converted')$scope)
+                AND (c.name LIKE ? OR c.company LIKE ? OR c.vat_number LIKE ? OR c.phone LIKE ?
+                     OR c.phone2 LIKE ? OR c.email LIKE ?
+                     OR EXISTS (SELECT 1 FROM leads l3 WHERE l3.contact_id = c.id
+                                   AND (l3.customer_name LIKE ? OR l3.vat_number LIKE ? OR l3.customer_phone LIKE ?)))
+              ORDER BY c.name
+              LIMIT $limit"
+        );
+        $s->execute($args);
+        return $s->fetchAll() ?: [];
+    }
+
     /** Editable while draft only — a sent report is what the customer signed. */
     public static function update(int $id, array $d): bool
     {

@@ -251,6 +251,10 @@ if ($r !== null):
     $reports = Reports::all(200, $ownScope);
     $nq = trim((string)($_GET['nq'] ?? ''));
     $foundCustomers = $nq !== '' ? Customers::search(['q' => $nq], 1, 15)['rows'] : [];
+    // ...and the people who are not in the registry yet: the contact behind a
+    // lead. An agent reaches only their own leads; the office and the
+    // technicians all of them. See Reports::leadContacts().
+    $foundLeads = $nq !== '' ? Reports::leadContacts($nq, $isAgent ? (int)$scopeId : null) : [];
 ?>
 <h2><?= $h($t('nav_installations')) ?></h2>
 <p class="muted small" style="margin:-6px 0 14px"><?= $h($t('ir_sub')) ?></p>
@@ -265,10 +269,27 @@ if ($r !== null):
       <button class="btn ghost tiny"><?= $h($t('ir_search')) ?></button>
     </form>
     <?php if ($nq !== ''): ?>
-      <?php if (!$foundCustomers): ?>
+      <?php if (!$foundCustomers && !$foundLeads): ?>
         <p class="muted small" style="margin-top:10px"><?= $h($t('ir_search_none')) ?></p>
       <?php else: ?>
         <table style="margin-top:10px">
+          <?php // Leads first: when the installer is looking for someone who is not
+                // in the registry yet, this is the row they came for. ?>
+          <?php foreach ($foundLeads as $c): ?>
+            <tr>
+              <td><?= avatar($h, $c['name']) ?> <b><?= $h($c['name']) ?></b>
+                <span class="pill" style="color:var(--accent)"><?= $h($t('ir_lead_badge')) ?></span>
+                <div class="muted small"><?= $h(trim(implode(' · ', array_filter([(string)($c['company'] ?? ''), (string)($c['phone'] ?? ''), (string)($c['email'] ?? '')], 'strlen')))) ?></div>
+              </td>
+              <td style="text-align:right">
+                <form method="post" style="margin:0">
+                  <input type="hidden" name="do" value="install_create">
+                  <input type="hidden" name="contact_id" value="<?= (int)$c['id'] ?>">
+                  <button class="btn tiny"><?= $h($t('ir_open_for')) ?></button>
+                </form>
+              </td>
+            </tr>
+          <?php endforeach; ?>
           <?php foreach ($foundCustomers as $c): ?>
             <tr>
               <td><?= avatar($h, $c['name']) ?> <b><?= $h($c['name']) ?></b>

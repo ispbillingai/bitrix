@@ -393,6 +393,17 @@ $focus = $openLeadId > 0;
               <textarea name="body" rows="2" required></textarea></label>
             <button class="btn tiny ghost"><?= $h($t('save')) ?></button></form>
 
+          <?php // The installer opens the report straight from the lead: it is filed
+                // on the lead's own contact, so the name, phone and email the seller
+                // entered come with it. The office, and agents who also install. ?>
+          <?php if ((empty($isAgent) || !empty($agentInstalls)) && !empty($r['contact_id'])): ?>
+            <form method="post" style="margin:14px 0 4px">
+              <input type="hidden" name="do" value="install_create">
+              <input type="hidden" name="contact_id" value="<?= (int)$r['contact_id'] ?>">
+              <button class="btn tiny"><?= svg('installations') ?> <?= $h($t('ir_open_from_lead')) ?></button>
+            </form>
+          <?php endif; ?>
+
           <?php // Book the visit from here, rather than retyping the customer on
                 // the Appointments tab. Saving it confirms the appointment: the
                 // customer and the seller are both told at once, and both are

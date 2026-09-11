@@ -1144,7 +1144,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // photos or re-messages the customer.
             case 'install_create': {
                 $irContact = (int)($_POST['contact_id'] ?? 0);
-                if ($irContact <= 0 || !Contacts::find($irContact)) {
+                $irRow     = $irContact > 0 ? Contacts::find($irContact) : null;
+                // An agent who installs reaches the two lists the picker shows
+                // them — the registry and their OWN leads — not any contact id
+                // typed into a forged form, such as another seller's lead.
+                if ($irRow && $isAgent && empty($irRow['is_customer'])) {
+                    $irOwn = $pdo->prepare('SELECT 1 FROM leads WHERE contact_id = ? AND assigned_to = ? LIMIT 1');
+                    $irOwn->execute([$irContact, (int)$scopeId]);
+                    if (!$irOwn->fetchColumn()) {
+                        $irRow = null;
+                    }
+                }
+                if (!$irRow) {
                     $_SESSION['dash_flash'] = [$t('ir_need_customer'), 'err'];
                     header('Location: ?tab=installations');
                     exit;
