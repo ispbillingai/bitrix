@@ -942,6 +942,7 @@ return [
     // log events
     'dc_ev_document_created'      => 'Document uploaded',
     'dc_ev_sent_to_signer'        => 'Sent to the signer',
+    'dc_ev_signer_changed'        => 'Signer changed',
     'dc_ev_opened_by_signer'      => 'Opened by the signer',
     'dc_ev_downloaded_original'   => 'Original downloaded',
     'dc_ev_downloaded_signed_copy' => 'Signed copy downloaded',

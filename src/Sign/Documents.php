@@ -32,7 +32,8 @@ final class Documents
     /**
      * Store an uploaded file as a document awaiting signature.
      *
-     * @param array      $in   title, contact_id|(name,phone,email), deal_id, lang
+     * @param array      $in   title, contact_id|(name,phone,email), deal_id, lang,
+     *                         signer_name|signer_email|signer_phone (instead of the contact's card)
      * @param array|null $file a $_FILES entry
      * @param int|null   $userId the staff member doing it
      *
@@ -59,6 +60,7 @@ final class Documents
             @unlink((string)Store::file('docs', $stored['path']));
             return ['ok' => false, 'id' => 0, 'error' => 'no_contact'];
         }
+        $signer = self::signer($in, $contact);
 
         $uid = self::newUid();
         Db::pdo()->prepare(
@@ -72,9 +74,9 @@ final class Documents
             ':title'        => mb_substr(trim((string)($in['title'] ?? '')) ?: $stored['name'], 0, 190),
             ':contact_id'   => $contactId,
             ':deal_id'      => ((int)($in['deal_id'] ?? 0)) ?: null,
-            ':signer_name'  => mb_substr((string)($contact['name'] ?? ''), 0, 190),
-            ':signer_email' => $contact['email'] ?: null,
-            ':signer_phone' => $contact['phone'] ?: null,
+            ':signer_name'  => $signer['name'],
+            ':signer_email' => $signer['email'],
+            ':signer_phone' => $signer['phone'],
             ':lang'         => $in['lang'] ?? ($contact['lang'] ?? null),
             ':orig_name'    => $stored['name'],
             ':orig_path'    => $stored['path'],
@@ -119,6 +121,7 @@ final class Documents
         if (!$contact) {
             return ['ok' => false, 'id' => 0, 'error' => 'no_contact'];
         }
+        $signer = self::signer($in, $contact);
 
         $stored = bin2hex(random_bytes(16)) . '.pdf';
         $dest   = Store::path('docs') . '/' . $stored;
@@ -141,9 +144,9 @@ final class Documents
             ':title'        => mb_substr(trim((string)($in['title'] ?? '')) ?: $origName, 0, 190),
             ':contact_id'   => $contactId,
             ':deal_id'      => ((int)($in['deal_id'] ?? 0)) ?: null,
-            ':signer_name'  => mb_substr((string)($contact['name'] ?? ''), 0, 190),
-            ':signer_email' => $contact['email'] ?: null,
-            ':signer_phone' => $contact['phone'] ?: null,
+            ':signer_name'  => $signer['name'],
+            ':signer_email' => $signer['email'],
+            ':signer_phone' => $signer['phone'],
             ':lang'         => $in['lang'] ?? ($contact['lang'] ?? null),
             ':orig_name'    => $origName,
             ':orig_path'    => $stored,
@@ -179,6 +182,13 @@ final class Documents
             return false;
         }
 
+        // A blank phone or email on the document is filled from the contact's
+        // card as it is now, so a document raised before the customer had a
+        // number still goes out on WhatsApp. From here on the document's signer
+        // is the one address book: the link, the code and the signed copy all
+        // go there, and the audit line below records exactly that.
+        $doc = self::fillSignerBlanks($doc);
+
         $token   = bin2hex(random_bytes(24));
         $expires = date('Y-m-d H:i:s', time() + self::TOKEN_TTL_DAYS * 86400);
         Db::pdo()->prepare(
@@ -200,7 +210,7 @@ final class Documents
             'recipient_type' => 'customer',
             'channel'        => 'both',
             'due_at'         => date('Y-m-d H:i:s'),
-            'payload'        => ['title' => (string)$doc['title'], 'link' => self::signUrl($token)],
+            'payload'        => self::signerPayload($doc) + ['title' => (string)$doc['title'], 'link' => self::signUrl($token)],
             'lang'           => $doc['lang'] ?? null,
             // The token changes on every resend, so a resend is never deduped away.
             'dedupe_key'     => 'doc_sign_request:' . $id . ':' . substr($token, 0, 12),
@@ -323,7 +333,8 @@ final class Documents
             'recipient_type' => 'customer',
             'channel'        => 'both',
             'due_at'         => date('Y-m-d H:i:s'),
-            'payload'        => ['code' => $code, 'minutes' => (string)self::OTP_TTL_MIN, 'title' => (string)$doc['title']],
+            'payload'        => self::signerPayload($doc)
+                              + ['code' => $code, 'minutes' => (string)self::OTP_TTL_MIN, 'title' => (string)$doc['title']],
             'lang'           => $doc['lang'] ?? null,
             'dedupe_key'     => 'doc_sign_otp:' . $id . ':' . $code,
         ]);
@@ -506,7 +517,7 @@ final class Documents
             'recipient_type' => 'customer',
             'channel'        => 'both',
             'due_at'         => date('Y-m-d H:i:s'),
-            'payload'        => [
+            'payload'        => self::signerPayload($doc) + [
                 'title' => (string)$doc['title'],
                 'link'  => Signer::verifyUrl((string)$doc['uid']),
             ],
@@ -578,6 +589,100 @@ final class Documents
         Audit::append($id, 'voided_by_staff', ['reason' => mb_substr($reason, 0, 255)],
             ['type' => 'staff', 'id' => $userId, 'label' => self::staffLabel($userId)]);
         return true;
+    }
+
+    // ---- who it is addressed to -------------------------------------------------------
+
+    /**
+     * Point an unsigned document at a different signer. The quote flow does this
+     * before every send, so the person on the lead — not whoever the linked
+     * company card names — gets the link and the code. Blanks fall back to the
+     * contact's card. Refused once the document is finished: a signed, declined
+     * or void record stays exactly as it was. A change is written to the audit
+     * trail, so the evidence shows who the document was re-addressed to.
+     *
+     * @param array $in signer_name|signer_email|signer_phone
+     */
+    public static function setSigner(int $id, array $in, ?int $userId = null): bool
+    {
+        $doc = self::find($id);
+        if (!$doc || !in_array($doc['status'], ['draft', 'sent', 'viewed'], true)) {
+            return false;
+        }
+        $s = self::signer($in, Contacts::find((int)$doc['contact_id']) ?: []);
+        if ($s['name'] === (string)$doc['signer_name'] && $s['email'] === $doc['signer_email']
+            && $s['phone'] === $doc['signer_phone']) {
+            return true;
+        }
+        Db::pdo()->prepare('UPDATE sign_documents SET signer_name = ?, signer_email = ?, signer_phone = ? WHERE id = ?')
+            ->execute([$s['name'], $s['email'], $s['phone'], $id]);
+        Audit::append($id, 'signer_changed', [
+            'name'     => $s['name'],
+            'to_email' => $s['email'],
+            'to_phone' => self::mask((string)$s['phone']),
+        ], ['type' => 'staff', 'id' => $userId, 'label' => self::staffLabel($userId)]);
+        return true;
+    }
+
+    /**
+     * Who a document is addressed to: the contact's card, unless the caller
+     * names the signer itself — a quote names the person on the lead.
+     *
+     * @return array{name:string, email:?string, phone:?string}
+     */
+    private static function signer(array $in, array $contact): array
+    {
+        $pick = static fn(string $k): string =>
+            trim((string)($in['signer_' . $k] ?? '')) ?: trim((string)($contact[$k] ?? ''));
+        return [
+            'name'  => mb_substr($pick('name'), 0, 190),
+            'email' => $pick('email') ?: null,
+            'phone' => $pick('phone') ?: null,
+        ];
+    }
+
+    /** The document with any blank signer field filled from the contact's current card. */
+    private static function fillSignerBlanks(array $doc): array
+    {
+        $c = Contacts::find((int)$doc['contact_id']);
+        if (!$c) {
+            return $doc;
+        }
+        $s = self::signer(['signer_name' => (string)($doc['signer_name'] ?? ''),
+                           'signer_email' => (string)($doc['signer_email'] ?? ''),
+                           'signer_phone' => (string)($doc['signer_phone'] ?? '')], $c);
+        if ($s['name'] !== (string)$doc['signer_name'] || $s['email'] !== $doc['signer_email']
+            || $s['phone'] !== $doc['signer_phone']) {
+            Db::pdo()->prepare('UPDATE sign_documents SET signer_name = ?, signer_email = ?, signer_phone = ? WHERE id = ?')
+                ->execute([$s['name'], $s['email'], $s['phone'], (int)$doc['id']]);
+            $doc['signer_name']  = $s['name'];
+            $doc['signer_email'] = $s['email'];
+            $doc['signer_phone'] = $s['phone'];
+        }
+        return $doc;
+    }
+
+    /**
+     * The document's own signer, in the variables the scheduler routes a
+     * customer message by. These messages are queued against the contact, and
+     * without this they went to whatever that contact's card said at dispatch —
+     * not to the person the document names, and not to where the audit trail
+     * says the link went. The payload wins over the resolver (Scheduler::
+     * buildVars), the same way the staff notices reach their agent. An empty
+     * phone stays empty: a code must never fall through to somebody else's
+     * number on the company card.
+     */
+    private static function signerPayload(array $doc): array
+    {
+        $p = [
+            'customer_phone' => trim((string)($doc['signer_phone'] ?? '')),
+            'customer_email' => trim((string)($doc['signer_email'] ?? '')),
+        ];
+        $name = trim((string)($doc['signer_name'] ?? ''));
+        if ($name !== '') {
+            $p['name'] = $p['customer_name'] = $name;
+        }
+        return $p;
     }
 
     // ---- reading ----------------------------------------------------------------------

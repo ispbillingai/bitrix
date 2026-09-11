@@ -274,7 +274,7 @@ final class QuoteRequests
             'title'      => $who !== '' ? "$title — $who" : $title,
             'contact_id' => (int)$lead['contact_id'],
             'lang'       => $lead['lang'] ?? null,
-        ], $file, $userId);
+        ] + self::signerFor($lead), $file, $userId);
         if (empty($doc['ok'])) {
             return ['ok' => false, 'error' => (string)($doc['error'] ?? 'save_failed')];
         }
@@ -307,6 +307,13 @@ final class QuoteRequests
         if ((string)$r['status'] === self::REVISION) {
             return ['ok' => false, 'error' => 'revision'];
         }
+        // Re-addressed from the lead on every send, so a resend after the lead's
+        // phone or email was corrected goes to the corrected one — and a quote
+        // already filed against the company card goes to the person after all.
+        $lead = Leads::find((int)$r['lead_id']);
+        if ($lead) {
+            SignDocs::setSigner((int)$r['document_id'], self::signerFor($lead), $userId);
+        }
         if (!SignDocs::send((int)$r['document_id'], $userId)) {
             return ['ok' => false, 'error' => 'send_failed'];
         }
@@ -319,6 +326,23 @@ final class QuoteRequests
         Log::write('crm', 'quote_sent', 'lead', (int)$r['lead_id'],
             ['request_id' => $id, 'document_id' => (int)$r['document_id'], 'by' => $userId]);
         return ['ok' => true];
+    }
+
+    /**
+     * Who a quote is addressed to: the person on the lead — the one who asked,
+     * and the one the seller is talking to. Blanks fall back to the linked
+     * contact's card inside Sign\Documents. A lead can hang off a company card
+     * (matched on its VAT, or on a number already on it), and addressing the
+     * quote from the card is how Valentina Green's quote went to the company's
+     * registry email and to no phone at all.
+     */
+    private static function signerFor(array $lead): array
+    {
+        return [
+            'signer_name'  => trim((string)($lead['customer_name'] ?? '')),
+            'signer_email' => trim((string)($lead['customer_email'] ?? '')),
+            'signer_phone' => trim((string)($lead['customer_phone'] ?? '')),
+        ];
     }
 
     /**
@@ -592,7 +616,7 @@ final class QuoteRequests
             'title'      => "Preventivo $number" . ($who !== '' ? " — $who" : ''),
             'contact_id' => (int)$lead['contact_id'],
             'lang'       => $lead['lang'] ?? null,
-        ], $bytes, "Preventivo-$number.pdf", $userId);
+        ] + self::signerFor($lead), $bytes, "Preventivo-$number.pdf", $userId);
         if (empty($doc['ok'])) {
             return ['ok' => false, 'error' => (string)($doc['error'] ?? 'save_failed')];
         }

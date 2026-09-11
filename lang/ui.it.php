@@ -942,6 +942,7 @@ return [
     // eventi del registro
     'dc_ev_document_created'      => 'Documento caricato',
     'dc_ev_sent_to_signer'        => 'Inviato al firmatario',
+    'dc_ev_signer_changed'        => 'Firmatario modificato',
     'dc_ev_opened_by_signer'      => 'Aperto dal firmatario',
     'dc_ev_downloaded_original'   => 'Originale scaricato',
     'dc_ev_downloaded_signed_copy' => 'Copia firmata scaricata',
