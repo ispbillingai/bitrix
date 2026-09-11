@@ -37,7 +37,7 @@ $rows = \Glue\Crm\Appointments::all(300, $scopeId ?? null);
   <tr>
     <td><b><?= $h($r['customer_name'] ?: ('#' . $r['id'])) ?></b><br>
       <span class="muted small"><?= phone_link($h, $r['customer_phone']) ?> <?= $h($r['customer_email']) ?></span></td>
-    <td><?= $when ? $h(date('D j M Y, H:i', strtotime($when))) : '<span class="muted">—</span>' ?>
+    <td><?= $when ? $h(\Glue\Reminder\Templates::when((int)strtotime($when), $lang, true)) : '<span class="muted">—</span>' ?>
       <?php if (!$r['starts_at'] && $r['preferred_at']): ?><br><span class="muted small"><?= $h($t('appt_pref_label')) ?></span><?php endif; ?></td>
     <td><?= $ag ? $h($ag) : '<span class="muted">—</span>' ?></td>
     <td><?= pill($h, $r['status'], $t) ?></td>

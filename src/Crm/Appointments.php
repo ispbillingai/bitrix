@@ -83,7 +83,9 @@ final class Appointments
         ]);
 
         $lang = $appt['lang'] ?? null;
-        $whenLabel = (string)($opts['when_label'] ?? date('D j M Y, H:i', $whenTs));
+        // For the staff timeline below, and only a fallback in the payloads: the
+        // scheduler writes each message's date itself, in its reader's language.
+        $whenLabel = (string)($opts['when_label'] ?? Templates::when($whenTs));
 
         // Immediate confirmation to the customer.
         (new Scheduler())->enqueue([

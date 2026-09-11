@@ -258,6 +258,64 @@ final class Leads
     }
 
     /**
+     * Who a phone number already belongs to, or null — the check behind the
+     * "number already registered" block on the new-lead form: the VAT lock's
+     * idea, applied to the phone and with no expiry. A live lead first (open or
+     * converted — the same ones that count as duplicates; a discarded lead lets
+     * the number go), then a customer in the registry, where it may be the
+     * second number on the card.
+     *
+     * Matched in both spellings the CRM stores: leads keep Notifier's (a local
+     * number loses its trunk 0), the registry keeps the import's (the 0 stays),
+     * so "081 878 8586" must find a card saved as +390818788586.
+     *
+     * @return array{kind:string, id:int, name:string, agent_id:?int, agent:?string,
+     *               code:?string, phone:string}|null
+     */
+    public static function phoneOwner(string $raw): ?array
+    {
+        $phone = Notifier::normalizePhone($raw);
+        if ($phone === '') {
+            return null;
+        }
+        $forms = array_values(array_unique(array_filter([$phone, CustomerImport::phone($raw)])));
+        $in    = implode(',', array_fill(0, count($forms), '?'));
+        $pdo   = Db::pdo();
+
+        $s = $pdo->prepare(
+            "SELECT l.id, l.customer_name, l.assigned_to, u.full_name, u.username
+               FROM leads l LEFT JOIN users u ON u.id = l.assigned_to
+              WHERE l.customer_phone IN ($in) AND l.status IN ('open', 'converted')
+              ORDER BY l.id DESC LIMIT 1"
+        );
+        $s->execute($forms);
+        if ($l = $s->fetch()) {
+            return [
+                'kind' => 'lead', 'id' => (int)$l['id'],
+                'name' => (string)($l['customer_name'] ?: '#' . $l['id']),
+                'agent_id' => $l['assigned_to'] !== null ? (int)$l['assigned_to'] : null,
+                'agent' => trim((string)($l['full_name'] ?? '')) ?: ($l['username'] ?? null),
+                'code' => null, 'phone' => $phone,
+            ];
+        }
+
+        $s = $pdo->prepare(
+            "SELECT id, name, customer_code FROM contacts
+              WHERE is_customer = 1 AND (phone IN ($in) OR phone2 IN ($in))
+              ORDER BY id LIMIT 1"
+        );
+        $s->execute(array_merge($forms, $forms));
+        if ($c = $s->fetch()) {
+            return [
+                'kind' => 'customer', 'id' => (int)$c['id'], 'name' => (string)$c['name'],
+                'agent_id' => null, 'agent' => null,
+                'code' => $c['customer_code'] !== null ? (string)$c['customer_code'] : null, 'phone' => $phone,
+            ];
+        }
+        return null;
+    }
+
+    /**
      * Record a request that arrived for a customer who already has a lead:
      * accepted, but grouped onto that lead's timeline instead of opening a twin.
      * The request text rides along in the note, so what the customer wrote the

@@ -448,7 +448,7 @@ if ($tkCur && $page === 'support') {
   <?php if (!$appts): ?><div class="empty"><?= $h($t('no_appts')) ?></div><?php endif; ?>
   <?php foreach ($appts as $a): $when = $a['starts_at'] ?: $a['preferred_at']; ?>
     <div class="card row-line">
-      <div><b><?= $h($when ? date('D d M Y, H:i', strtotime((string)$when)) : $t('to_be_scheduled')) ?></b>
+      <div><b><?= $h($when ? \Glue\Reminder\Templates::when((int)strtotime((string)$when), $lang, true) : $t('to_be_scheduled')) ?></b>
         <div class="muted small"><?= $h($a['title'] ?: $t('appointment')) ?><?= $a['location'] ? ' · ' . $h($a['location']) : '' ?></div></div>
       <span class="status <?= $a['status'] === 'confirmed' ? 'green' : 'amber' ?>"><?= $h($t('appt_' . $a['status']) !== 'appt_' . $a['status'] ? $t('appt_' . $a['status']) : $a['status']) ?></span>
     </div>

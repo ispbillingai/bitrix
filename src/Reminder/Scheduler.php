@@ -333,6 +333,16 @@ final class Scheduler
 
         $vars = $this->buildVars($r, is_array($payload) ? $payload : []);
         $lang = $this->resolveLang($r);
+        // An appointment's date is written now, from the appointment itself and
+        // in the language of whoever receives it. The label frozen into the
+        // payload at booking was English ("il Fri 11 Sep") inside Italian text,
+        // and one label served the customer and the agent alike.
+        if ($r['entity_type'] === 'appointment') {
+            $when = $this->appointmentWhen((int)$r['entity_id'], $lang);
+            if ($when !== '') {
+                $vars['when'] = $when;
+            }
+        }
         $channel = $r['channel'];
         $okAny = false;
         $hadRecipient = false;
@@ -490,6 +500,15 @@ final class Scheduler
         }
         $base = Config::appBaseUrl() ?: rtrim((string)Config::get('app.base_url', ''), '/');
         return $base !== '' ? $base . $path : '';
+    }
+
+    /** An appointment's start written out in $lang, or '' when it has none yet. */
+    private function appointmentWhen(int $apptId, string $lang): string
+    {
+        $stmt = $this->db->prepare('SELECT starts_at FROM appointments WHERE id = ?');
+        $stmt->execute([$apptId]);
+        $ts = strtotime((string)($stmt->fetchColumn() ?: ''));
+        return $ts ? Templates::when($ts, $lang) : '';
     }
 
     /** Build template vars from the local record (resolver) + payload + company. */

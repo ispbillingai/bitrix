@@ -36,6 +36,32 @@ final class Templates
         return in_array($default, self::available(), true) ? $default : 'en';
     }
 
+    /**
+     * A date and time written out in $lang — "venerdì 11 settembre 2026 alle
+     * 11:30" / "Friday 11 September 2026 at 11:30", or with $short "ven 11 set
+     * 2026, 11:30" for tables. Spelled out here: PHP's date('D M') is English
+     * whatever the locale, which is how Italian messages ended up saying
+     * "il Fri 11 Sep", and intl may not be installed on the servers.
+     */
+    public static function when(int $ts, ?string $lang = null, bool $short = false): string
+    {
+        $names = [
+            'it' => [['domenica', 'lunedì', 'martedì', 'mercoledì', 'giovedì', 'venerdì', 'sabato'],
+                     ['gennaio', 'febbraio', 'marzo', 'aprile', 'maggio', 'giugno', 'luglio',
+                      'agosto', 'settembre', 'ottobre', 'novembre', 'dicembre'], 'alle'],
+            'en' => [['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'],
+                     ['January', 'February', 'March', 'April', 'May', 'June', 'July',
+                      'August', 'September', 'October', 'November', 'December'], 'at'],
+        ];
+        [$days, $months, $at] = $names[self::lang($lang)] ?? $names['en'];
+        $day   = $days[(int)date('w', $ts)];
+        $month = $months[(int)date('n', $ts) - 1];
+        if ($short) {
+            return mb_substr($day, 0, 3) . ' ' . date('j', $ts) . ' ' . mb_substr($month, 0, 3) . ' ' . date('Y, H:i', $ts);
+        }
+        return $day . ' ' . date('j', $ts) . ' ' . $month . ' ' . date('Y', $ts) . " $at " . date('H:i', $ts);
+    }
+
     /** Fill "{name}" style placeholders from $vars; unknown ones stay literal. */
     public static function render(string $tpl, array $vars): string
     {

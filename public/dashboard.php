@@ -582,6 +582,32 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $vatKind = $onBehalfOf > 0 ? 'partner' : 'agent';
                 $vatOwner = $onBehalfOf > 0 ? $onBehalfOf : (int)$uid;
 
+                // The same idea for the phone number, and with no expiry: a number
+                // that already belongs to a live lead or to a registry customer
+                // blocks the entry outright, instead of being quietly merged or
+                // attached — which is how a test lead typed with a number sitting
+                // on a real customer's card got filed under that company, and its
+                // quote mailed to them. Before the VAT claim, so a refused entry
+                // never takes one. A seller is not told whose it is unless it is
+                // their own lead — the same discretion as the VAT message.
+                $phoneOwner = Leads::phoneOwner((string)($_POST['phone'] ?? ''));
+                if ($phoneOwner !== null) {
+                    $po = $phoneOwner;
+                    if ($po['kind'] === 'lead') {
+                        $flash = ($isAgent && (int)$po['agent_id'] !== (int)$uid)
+                            ? sprintf($t('phone_taken_lead_other'), $po['phone'])
+                            : sprintf($t('phone_taken_lead'), $po['phone'], $po['id'],
+                                $po['name'] . (!$isAgent && $po['agent'] ? ' · ' . $po['agent'] : ''));
+                    } else {
+                        $flash = $isAgent
+                            ? sprintf($t('phone_taken_customer_agent'), $po['phone'])
+                            : sprintf($t('phone_taken_customer'), $po['phone'], $po['name'], $po['code'] ?: '—');
+                    }
+                    $flashType = 'err';
+                    $tab = 'leads';
+                    break;
+                }
+
                 // 90-day VAT exclusivity: the first enterer of a VAT number owns
                 // it; someone else re-entering it is blocked and notified.
                 $vat = \Glue\Crm\VatLock::normalize((string)($_POST['vat_number'] ?? ''));
