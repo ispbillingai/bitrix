@@ -77,7 +77,8 @@ foreach ($files as $f) {
         continue;
     }
     $mode = $dryRun ? ' [DRY RUN — nothing written]' : '';
-    fwrite(STDOUT, "{$r['file']}: {$r['total']} rows -> {$r['created']} created, {$r['updated']} updated, {$r['skipped']} unusable$mode\n");
+    fwrite(STDOUT, "{$r['file']}: {$r['total']} rows -> {$r['created']} created, {$r['updated']} updated, {$r['skipped']} unusable"
+        . ", {$r['reassigned']} codes now another customer, {$r['contacts_refreshed']} phone/email refreshed$mode\n");
     if ($prune) {
         fwrite(STDOUT, "prune: {$r['pruned']} customers no longer in the file deleted"
             . ($r['prune_kept'] > 0 ? ", {$r['prune_kept']} kept (they have tickets/deals/documents/contracts/routers/portal)" : '')

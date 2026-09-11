@@ -21,9 +21,16 @@ use RuntimeException;
  *                     VAT, address, city, province, zip, balance, contract
  *                     expiry, agent — rewritten on every import. The gestionale
  *                     is the registry of record; a re-import must converge.
- *   staff-owned       phone, phone2, email — filled when blank, NEVER
- *                     overwritten. A number an agent corrected after a customer
- *                     changed SIM must not be undone by the nightly file.
+ *   shared            phone, phone2, email — a value the import put there
+ *                     follows the file (gest_* remembers what it wrote); a value
+ *                     typed in the CRM stays: a number an agent corrected after
+ *                     a customer changed SIM must not be undone by the nightly
+ *                     file. See contactFields().
+ *
+ * The gestionale REUSES codes — 637 changed hands between the 3 and 5 Sep 2026
+ * exports — so a code alone is not an identity: isDifferentCustomer() spots a
+ * code that now describes another business, and that card takes the file's
+ * phone and email and loses the previous holder's portal login.
  *
  * Matching order for a row not yet imported: an existing contact already
  * carrying that VAT (a won lead that became this customer — attach the code to
@@ -84,6 +91,7 @@ final class CustomerImport
             'file' => basename($path), 'sha256' => $sha, 'total' => 0,
             'created' => 0, 'updated' => 0, 'skipped' => 0,
             'pruned' => 0, 'prune_kept' => 0,
+            'reassigned' => 0, 'contacts_refreshed' => 0,
             'already' => false, 'dry_run' => $dryRun,
         ];
 
@@ -107,11 +115,11 @@ final class CustomerImport
             $pdo->beginTransaction();
         }
 
-        $findByCode = $pdo->prepare('SELECT id, source, phone, phone2, email, company FROM contacts WHERE customer_code = ?');
+        $cardCols   = 'id, source, name, vat_number, phone, phone2, email, company, gest_phone, gest_phone2, gest_email';
+        $findByCode = $pdo->prepare("SELECT $cardCols FROM contacts WHERE customer_code = ?");
         // Adopt by VAT only when the match is unambiguous and not another import row.
         $findByVat  = $pdo->prepare(
-            'SELECT id, source, phone, phone2, email, company FROM contacts
-             WHERE vat_number = ? AND customer_code IS NULL LIMIT 2'
+            "SELECT $cardCols FROM contacts WHERE vat_number = ? AND customer_code IS NULL LIMIT 2"
         );
 
         $seenCodes = [];
@@ -134,6 +142,9 @@ final class CustomerImport
 
             $findByCode->execute([$g['code']]);
             $hit = $findByCode->fetch() ?: null;
+            // Matched on the code, not adopted by VAT: only then can the code
+            // have changed hands under the card.
+            $byCode = $hit !== null;
             if (!$hit && $g['vat'] !== null) {
                 $findByVat->execute([$g['vat']]);
                 $cands = $findByVat->fetchAll();
@@ -141,15 +152,27 @@ final class CustomerImport
                     $hit = $cands[0];
                 }
             }
+            $reassigned = $byCode && self::isDifferentCustomer($hit, $g);
 
             if ($dryRun) {
                 $hit ? $out['updated']++ : $out['created']++;
+                $out['reassigned'] += (int)$reassigned;
                 continue;
             }
 
-            if ($hit) {
-                self::updateExisting((int)$hit['id'], $hit, $g);
+            if ($hit && $reassigned && ($hit['source'] ?? '') !== 'gestionale') {
+                // A card the CRM made (a lead's person, adopted by VAT) whose code
+                // the gestionale has since given to another business: the person
+                // keeps their card and its history, the code moves to a new card.
+                self::detachCode((int)$hit['id'], $hit, $g);
+                self::insertNew($g);
+                $out['created']++;
+                $out['reassigned']++;
+            } elseif ($hit) {
+                $refreshed = self::updateExisting((int)$hit['id'], $hit, $g, $reassigned);
                 $out['updated']++;
+                $out['reassigned'] += (int)$reassigned;
+                $out['contacts_refreshed'] += (int)$refreshed;
             } else {
                 self::insertNew($g);
                 $out['created']++;
@@ -283,8 +306,9 @@ final class CustomerImport
             'INSERT INTO contacts
                 (name, first_name, last_name, company, phone, phone2, email, pec, lang, source,
                  customer_code, vat_number, is_customer, customer_since,
-                 address, city, province, zip, balance, contract_expiry, gestionale_agent, notes)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), ?, ?, ?, ?, ?, ?, ?, ?)'
+                 address, city, province, zip, balance, contract_expiry, gestionale_agent, notes,
+                 gest_phone, gest_phone2, gest_email)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, NOW(), ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         )->execute([
             $g['name'], $g['first_name'] ?? '', $g['last_name'] ?? '', $g['company'],
             $g['phone'], $g['phone2'], $g['email'], $g['pec'],
@@ -292,16 +316,25 @@ final class CustomerImport
             $g['code'], $g['vat'],
             $g['address'], $g['city'], $g['province'], $g['zip'],
             $g['balance'], $g['contract_expiry'], $g['agent'], $g['notes'],
+            $g['phone'], $g['phone2'], $g['email'],
         ]);
     }
 
     /**
      * Update a matched contact. Registry fields converge on the file; identity
      * fields follow only on rows the import created (source = 'gestionale') —
-     * a contact born in the CRM keeps the name an agent gave it; contact
-     * channels and notes are fill-if-blank.
+     * a contact born in the CRM keeps the name an agent gave it; phone, second
+     * phone and email follow contactFields(); notes are the gestionale's on its
+     * own rows.
+     *
+     * $reassigned: the code now names another business (isDifferentCustomer) —
+     * the card becomes that business, contacts and all, and the previous
+     * holder's portal login is switched off: it must not open someone else's
+     * card. Said on the card's timeline and in the event log.
+     *
+     * @return bool whether the phone, second phone or email changed
      */
-    private static function updateExisting(int $id, array $existing, array $g): void
+    private static function updateExisting(int $id, array $existing, array $g, bool $reassigned = false): bool
     {
         $ownedByImport = ($existing['source'] ?? '') === 'gestionale';
 
@@ -329,10 +362,10 @@ final class CustomerImport
         } elseif (trim((string)($existing['company'] ?? '')) === '' && $g['company'] !== null) {
             $set['company'] = $g['company'];
         }
-        foreach (['phone', 'phone2', 'email'] as $k) {
-            if (trim((string)($existing[$k] ?? '')) === '' && $g[$k] !== null) {
-                $set[$k] = $g[$k];
-            }
+        [$channels, $refreshed] = self::contactFields($existing, $g, $reassigned);
+        $set += $channels;
+        if ($reassigned) {
+            $set['portal_enabled'] = 0;
         }
 
         $cols = implode(', ', array_map(static fn($k) => "$k = ?", array_keys($set)));
@@ -341,6 +374,123 @@ final class CustomerImport
         Db::pdo()->prepare(
             "UPDATE contacts SET $cols, customer_since = COALESCE(customer_since, NOW()) WHERE id = ?"
         )->execute($args);
+
+        if ($reassigned) {
+            $was = trim((string)($existing['name'] ?? ''));
+            Activities::add('contact', $id, 'system',
+                "Codice gestionale {$g['code']} riassegnato dal gestionale: era $was, ora {$g['name']}. "
+                . 'Telefono ed email presi dal file; accesso al portale del cliente precedente disattivato.', null);
+            Log::write('crm', 'customer_code_reassigned', 'contact', $id, [
+                'code' => $g['code'], 'was' => $was, 'was_vat' => $existing['vat_number'] ?? null,
+                'now' => $g['name'], 'now_vat' => $g['vat'],
+            ]);
+        }
+        return $refreshed;
+    }
+
+    /**
+     * Phone, second phone and email for a card the file matched. The import
+     * remembers what it last wrote (gest_*). A value still equal to that came
+     * from the gestionale and follows it — to a new number, or to none when the
+     * gestionale dropped it. A value that differs was typed in the CRM and
+     * stays. A blank is filled. A reassigned code takes the file's values
+     * outright: the previous holder's numbers are not this customer's,
+     * whoever typed them. A card with no gest_* yet keeps what it has — the
+     * repair of 2026-09-11 backfilled them for every registry card.
+     *
+     * @return array{0: array<string,?string>, 1: bool} [columns to set, contacts changed]
+     */
+    private static function contactFields(array $existing, array $g, bool $reassigned): array
+    {
+        $set = [];
+        $changed = false;
+        foreach (['phone', 'phone2', 'email'] as $k) {
+            $cur  = trim((string)($existing[$k] ?? ''));
+            $was  = trim((string)($existing['gest_' . $k] ?? ''));
+            $new  = $g[$k] ?? null;
+            $take = $reassigned
+                || ($cur === '' && $new !== null)
+                || ($was !== '' && $cur === $was);
+            if ($take && (string)$new !== $cur) {
+                $set[$k] = $new;
+                $changed = true;
+            }
+            $set['gest_' . $k] = $new;
+        }
+        return [$set, $changed];
+    }
+
+    /**
+     * Words that say what kind of business a name is, not which one — left out
+     * when isDifferentCustomer() compares names.
+     */
+    private const NAME_NOISE = [
+        'SRL', 'SRLS', 'SAS', 'SNC', 'SPA', 'SOC', 'COOP', 'COOPERATIVA', 'SOCIETA', 'UNIPERSONALE', 'UNIP',
+        'DEL', 'DELLA', 'DELLE', 'DEI', 'DEGLI', 'CON', 'PER', 'THE', 'AND', 'LLI', 'FLLI',
+        'BAR', 'PIZZERIA', 'RISTORANTE', 'TRATTORIA', 'HOTEL', 'ALBERGO', 'CAFFE', 'CAFE', 'PANIFICIO',
+        'MACELLERIA', 'PASTICCERIA', 'GELATERIA', 'SALUMERIA', 'TABACCHI', 'FARMACIA', 'STUDIO',
+        'GROUP', 'SERVICE', 'SERVIZI', 'ITALIA', 'NAPOLI', 'MARKET', 'STORE', 'SHOP',
+    ];
+
+    /**
+     * Does this file row describe a different customer than the card its code
+     * points at? The gestionale REUSES codes — between the 3 and the 5 Sep 2026
+     * exports 637 changed hands (9705 went from LUCIANO PITTALUGA to SINERGIA
+     * MAXIMO SRL) — and the code is the only key the file has.
+     *
+     * The same VAT is the same business whatever the name says. Otherwise the
+     * names must share a word that is not a legal form or a trade noun: "BAR DEI
+     * PESCATORI" and "PESCATORI SRL" are one customer, "PIZZERIA DA MARIO" and
+     * "PIZZERIA MIRACOLO" are not. A name the CRM gave (a card born from a lead,
+     * adopted by VAT) says nothing about the file, so there it takes two VAT
+     * numbers that differ.
+     */
+    private static function isDifferentCustomer(array $card, array $g): bool
+    {
+        $oldVat = (string)($card['vat_number'] ?? '');
+        $newVat = (string)($g['vat'] ?? '');
+        if ($oldVat !== '' && $oldVat === $newVat) {
+            return false;
+        }
+        if (($oldVat === '' || $newVat === '') && ($card['source'] ?? '') !== 'gestionale') {
+            return false;
+        }
+        return !self::sameName((string)($card['name'] ?? ''), (string)$g['name']);
+    }
+
+    private static function sameName(string $a, string $b): bool
+    {
+        $words = static function (string $s): array {
+            $s = mb_strtoupper(str_replace(['.', "'", '’'], ['', ' ', ' '], $s));
+            $w = preg_split('/[^\p{L}\p{N}]+/u', $s, -1, PREG_SPLIT_NO_EMPTY) ?: [];
+            return array_values(array_filter($w, static fn($x) => mb_strlen($x) >= 3 && !in_array($x, self::NAME_NOISE, true)));
+        };
+        $wa = $words($a);
+        $wb = $words($b);
+        if ($wa && $wb) {
+            return (bool)array_intersect($wa, $wb);
+        }
+        // Nothing distinctive on one side ("BAR S.R.L."): compare the whole names.
+        $flat = static fn(string $s): string => (string)preg_replace('/[^\p{L}\p{N}]+/u', '', mb_strtoupper($s));
+        $fa = $flat($a);
+        $fb = $flat($b);
+        return $fa !== '' && $fb !== '' && (str_contains($fa, $fb) || str_contains($fb, $fa));
+    }
+
+    /**
+     * Take the code off a card the CRM made, because the gestionale has given
+     * it to another business. The card keeps its person, its history and its
+     * contacts; the code goes to the new card insertNew() makes next.
+     */
+    private static function detachCode(int $id, array $existing, array $g): void
+    {
+        Db::pdo()->prepare('UPDATE contacts SET customer_code = NULL WHERE id = ?')->execute([$id]);
+        Activities::add('contact', $id, 'system',
+            "Il codice gestionale {$g['code']} ora appartiene a {$g['name']}: tolto da questa scheda, che resta com'era.", null);
+        Log::write('crm', 'customer_code_reassigned', 'contact', $id, [
+            'code' => $g['code'], 'was' => $existing['name'] ?? null, 'was_vat' => $existing['vat_number'] ?? null,
+            'now' => $g['name'], 'now_vat' => $g['vat'], 'detached' => true,
+        ]);
     }
 
     /**
