@@ -641,6 +641,9 @@ return [
     'role_agent'     => 'agent',
     'role_admin'     => 'admin',
     'role_tech'      => 'technical area',
+    'u_can_install'  => 'Also does installations',
+    'u_can_install_h' => 'Adds the Installations menu to this agent\'s panel, for the installation reports they open themselves.',
+    'u_installs_pill' => '+ installations',
 
     // ---- Devices (network monitoring) ----
     'dev_title'        => 'Shop devices',

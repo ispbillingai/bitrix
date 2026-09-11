@@ -8,7 +8,8 @@
  * sign document's state.
  *
  * In scope: $t, $h, $pdo, $uid, $isAgent, $isTech, $scopeId.
- * Admins see everyone's reports; technicians only their own.
+ * Admins see everyone's reports; technicians — and agents whose account has
+ * "also does installations" ticked — only their own.
  */
 
 use Glue\Crm\Customers;

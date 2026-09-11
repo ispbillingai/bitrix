@@ -641,6 +641,9 @@ return [
     'role_agent'     => 'agente',
     'role_admin'     => 'admin',
     'role_tech'      => 'area tecnica',
+    'u_can_install'  => 'Esegue anche installazioni',
+    'u_can_install_h' => 'Aggiunge il menu Installazioni al pannello di questo agente, per i rapporti di installazione che apre lui stesso.',
+    'u_installs_pill' => '+ installazioni',
 
     // ---- Dispositivi (monitoraggio rete) ----
     'dev_title'        => 'Dispositivi negozio',

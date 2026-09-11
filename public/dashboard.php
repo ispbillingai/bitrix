@@ -124,10 +124,12 @@ if ($filterAgentId !== null) {
 $filterPartnerId = (!$isAgent && !empty($_GET['partner'])) ? (int)$_GET['partner'] : null;
 $agentViews   = ['overview', 'leads', 'deals', 'quotes', 'articles', 'appointments', 'tasks', 'messages', 'tickets', 'documents', 'instructions'];
 $techViews    = ['devices', 'network_areas', 'installations', 'support', 'tickets'];
+// The installation-report flow: open a draft, fill it in, attach the photos,
+// send it for signature. Deleting a report stays admin-only.
+$installActions = ['install_create', 'install_save', 'install_photos', 'install_photo_del', 'install_send'];
 // Technicians' POST whitelist: the installation-report flow, taking charge of
 // assistance requests, and replying on the tickets they claimed.
-$techActions  = ['install_create', 'install_save', 'install_photos', 'install_photo_del', 'install_send',
-                 'assist_claim', 'ticket_reply', 'ticket_status'];
+$techActions  = array_merge($installActions, ['assist_claim', 'ticket_reply', 'ticket_status']);
 $agentActions = [
     'lead_create', 'lead_move', 'lead_convert', 'lead_note', 'lead_edit', 'lead_quote',
     'lead_appointment',
@@ -139,6 +141,21 @@ $agentActions = [
     // job; uploading the quote and cancelling a request are the office's.
     'quote_scratch', 'quote_send', 'quote_revise',
 ];
+// An agent who also installs — the tick box on their account — gets the
+// Installations tab and the report flow on top, with a technician's scope:
+// only the reports they opened. Read from the users row on every request, not
+// from the login session, so ticking or unticking it takes effect on the
+// agent's next click rather than their next login.
+$agentInstalls = false;
+if ($isAgent && $uid) {
+    $ciq = $pdo->prepare('SELECT can_install FROM users WHERE id = ?');
+    $ciq->execute([$uid]);
+    $agentInstalls = (bool)$ciq->fetchColumn();
+}
+if ($agentInstalls) {
+    $agentViews[] = 'installations';
+    $agentActions = array_merge($agentActions, $installActions);
+}
 
 // ---- ticket attachment download (?dl=<message_id>) ----
 if (isset($_GET['dl'])) {
@@ -1696,6 +1713,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 Auth::updateProfile($newId, [
                     'full_name' => $_POST['full_name'] ?? '', 'email' => $_POST['email'] ?? '',
                     'phone' => $_POST['phone'] ?? '', 'title' => $_POST['title'] ?? '',
+                    // Kept on agents only: techs and admins have Installations anyway.
+                    'can_install' => ($_POST['role'] ?? 'agent') === 'agent' && ($_POST['can_install'] ?? '') === '1' ? 1 : 0,
                 ]);
                 // Send the new user their login details by email + WhatsApp, so the
                 // admin doesn't have to relay the username/password by hand.
@@ -1711,6 +1730,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 Auth::updateProfile((int)$_POST['id'], [
                     'full_name' => $_POST['full_name'] ?? '', 'email' => $_POST['email'] ?? '',
                     'phone' => $_POST['phone'] ?? '', 'title' => $_POST['title'] ?? '', 'role' => $_POST['role'] ?? 'agent',
+                    'can_install' => ($_POST['role'] ?? 'agent') === 'agent' && ($_POST['can_install'] ?? '') === '1' ? 1 : 0,
                 ]);
                 $flash = $t('saved');
                 $tab = 'agents';
@@ -1849,7 +1869,7 @@ if ($isTech) {
     }
 }
 
-render_head($t, $h, $lang, $tab, $flash, $flashType, $isAgent, $isTech);
+render_head($t, $h, $lang, $tab, $flash, $flashType, $isAgent, $isTech, $agentInstalls);
 
 require dirname(__DIR__) . '/views/' . $view . '.php';
 
@@ -1875,7 +1895,7 @@ function render_login(callable $t, callable $h, string $lang, ?string $err): voi
 </body></html>
 <?php }
 
-function render_head(callable $t, callable $h, string $lang, string $tab, ?string $flash, string $flashType, bool $isAgent = false, bool $isTech = false): void {
+function render_head(callable $t, callable $h, string $lang, string $tab, ?string $flash, string $flashType, bool $isAgent = false, bool $isTech = false, bool $agentInstalls = false): void {
     $brand = (string)\Glue\Config::get('app.company_name', '') ?: $t('app_title');
     $nav = [
         'overview' => 'nav_overview', 'leads' => 'nav_leads', 'deals' => 'nav_deals',
@@ -1891,8 +1911,11 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
         'devices' => 'nav_devices', 'network_areas' => 'nav_network_areas',
         'events' => 'nav_events', 'agents' => 'nav_agents', 'partners' => 'nav_partners', 'instructions' => 'nav_instr', 'settings' => 'nav_settings',
     ];
-    if ($isAgent) { // agents only see their own work
-        $nav = array_intersect_key($nav, array_flip(['overview', 'leads', 'deals', 'quotes', 'articles', 'appointments', 'tasks', 'messages', 'documents', 'instructions']));
+    if ($isAgent) { // agents only see their own work — plus Installations when they also install
+        $nav = array_intersect_key($nav, array_flip(array_merge(
+            ['overview', 'leads', 'deals', 'quotes', 'articles', 'appointments', 'tasks', 'messages', 'documents', 'instructions'],
+            $agentInstalls ? ['installations'] : []
+        )));
     } elseif ($isTech) { // technical-area users: devices, install reports, support queue, own tickets
         $nav = array_intersect_key($nav, array_flip(['devices', 'installations', 'support', 'tickets']));
     } ?>

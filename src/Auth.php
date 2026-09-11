@@ -52,7 +52,7 @@ final class Auth
     public static function all(): array
     {
         $rows = Db::pdo()->query(
-            'SELECT id, username, full_name, email, phone, title, role, active, created_at
+            'SELECT id, username, full_name, email, phone, title, role, can_install, active, created_at
              FROM users ORDER BY id'
         )->fetchAll();
         return $rows ?: [];
@@ -67,10 +67,10 @@ final class Auth
         return $rows ?: [];
     }
 
-    /** Update an agent's profile fields (name/email/phone/title). */
+    /** Update an agent's profile fields (name/email/phone/title, role, installs flag). */
     public static function updateProfile(int $id, array $fields): void
     {
-        $allowed = ['full_name', 'email', 'phone', 'title', 'role', 'lang'];
+        $allowed = ['full_name', 'email', 'phone', 'title', 'role', 'lang', 'can_install'];
         $set = [];
         $args = [];
         foreach ($fields as $k => $v) {

@@ -16,7 +16,12 @@ $meId = (int)($_SESSION['glue_user']['id'] ?? 0);
     <label class="fld"><span><?= $h($t('u_username')) ?></span><input name="username" required></label>
     <label class="fld"><span><?= $h($t('u_password')) ?></span><input name="password" required></label>
     <label class="fld"><span><?= $h($t('u_role')) ?></span>
-      <select name="role"><option value="agent"><?= $h($t('role_agent')) ?></option><option value="tech"><?= $h($t('role_tech')) ?></option><option value="admin"><?= $h($t('role_admin')) ?></option></select></label>
+      <select name="role" onchange="ciToggle(this)"><option value="agent"><?= $h($t('role_agent')) ?></option><option value="tech"><?= $h($t('role_tech')) ?></option><option value="admin"><?= $h($t('role_admin')) ?></option></select></label>
+  </div>
+  <div class="ci-fld" style="margin-bottom:10px">
+    <label style="display:inline-flex;gap:8px;align-items:center">
+      <input type="checkbox" name="can_install" value="1" style="width:auto"> <?= $h($t('u_can_install')) ?></label>
+    <div class="muted small"><?= $h($t('u_can_install_h')) ?></div>
   </div>
   <div class="row">
     <label class="fld"><span><?= $h($t('u_fullname')) ?></span><input name="full_name"></label>
@@ -35,6 +40,7 @@ $meId = (int)($_SESSION['glue_user']['id'] ?? 0);
         <?php if ($id === $meId): ?> <span class="muted small"><?= $h($t('u_you')) ?></span><?php endif; ?>
         <span class="muted small"> · @<?= $h($u['username']) ?> · <?= $h($u['title'] ?? '') ?></span></span>
       <span class="pill"><?= $h($u['role']) ?></span>
+      <?php if ($u['role'] === 'agent' && (int)($u['can_install'] ?? 0) === 1): ?><span class="pill"><?= $h($t('u_installs_pill')) ?></span><?php endif; ?>
       <span class="badge <?= $u['active'] ? 'ok' : 'no' ?>"><span class="dot"></span><?= $u['active'] ? $h($t('u_active')) : $h($t('u_disabled')) ?></span>
     </summary>
     <div style="padding:6px 18px 18px;border-top:1px solid var(--line)">
@@ -73,13 +79,18 @@ $meId = (int)($_SESSION['glue_user']['id'] ?? 0);
           <label class="fld"><span><?= $h($t('u_fullname')) ?></span><input name="full_name" value="<?= $h($u['full_name'] ?? '') ?>"></label>
           <label class="fld"><span><?= $h($t('u_title')) ?></span><input name="title" value="<?= $h($u['title'] ?? '') ?>"></label>
           <label class="fld"><span><?= $h($t('u_role')) ?></span>
-            <select name="role"><option value="agent"<?= $u['role'] === 'agent' ? ' selected' : '' ?>><?= $h($t('role_agent')) ?></option>
+            <select name="role" onchange="ciToggle(this)"><option value="agent"<?= $u['role'] === 'agent' ? ' selected' : '' ?>><?= $h($t('role_agent')) ?></option>
               <option value="tech"<?= $u['role'] === 'tech' ? ' selected' : '' ?>><?= $h($t('role_tech')) ?></option>
               <option value="admin"<?= $u['role'] === 'admin' ? ' selected' : '' ?>><?= $h($t('role_admin')) ?></option></select></label>
         </div>
         <div class="row">
           <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone" value="<?= $h($u['phone'] ?? '') ?>"></label>
           <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email" value="<?= $h($u['email'] ?? '') ?>"></label>
+        </div>
+        <div class="ci-fld" style="margin-bottom:10px<?= $u['role'] === 'agent' ? '' : ';display:none' ?>">
+          <label style="display:inline-flex;gap:8px;align-items:center">
+            <input type="checkbox" name="can_install" value="1" style="width:auto"<?= (int)($u['can_install'] ?? 0) === 1 ? ' checked' : '' ?>> <?= $h($t('u_can_install')) ?></label>
+          <div class="muted small"><?= $h($t('u_can_install_h')) ?></div>
         </div>
         <button class="btn tiny"><?= $h($t('save')) ?></button>
       </form>
@@ -108,3 +119,12 @@ $meId = (int)($_SESSION['glue_user']['id'] ?? 0);
   <label class="fld"><span><?= $h($t('u_new_pw')) ?></span><input name="password" required></label>
   <button class="btn"><?= $h($t('save')) ?></button>
 </form>
+
+<script>
+// "Also does installations" only means something on an agent — technicians and
+// admins already have the Installations tab — so the tick box follows the role.
+function ciToggle(sel){
+  var f = sel.form.querySelector('.ci-fld');
+  if (f) { f.style.display = sel.value === 'agent' ? '' : 'none'; }
+}
+</script>
