@@ -41,10 +41,10 @@ return [
             . "See you then!",
 
         'appointment_agent_set' =>
-            "📅 New appointment booked: {customer_name} on {when} (#{id}).",
+            "📅 New appointment booked: {customer_name} on {when} (#{id}). Agent: {agent_name}.",
 
         'appointment_agent' =>
-            "⏰ Appointment reminder: {customer_name} on {when} (#{id}).",
+            "⏰ Appointment reminder: {customer_name} on {when} (#{id}). Agent: {agent_name}.",
 
         'sign_request' => // sent when the deal enters the signature stage
             "Hi {name}, your contract from {company} is ready to sign. "
@@ -237,11 +237,12 @@ return [
         'appointment_agent_set' => [
             'subject' => 'New appointment: {customer_name} — {when}',
             'html'    => '<p>📅 New appointment booked with <strong>{customer_name}</strong> '
-                . 'on <strong>{when}</strong> (#{id}).</p>',
+                . 'on <strong>{when}</strong> (#{id}).</p><p>Agent: <strong>{agent_name}</strong></p>',
         ],
         'appointment_agent' => [
             'subject' => 'Appointment reminder: {customer_name}',
-            'html'    => '<p>Appointment with {customer_name} on <strong>{when}</strong> (#{id}).</p>',
+            'html'    => '<p>Appointment with {customer_name} on <strong>{when}</strong> (#{id}).</p>'
+                . '<p>Agent: <strong>{agent_name}</strong></p>',
         ],
         'sign_request' => [
             'subject' => 'Please sign your contract — {company}',

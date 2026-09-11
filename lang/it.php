@@ -42,10 +42,10 @@ return [
             . "A presto!",
 
         'appointment_agent_set' =>
-            "📅 Nuovo appuntamento fissato: {customer_name} il {when} (#{id}).",
+            "📅 Nuovo appuntamento fissato: {customer_name} il {when} (#{id}). Agente: {agent_name}.",
 
         'appointment_agent' =>
-            "⏰ Promemoria appuntamento: {customer_name} il {when} (#{id}).",
+            "⏰ Promemoria appuntamento: {customer_name} il {when} (#{id}). Agente: {agent_name}.",
 
         'sign_request' => // inviato quando la trattativa entra nella fase di firma
             "Ciao {name}, il tuo contratto di {company} è pronto per la firma. "
@@ -241,11 +241,12 @@ return [
         'appointment_agent_set' => [
             'subject' => 'Nuovo appuntamento: {customer_name} — {when}',
             'html'    => '<p>📅 Nuovo appuntamento fissato con <strong>{customer_name}</strong> '
-                . 'il <strong>{when}</strong> (#{id}).</p>',
+                . 'il <strong>{when}</strong> (#{id}).</p><p>Agente: <strong>{agent_name}</strong></p>',
         ],
         'appointment_agent' => [
             'subject' => 'Promemoria appuntamento: {customer_name}',
-            'html'    => '<p>Appuntamento con {customer_name} il <strong>{when}</strong> (#{id}).</p>',
+            'html'    => '<p>Appuntamento con {customer_name} il <strong>{when}</strong> (#{id}).</p>'
+                . '<p>Agente: <strong>{agent_name}</strong></p>',
         ],
         'sign_request' => [
             'subject' => 'Firma il tuo contratto — {company}',
