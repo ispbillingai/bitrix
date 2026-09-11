@@ -6,7 +6,10 @@
  */
 $stages = \Glue\Crm\Pipelines::stagesForEntity('lead');
 $partnerFilter = $filterPartnerId ?? null;
-$byStage = \Glue\Crm\Leads::byStage($scopeId ?? null, $partnerFilter);
+// The search box — every user has it. An agent's results stay inside their own
+// leads: $scopeId confines everything on this page to them, the search included.
+$leadQ = mb_substr(trim((string)($_GET['q'] ?? '')), 0, 100);
+$byStage = \Glue\Crm\Leads::byStage($scopeId ?? null, $partnerFilter, $leadQ !== '' ? $leadQ : null);
 // Partner list for the filter, by name (Partners::all is newest-first, which is
 // no order at all in a dropdown). Admins only — agents never see the bar.
 $partnerOpts = empty($isAgent) ? \Glue\Partner\Partners::all() : [];
@@ -28,7 +31,7 @@ $zoneFilter = trim((string)($_GET['zone'] ?? ''));
 // the page to scroll to at all.
 $openLeadId = (int)($_GET['lead'] ?? 0);
 $rows = \Glue\Crm\Leads::all(300, $scopeId ?? null, $srcFilter ?: null, $zoneFilter ?: null, $partnerFilter,
-    $openLeadId ?: null);
+    $openLeadId ?: null, $leadQ !== '' ? $leadQ : null);
 // monthly per-source report (admin): ?m=YYYY-MM, defaults to the current month
 $ym = preg_match('/^\d{4}-\d{2}$/', (string)($_GET['m'] ?? '')) ? (string)$_GET['m'] : date('Y-m');
 $ymPrev = date('Y-m', strtotime($ym . '-01 -1 month'));
@@ -49,8 +52,24 @@ $focus = $openLeadId > 0;
 <?php else: ?>
 <h2><?= $h($t('nav_leads')) ?></h2>
 
-<?php if (empty($isAgent)): pipeline_filter($h, $t, $agents, 'leads', $filterAgentId ?? null, $partnerOpts, $partnerFilter); ?>
+<?php if (empty($isAgent)): pipeline_filter($h, $t, $agents, 'leads', $filterAgentId ?? null, $partnerOpts, $partnerFilter, ['q' => $leadQ]); ?>
 <?php endif; ?>
+
+<?php // Searches the whole leads table, not just the 300 newest the list shows,
+      // and narrows the board and the list alike. Filters already on stay on. ?>
+<form method="get" style="margin:0 0 14px;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+  <input type="hidden" name="tab" value="leads">
+  <?php if ($filterAgentId ?? null): ?><input type="hidden" name="agent" value="<?= (int)$filterAgentId ?>"><?php endif; ?>
+  <?php if ($partnerFilter): ?><input type="hidden" name="partner" value="<?= (int)$partnerFilter ?>"><?php endif; ?>
+  <?php if ($srcFilter !== ''): ?><input type="hidden" name="src" value="<?= $h($srcFilter) ?>"><?php endif; ?>
+  <?php if ($zoneFilter !== ''): ?><input type="hidden" name="zone" value="<?= $h($zoneFilter) ?>"><?php endif; ?>
+  <input type="search" name="q" value="<?= $h($leadQ) ?>" placeholder="<?= $h($t('lead_search_ph')) ?>" style="width:min(420px,100%)">
+  <button class="btn ghost tiny"><?= $h($t('search')) ?></button>
+  <?php if ($leadQ !== ''): ?>
+    <a class="btn ghost tiny" href="?<?= $h(http_build_query(array_filter(['tab' => 'leads', 'agent' => $filterAgentId ?? null,
+        'partner' => $partnerFilter, 'src' => $srcFilter, 'zone' => $zoneFilter]))) ?>">&times; <?= $h($t('clear')) ?></a>
+  <?php endif; ?>
+</form>
 
 <details class="drawer">
   <summary class="btn ghost" style="margin-bottom:14px"><?= svg('leads') ?> <?= $h($t('lead_new')) ?></summary>
@@ -189,7 +208,9 @@ $focus = $openLeadId > 0;
 </div>
 <?php endif; /* !$focus — the board */ ?>
 
-<?php if (empty($isAgent) && !$focus): ?>
+<?php // Hidden while searching: it is a month's report, not a match, and it stood
+      // between the search box and the results. ?>
+<?php if (empty($isAgent) && !$focus && $leadQ === ''): ?>
 <div class="panel" style="margin-top:22px">
   <div class="panel-h">
     <h3><?= svg('leads') ?><?= $h($t('src_report')) ?></h3>
@@ -226,6 +247,9 @@ $focus = $openLeadId > 0;
 <?php if (!$focus): ?>
 <div style="display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin-top:22px">
   <h3 style="margin:0"><?= $h($t('all')) ?> · <?= count($rows) ?></h3>
+  <?php if ($leadQ !== ''): ?>
+    <span class="pill"><?= $h(str_replace('{q}', $leadQ, $t('lead_search_pill'))) ?></span>
+  <?php endif; ?>
   <?php if ($srcFilter !== ''): ?>
     <span class="pill"><?= $h($t('f_source')) ?>: <?= $h($srcFilter) ?></span>
   <?php endif; ?>
@@ -240,6 +264,7 @@ $focus = $openLeadId > 0;
       <?php if ($srcFilter !== ''): ?><input type="hidden" name="src" value="<?= $h($srcFilter) ?>"><?php endif; ?>
       <?php if ($partnerFilter): ?><input type="hidden" name="partner" value="<?= (int)$partnerFilter ?>"><?php endif; ?>
       <?php if ($filterAgentId ?? null): ?><input type="hidden" name="agent" value="<?= (int)$filterAgentId ?>"><?php endif; ?>
+      <?php if ($leadQ !== ''): ?><input type="hidden" name="q" value="<?= $h($leadQ) ?>"><?php endif; ?>
       <select name="zone" onchange="this.form.submit()">
         <option value=""><?= $h($t('zone_all')) ?></option>
         <?php foreach ($zones as $z): ?>
@@ -254,7 +279,8 @@ $focus = $openLeadId > 0;
 </div>
 <?php endif; /* !$focus — the list header and its filters */ ?>
 <?php if (!$rows): ?>
-  <div class="empty"><?= $h($openLeadId ? $t('lead_not_here') : $t('none_yet')) ?></div>
+  <div class="empty"><?= $h($openLeadId ? $t('lead_not_here')
+      : ($leadQ !== '' ? str_replace('{q}', $leadQ, $t('lead_search_none')) : $t('none_yet'))) ?></div>
 <?php endif; ?>
 <?php foreach ($rows as $r):
     $ag = $r['agent_name'] ?: $r['agent_username'];

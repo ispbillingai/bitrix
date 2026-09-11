@@ -442,11 +442,17 @@ final class Leads
      * one from elsewhere in the CRM. It stacks with the scope conditions rather
      * than replacing them, so a seller following a link to somebody else's lead
      * still gets nothing: a deep link must not be a way around the scope.
+     *
+     * $search is the Leads-tab search box (see searchCond); it stacks with the
+     * scope the same way.
      */
-    public static function all(int $limit = 300, ?int $assignedTo = null, ?string $source = null, ?string $zone = null, ?int $partnerId = null, ?int $onlyId = null): array
+    public static function all(int $limit = 300, ?int $assignedTo = null, ?string $source = null, ?string $zone = null, ?int $partnerId = null, ?int $onlyId = null, ?string $search = null): array
     {
         $limit = max(1, min(1000, $limit));
         $conds = [];
+        if ($search !== null && ($sc = self::searchCond($search)) !== null) {
+            $conds[] = $sc;
+        }
         if ($onlyId) {
             $conds[] = 'l.id = ' . (int)$onlyId;
         }
@@ -478,7 +484,7 @@ final class Leads
 
     /**
      * Leads grouped by stage_code for the kanban board. $assignedTo scopes to one
-     * seller, $partnerId to one partner's leads.
+     * seller, $partnerId to one partner's leads, $search to the search box's matches.
      *
      * Shows OPEN leads, DISCARDED ones (status 'junk', so the Discarded column
      * actually populates), and leads CONVERTED in the last 60 days — the same
@@ -488,12 +494,14 @@ final class Leads
      * stays put long enough to be seen. Older converted leads drop off; they live
      * on as deals, which is where the work continues.
      */
-    public static function byStage(?int $assignedTo = null, ?int $partnerId = null): array
+    public static function byStage(?int $assignedTo = null, ?int $partnerId = null, ?string $search = null): array
     {
+        $sc = $search !== null ? self::searchCond($search) : null;
         $where = "WHERE (l.status IN ('open', 'junk')
                      OR (l.status = 'converted' AND l.updated_at >= DATE_SUB(NOW(), INTERVAL 60 DAY)))"
             . ($assignedTo ? ' AND l.assigned_to = ' . (int)$assignedTo : '')
-            . ($partnerId ? ' AND l.referred_by_partner_id = ' . (int)$partnerId : '');
+            . ($partnerId ? ' AND l.referred_by_partner_id = ' . (int)$partnerId : '')
+            . ($sc !== null ? ' AND ' . $sc : '');
         $rows = Db::pdo()->query(
             "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name,
                     c.username AS creator_username, c.full_name AS creator_name,
@@ -510,6 +518,58 @@ final class Leads
             $out[$r['stage_code']][] = $r;
         }
         return $out;
+    }
+
+    /**
+     * The Leads-tab search box as one SQL condition, or null for a blank box.
+     *
+     * Words narrow each other — "rossi bar" finds "Bar Centrale di Rossi" — and
+     * each may hit the name, company, email, phone, VAT number, zone or fair.
+     * A box holding only a number is a phone, a VAT number or the lead's own
+     * number: spaces, dots and dashes are ignored and leading zeros dropped,
+     * because phones are stored +39… with the trunk 0 gone
+     * (Notifier::normalizePhone) — so "081 123 4567" still finds +39811234567.
+     * "#57" is lead 57 and nothing else.
+     */
+    private static function searchCond(string $q): ?string
+    {
+        $q = trim($q);
+        if ($q === '') {
+            return null;
+        }
+        $pdo  = Db::pdo();
+        $like = fn(string $s): string => $pdo->quote('%' . addcslashes($s, '%_\\') . '%');
+        if (preg_match('/^#\s*(\d+)$/', $q, $m)) {
+            return 'l.id = ' . (int)$m[1];
+        }
+        if (preg_match('/^[\d\s+\-.\/()]+$/', $q)) {
+            $digits   = (string)preg_replace('/\D+/', '', $q);
+            $national = ltrim($digits, '0');
+            $or = [];
+            if ($digits !== '' && strlen($digits) <= 18) {
+                $or[] = 'l.id = ' . (int)$digits;
+            }
+            if (strlen($national) >= 4) {
+                $or[] = 'l.customer_phone LIKE ' . $like($national);
+            }
+            if (strlen($digits) >= 4) {
+                $or[] = 'l.vat_number LIKE ' . $like($digits);
+            }
+            return $or ? '(' . implode(' OR ', $or) . ')' : '1 = 0';
+        }
+        $and = [];
+        foreach (array_slice(preg_split('/\s+/', $q) ?: [], 0, 6) as $word) {
+            $w  = $like($word);
+            $or = "l.customer_name LIKE $w OR ct.company LIKE $w OR l.customer_email LIKE $w OR l.customer_phone LIKE $w
+                   OR l.vat_number LIKE $w OR l.zone LIKE $w OR l.fair_name LIKE $w";
+            // "IT01234567890" still finds a VAT number stored without the prefix.
+            $d = (string)preg_replace('/\D+/', '', $word);
+            if (strlen($d) >= 6) {
+                $or .= ' OR l.vat_number LIKE ' . $like($d);
+            }
+            $and[] = "($or)";
+        }
+        return '(' . implode(' AND ', $and) . ')';
     }
 
     /** @return string[] known sources (seed suggestions + everything already in the table) for the form's datalist */

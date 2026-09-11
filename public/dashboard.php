@@ -2216,10 +2216,17 @@ function partner_select(callable $h, callable $t, array $partners, $selected = n
  * submit. $partners empty (Deals) renders the seller select alone, as before.
  */
 function pipeline_filter(callable $h, callable $t, array $agents, string $tab, ?int $selected = null,
-                         array $partners = [], ?int $selPartner = null): void {
+                         array $partners = [], ?int $selPartner = null, array $keep = []): void {
     $sty = 'padding:7px 10px;border-radius:8px;border:1px solid var(--line);background:var(--surface2);color:var(--txt);font-size:13px';
     echo '<form method="get" class="agent-filter" style="margin:0 0 14px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">';
     echo '<input type="hidden" name="tab" value="' . $h($tab) . '">';
+    // Whatever else is on the page that picking a seller must not throw away —
+    // the leads search box.
+    foreach ($keep as $k => $v) {
+        if ((string)$v !== '') {
+            echo '<input type="hidden" name="' . $h($k) . '" value="' . $h($v) . '">';
+        }
+    }
     echo '<span class="muted small">' . $h($t('filter_by_agent')) . '</span>';
     echo '<select name="agent" onchange="this.form.submit()" style="' . $sty . '">';
     echo '<option value="">' . $h($t('all_agents')) . '</option>';
