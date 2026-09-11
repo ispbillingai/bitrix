@@ -272,42 +272,52 @@ if ($r !== null):
       <?php if (!$foundCustomers && !$foundLeads): ?>
         <p class="muted small" style="margin-top:10px"><?= $h($t('ir_search_none')) ?></p>
       <?php else: ?>
-        <table style="margin-top:10px">
-          <?php // Leads first: when the installer is looking for someone who is not
-                // in the registry yet, this is the row they came for. ?>
-          <?php foreach ($foundLeads as $c): ?>
-            <tr>
-              <td><?= avatar($h, $c['name']) ?> <b><?= $h($c['name']) ?></b>
-                <span class="pill" style="color:var(--accent)"><?= $h($t('ir_lead_badge')) ?></span>
-                <div class="muted small"><?= $h(trim(implode(' · ', array_filter([(string)($c['company'] ?? ''), (string)($c['phone'] ?? ''), (string)($c['email'] ?? '')], 'strlen')))) ?></div>
-              </td>
-              <td style="text-align:right">
-                <form method="post" style="margin:0">
-                  <input type="hidden" name="do" value="install_create">
-                  <input type="hidden" name="contact_id" value="<?= (int)$c['id'] ?>">
-                  <button class="btn tiny"><?= $h($t('ir_open_for')) ?></button>
-                </form>
-              </td>
-            </tr>
+        <?php // One tap anywhere on the row opens the report. It used to be a table
+              // with the button in a second column — and on a phone every table
+              // scrolls sideways inside its own box at min-width 520px, which put
+              // "Apri rapporto" past the right edge of the screen: the installer saw
+              // the customer, tapped the name, and nothing happened.
+              // Leads first: when the installer is looking for someone who is not in
+              // the registry yet, that is the row they came for. ?>
+        <div class="ir-pick">
+          <?php foreach (array_merge(
+                    array_map(fn(array $c): array => $c + ['_lead' => true], $foundLeads),
+                    array_map(fn(array $c): array => $c + ['_lead' => false], $foundCustomers)) as $c):
+                $sub = $c['_lead']
+                    ? [(string)($c['company'] ?? ''), (string)($c['phone'] ?? ''), (string)($c['email'] ?? '')]
+                    : [(string)($c['city'] ?? ''), (string)($c['phone'] ?? '')]; ?>
+            <form method="post">
+              <input type="hidden" name="do" value="install_create">
+              <input type="hidden" name="contact_id" value="<?= (int)$c['id'] ?>">
+              <button class="ir-pick-row">
+                <?= avatar($h, $c['name']) ?>
+                <span class="ir-pick-who">
+                  <b><?= $h($c['name']) ?></b>
+                  <?php if ($c['_lead']): ?>
+                    <span class="pill" style="color:var(--accent)"><?= $h($t('ir_lead_badge')) ?></span>
+                  <?php elseif (!empty($c['customer_code'])): ?>
+                    <span class="muted small"> · <?= $h($c['customer_code']) ?></span>
+                  <?php endif; ?>
+                  <span class="muted small ir-pick-sub"><?= $h(trim(implode(' · ', array_filter($sub, 'strlen')))) ?></span>
+                </span>
+                <span class="btn tiny"><?= $h($t('ir_open_for')) ?></span>
+              </button>
+            </form>
           <?php endforeach; ?>
-          <?php foreach ($foundCustomers as $c): ?>
-            <tr>
-              <td><?= avatar($h, $c['name']) ?> <b><?= $h($c['name']) ?></b>
-                <?php if (!empty($c['customer_code'])): ?><span class="muted small"> · <?= $h($c['customer_code']) ?></span><?php endif; ?>
-                <div class="muted small"><?= $h(trim(implode(' · ', array_filter([(string)($c['city'] ?? ''), (string)($c['phone'] ?? '')], 'strlen')))) ?></div>
-              </td>
-              <td style="text-align:right">
-                <form method="post" style="margin:0">
-                  <input type="hidden" name="do" value="install_create">
-                  <input type="hidden" name="contact_id" value="<?= (int)$c['id'] ?>">
-                  <button class="btn tiny"><?= $h($t('ir_open_for')) ?></button>
-                </form>
-              </td>
-            </tr>
-          <?php endforeach; ?>
-        </table>
+        </div>
       <?php endif; ?>
     <?php endif; ?>
+<style>
+.ir-pick{display:flex;flex-direction:column;gap:8px;margin-top:10px;}
+.ir-pick form{margin:0;}
+.ir-pick-row{display:flex;align-items:center;gap:10px;width:100%;text-align:left;cursor:pointer;
+  background:var(--surface);color:var(--txt);border:1px solid var(--line);border-radius:var(--radius);
+  padding:10px 12px;font:inherit;}
+.ir-pick-row:hover,.ir-pick-row:focus-visible{background:var(--surface2);}
+.ir-pick-who{flex:1;min-width:0;overflow-wrap:anywhere;line-height:1.35;}
+.ir-pick-sub{display:block;margin-top:2px;}
+.ir-pick-row .btn{flex:0 0 auto;}
+</style>
   </div>
 </details>
 
@@ -322,7 +332,9 @@ if ($r !== null):
   <?php foreach ($reports as $row): $st = Reports::displayStatus($row); ?>
     <tr>
       <td class="muted"><?= (int)$row['id'] ?></td>
-      <td><b><?= $h($row['customer_name']) ?></b></td>
+      <?php // The name opens it: "Apri" sits in the last of eight columns, off the
+            // right edge of a phone until the table is swiped sideways. ?>
+      <td><a href="?tab=installations&id=<?= (int)$row['id'] ?>" style="color:inherit"><b><?= $h($row['customer_name']) ?></b></a></td>
       <td><?= $h($row['machine_model'] ?: '—') ?>
         <?php if (($row['report_type'] ?? '') === 'test'): ?>
           <span class="pill" style="color:var(--amber)"><?= $h($t('ir_test_badge')) ?><?=
