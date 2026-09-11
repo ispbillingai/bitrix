@@ -3,56 +3,52 @@ declare(strict_types=1);
 
 namespace Glue\Crm;
 
+use Glue\Config;
 use Glue\Db;
 use Glue\Event\Log;
 use Glue\Notify\Notifier;
+use Glue\Reminder\Scheduler;
 use PDO;
 use Throwable;
 
 /**
- * Leads that are really EXISTING customers.
+ * Requests from people who are ALREADY customers.
  *
  *   "Leads are arriving who are actually already customers, and this creates
- *    confusion. The VAT numbers of the leads should be compared with those of
- *    the customers and the information should be updated."
- *   "This happens because he sells different products: the contact was already
- *    a customer because he had bought a product in the past, and now he is
- *    asking for a new product."
+ *    confusion." — "he sells different products: the contact had bought a
+ *    product in the past and now asks for a new one." — "If you find a lead and
+ *    a customer you must delete the lead, take only the information he asked for
+ *    and insert it in the customer message area." — "In all cases the CRM
+ *    administrators must be notified of the new request."
  *
- * So a lead from a customer is a real lead — a new sale — not a duplicate to
- * refuse. What was wrong is that it did not KNOW it was a customer: it sat on a
- * contact of its own, the customer's card in the registry never showed it, and
- * the seller treated a returning client as a stranger. The usual way it
- * happened: the lead came in without a VAT, was converted, and a week later the
- * gestionale export brought the new customer in — as a NEW card, because the
- * lead's contact had no VAT for the import to adopt it by.
+ * So a customer's request is not a lead. At every door a request comes in by —
+ * the website and fair forms, a partner's area, the new-lead form, the website
+ * API, the mailbox importer — intake() asks first whether this is a customer:
+ * same partita IVA as a registry card, or the phone/email of exactly one card.
+ * If so, no lead is made. What they asked for is written into the customer's
+ * message area (their chat, Tickets) as their own message, their agent is told
+ * by the chat itself, and every administrator is told as well.
  *
- * Two ways a lead finds its customer:
+ * A lead that is ALREADY in the CRM and turns out to be a customer is not
+ * deleted but CLOSED (status 'customer', closeIntoCustomer()): its request goes
+ * into the chat the same way, it leaves the board and the open counts, and it
+ * stays on record — deals, invoices, partner commissions and quote requests all
+ * point at leads, and deleting them would break every one of those. A CONVERTED
+ * lead is how the customer was won: it is only linked to the card (link()).
  *
- *  - By VAT, automatically. Same partita IVA as a registry card → the lead is
- *    moved onto that card and the lead-only contact it sat on is merged into it.
- *    At creation Contacts::findOrCreate already looks at the VAT first; this
- *    covers the rest — a VAT typed in later (Leads::update), a customer who
- *    entered the registry after their lead (after every CustomerImport), and the
- *    leads already in the CRM (a one-off reconcile()).
- *
- *  - By phone or email, as a SUGGESTION the office confirms. 85% of leads carry
- *    no VAT at all. A number or an address shared with a card is strong
- *    evidence but not proof — an employee's mobile on a company card, a family
- *    number — and welding two businesses together is worse than the duplicate.
- *    So the lead says "forse già cliente", names the card, and the office links
- *    it with one click (link()).
+ * A phone or email on TWO cards is a question for a person, not a match: such a
+ * request becomes an ordinary lead that says "forse già cliente" (suggestions()),
+ * and the office moves it with one click.
  *
  * Only a lead-born contact (is_customer = 0, no gestionale code) is ever merged
- * away. Two REGISTRY cards are never merged here: they can be two customer codes
- * of one business on purpose, and that stays a human decision.
+ * away. Two REGISTRY cards are never merged here.
  */
 final class LeadCustomers
 {
     /** @var string[]|null base tables with a contact_id column, read once */
     private static ?array $contactTables = null;
 
-    // ---- finding ------------------------------------------------------------------
+    // ---- is this a customer? --------------------------------------------------------
 
     /** The registry card carrying this VAT — the oldest, as findOrCreate picks it. */
     public static function byVat(string $vat): ?array
@@ -64,6 +60,53 @@ final class LeadCustomers
         $s = Db::pdo()->prepare('SELECT * FROM contacts WHERE is_customer = 1 AND vat_number = ? ORDER BY id LIMIT 1');
         $s->execute([$v]);
         return $s->fetch() ?: null;
+    }
+
+    /**
+     * The customer card these details belong to, or null. VAT first — certain;
+     * otherwise the phone and the email, but only when they point at exactly ONE
+     * card.
+     *
+     * @return array{card: array, how: string}|null  how: vat | phone | email | phone+email
+     */
+    public static function matchCustomer(array $d): ?array
+    {
+        if (($card = self::byVat((string)($d['vat_number'] ?? ($d['vat'] ?? '')))) !== null) {
+            return ['card' => $card, 'how' => 'vat'];
+        }
+        $forms = self::phoneForms((string)($d['phone'] ?? ''));
+        $mail  = mb_strtolower(trim((string)($d['email'] ?? '')));
+        if (!$forms && $mail === '') {
+            return null;
+        }
+        $conds = [];
+        $args  = [];
+        if ($forms) {
+            $in = implode(',', array_fill(0, count($forms), '?'));
+            $conds[] = "phone IN ($in) OR phone2 IN ($in)";
+            array_push($args, ...$forms, ...$forms);
+        }
+        if ($mail !== '') {
+            $conds[] = 'email = ?';
+            $args[]  = $mail;
+        }
+        $s = Db::pdo()->prepare(
+            'SELECT * FROM contacts WHERE is_customer = 1 AND (' . implode(' OR ', $conds) . ') ORDER BY id LIMIT 3'
+        );
+        $s->execute($args);
+        $cards = $s->fetchAll();
+        if (count($cards) !== 1) {
+            return null;
+        }
+        $c   = $cards[0];
+        $how = [];
+        if ($forms && (in_array((string)$c['phone'], $forms, true) || in_array((string)$c['phone2'], $forms, true))) {
+            $how[] = 'phone';
+        }
+        if ($mail !== '' && mb_strtolower(trim((string)$c['email'])) === $mail) {
+            $how[] = 'email';
+        }
+        return ['card' => $c, 'how' => implode('+', $how) ?: 'phone'];
     }
 
     /**
@@ -81,7 +124,7 @@ final class LeadCustomers
         $phones = [];
         $emails = [];
         foreach ($leads as $l) {
-            if (!is_array($l) || !empty($l['ct_is_customer']) || ($l['status'] ?? '') === 'junk') {
+            if (!is_array($l) || !empty($l['ct_is_customer']) || in_array($l['status'] ?? '', ['junk', 'customer'], true)) {
                 continue;
             }
             $forms = self::phoneForms((string)($l['customer_phone'] ?? ''));
@@ -158,16 +201,236 @@ final class LeadCustomers
         return $s->fetchAll() ?: [];
     }
 
-    // ---- linking ------------------------------------------------------------------
+    // ---- a new request from a customer ------------------------------------------------
+
+    /**
+     * The check every door runs before a request may become a lead. null = not a
+     * customer, carry on as before; otherwise the request is already in the
+     * customer's messages and the administrators have been told.
+     *
+     * @param string $door website | fair | partner | manual | intake
+     * @param array  $ctx  partner (name) | source (the intake's source)
+     * @return array{card: array, ticket_id: int, how: string}|null
+     */
+    public static function intake(array $d, string $door, array $ctx = [], ?int $actorId = null): ?array
+    {
+        $m = self::matchCustomer($d);
+        if ($m === null) {
+            return null;
+        }
+        $tk = self::requestToCustomer($m['card'], $d, $door, $ctx + ['how' => $m['how']], $actorId, true);
+        return ['card' => $m['card'], 'ticket_id' => $tk, 'how' => $m['how']];
+    }
+
+    /**
+     * Write a request into the customer's message area — the chat on their card,
+     * the thread the office and the customer already talk in — as the customer's
+     * own message: "take only the information he asked for". A short line under
+     * it says who wrote and how it came in, because the person asking is not
+     * always the one on the card (an employee, a partner passing it on).
+     *
+     * $notify: the customer's agent (through the chat) and every administrator
+     * are told. Off only when an OLD request is being moved (closeIntoCustomer):
+     * that is not a new request.
+     *
+     * The same message twice within ten minutes — a double submit, a webhook
+     * retry — is written once.
+     *
+     * @return int the ticket id
+     */
+    public static function requestToCustomer(array $card, array $d, string $door, array $ctx = [],
+                                             ?int $actorId = null, bool $notify = true): int
+    {
+        $cardId  = (int)$card['id'];
+        $request = trim((string)($d['comments'] ?? ''));
+        $subject = self::subjectFor($door, $d, $ctx, $actorId);
+
+        $vat  = trim((string)($d['vat_number'] ?? ''));
+        $from = array_values(array_filter([
+            trim((string)($d['name'] ?? '')), trim((string)($d['phone'] ?? '')),
+            trim((string)($d['email'] ?? '')), trim((string)($d['company'] ?? '')),
+            $vat !== '' ? 'P.IVA ' . $vat : '',
+        ], 'strlen'));
+        $meta = [];
+        if ($from) {
+            $meta[] = 'Da: ' . implode(' · ', $from);
+        }
+        if (!empty($d['preferred_at'])) {
+            $meta[] = 'Appuntamento preferito: ' . $d['preferred_at'];
+        }
+        if (!empty($d['fair_name'])) {
+            $meta[] = 'Fiera: ' . $d['fair_name'] . (!empty($d['fair_city']) ? ' (' . $d['fair_city'] . ')' : '');
+        }
+        if (!empty($d['source_url'])) {
+            $meta[] = 'Pagina: ' . $d['source_url'];
+        }
+        if (!empty($ctx['received_at'])) {
+            $meta[] = 'Ricevuta il ' . date('d/m/Y H:i', (int)strtotime((string)$ctx['received_at']));
+        }
+        $body = ($request !== '' ? $request : 'Richiesta di contatto, senza messaggio.')
+              . ($meta ? "\n\n— " . implode("\n— ", $meta) : '');
+
+        $dup = Db::pdo()->prepare(
+            "SELECT t.id FROM tickets t JOIN ticket_messages m ON m.ticket_id = t.id
+              WHERE t.contact_id = ? AND m.sender_type = 'customer' AND m.body = ?
+                AND m.created_at >= NOW() - INTERVAL 10 MINUTE
+              ORDER BY m.id DESC LIMIT 1"
+        );
+        $dup->execute([$cardId, $body]);
+        $seen = (int)($dup->fetchColumn() ?: 0);
+        if ($seen > 0) {
+            return $seen;
+        }
+
+        $tk = Tickets::open($cardId, $subject, $body, null, null, $notify);
+        Log::write('crm', 'customer_request', 'contact', $cardId, [
+            'door' => $door, 'ticket' => $tk, 'how' => $ctx['how'] ?? null, 'lead' => $ctx['lead_id'] ?? null,
+            'name' => (string)($d['name'] ?? ''), 'phone' => (string)($d['phone'] ?? ''),
+            'email' => (string)($d['email'] ?? ''), 'vat' => $vat, 'by' => $actorId,
+        ]);
+        if ($notify) {
+            self::notifyAdmins($card, $subject, $request, implode(' · ', $from), $tk);
+        }
+        return $tk;
+    }
+
+    /**
+     * One queued message per administrator who can be reached, through the same
+     * queue as every other CRM message — it spaces the WhatsApp sends and retries
+     * a failed one. Built apart from the sending, so it can be checked without
+     * sending anything.
+     *
+     * @return array<int,array> Scheduler::enqueue rows
+     */
+    public static function adminNotifications(array $card, string $subject, string $request, string $from, int $ticketId): array
+    {
+        $link    = Config::appBaseUrl() . '/dashboard.php?tab=tickets&tk=' . $ticketId;
+        $code    = !empty($card['customer_code']) ? ' (cod. ' . $card['customer_code'] . ')' : '';
+        $excerpt = mb_strlen($request) > 400 ? mb_substr($request, 0, 400) . '…' : $request;
+        if ($excerpt === '') {
+            $excerpt = 'Richiesta di contatto, senza messaggio.';
+        }
+        $users = Db::pdo()->query(
+            "SELECT id, full_name, username, phone, email FROM users
+              WHERE role = 'admin' AND active = 1
+                AND ((phone IS NOT NULL AND phone <> '') OR (email IS NOT NULL AND email <> ''))
+              ORDER BY id"
+        )->fetchAll();
+
+        $rows = [];
+        foreach ($users as $u) {
+            $rows[] = [
+                'entity_type'    => 'contact',
+                'entity_id'      => (int)$card['id'],
+                'rule_key'       => 'customer_request_admin',
+                'recipient_type' => 'agent',
+                'channel'        => 'both',
+                'due_at'         => date('Y-m-d H:i:s'),
+                'dedupe_key'     => 'custreq:' . $ticketId . ':' . (int)$u['id'] . ':'
+                                    . substr(md5($subject . '|' . $request . '|' . $from), 0, 12),
+                // The payload carries the administrator's own phone and email:
+                // the queue addresses an 'agent' recipient from these.
+                'payload'        => [
+                    'name'          => trim((string)($u['full_name'] ?? '')) ?: (string)$u['username'],
+                    'customer_name' => (string)$card['name'],
+                    'code'          => $code,
+                    'customer_html' => htmlspecialchars((string)$card['name'] . $code, ENT_QUOTES),
+                    'subject'       => $subject,
+                    'request'       => $excerpt,
+                    'request_html'  => nl2br(htmlspecialchars($excerpt, ENT_QUOTES)),
+                    'from'          => $from !== '' ? $from : '—',
+                    'from_html'     => htmlspecialchars($from !== '' ? $from : '—', ENT_QUOTES),
+                    'id'            => (string)$ticketId,
+                    'link'          => $link,
+                    'agent_phone'   => (string)($u['phone'] ?? ''),
+                    'agent_email'   => (string)($u['email'] ?? ''),
+                ],
+            ];
+        }
+        return $rows;
+    }
+
+    /** "In all cases the CRM administrators must be notified of the new request." */
+    private static function notifyAdmins(array $card, string $subject, string $request, string $from, int $ticketId): void
+    {
+        // Always on; a test process switches it off for itself (Config overlay).
+        if (!Config::get('crm.customer_request_notify', true)) {
+            return;
+        }
+        try {
+            $sch = new Scheduler();
+            foreach (self::adminNotifications($card, $subject, $request, $from, $ticketId) as $row) {
+                $sch->enqueue($row);
+            }
+        } catch (Throwable $e) {
+            // The request is in the customer's messages either way.
+            Log::write('crm', 'customer_request_notify_failed', 'contact', (int)$card['id'], ['error' => $e->getMessage()]);
+        }
+    }
+
+    // ---- a lead already in the CRM ---------------------------------------------------
+
+    /**
+     * An OPEN lead that turns out to be a customer: what they asked for goes into
+     * the customer's messages and the lead is closed as 'customer' — off the
+     * board, out of the open counts, still on record, reversible. A converted
+     * lead is refused: it is how the customer was won, not a duplicate of them.
+     *
+     * Quiet: moving an old request is not a new one, so nobody is paged.
+     *
+     * @return array{ok:bool, error?:string, ticket_id?:int}
+     */
+    public static function closeIntoCustomer(int $leadId, int $cardId, ?int $userId = null): array
+    {
+        $lead = Leads::find($leadId);
+        if (!$lead) {
+            return ['ok' => false, 'error' => 'no_lead'];
+        }
+        if ((string)$lead['status'] !== 'open') {
+            return ['ok' => false, 'error' => 'not_open'];
+        }
+        $card = Contacts::find($cardId);
+        if (!$card || (int)$card['is_customer'] !== 1) {
+            return ['ok' => false, 'error' => 'not_customer'];
+        }
+        if ((int)$lead['contact_id'] !== $cardId) {
+            $l = self::link($leadId, $cardId, 'close', $userId);
+            if (empty($l['ok'])) {
+                return $l;
+            }
+            $card = Contacts::find($cardId) ?: $card;   // it may have taken a phone or an email
+        }
+
+        $tk = self::requestToCustomer($card, [
+            'name'       => $lead['customer_name'], 'phone' => $lead['customer_phone'],
+            'email'      => $lead['customer_email'], 'vat_number' => $lead['vat_number'],
+            'comments'   => $lead['comments'], 'fair_name' => $lead['fair_name'],
+            'fair_city'  => $lead['fair_city'], 'source_url' => $lead['source_url'],
+        ], 'lead', ['lead_id' => $leadId, 'received_at' => $lead['received_at'] ?: $lead['created_at']], $userId, false);
+
+        Db::pdo()->prepare("UPDATE leads SET status = 'customer' WHERE id = ?")->execute([$leadId]);
+        VatLock::releaseForLead($leadId);
+        (new Scheduler())->cancelForEntity('lead', $leadId);
+
+        $label = (string)$card['name'] . (!empty($card['customer_code']) ? ' (cod. ' . $card['customer_code'] . ')' : '');
+        Activities::add('lead', $leadId, 'system',
+            "Chiuso: già cliente. La richiesta è nei messaggi di $label (conversazione #$tk).", $userId);
+        Log::write('crm', 'lead_closed_customer', 'lead', $leadId, [
+            'card' => $cardId, 'ticket' => $tk, 'by' => $userId,
+            'was'  => array_intersect_key($lead, array_flip(['status', 'stage_code', 'assigned_to', 'contact_id', 'referred_by_partner_id'])),
+        ]);
+        Leads::pushSync($leadId);
+        return ['ok' => true, 'ticket_id' => $tk];
+    }
 
     /**
      * Put a lead on its customer's card. The lead-only contact it sat on is
      * merged into the card (merge()) — which carries along any other lead on that
      * contact, its documents, tickets and the rest — and the card takes the
-     * phone, email and portal login it lacked: "the information should be
-     * updated". The lead itself keeps what it says: who asked, and for what.
+     * phone, email and portal login it lacked. The lead itself keeps what it
+     * says: who asked, and for what.
      *
-     * @param string $how 'vat' (automatic) | 'manual' (the office confirmed a suggestion)
+     * @param string $how 'vat' (automatic) | 'manual' (the office) | 'close' (closeIntoCustomer)
      * @return array{ok:bool, error?:string, already?:bool, moved?:array, leads?:int[]}
      */
     public static function link(int $leadId, int $cardId, string $how, ?int $userId = null): array
@@ -205,8 +468,12 @@ final class LeadCustomers
         }
 
         $label = (string)$card['name'] . (!empty($card['customer_code']) ? ' (cod. ' . $card['customer_code'] . ')' : '');
-        $why   = $how === 'vat' ? 'stessa partita IVA ' . (string)$card['vat_number']
-               : ($how === 'manual' ? 'collegato dalla sede' : $how);
+        $why   = match ($how) {
+            'vat'    => 'stessa partita IVA ' . (string)$card['vat_number'],
+            'manual' => 'collegato dalla sede',
+            'close'  => 'la sede ha spostato la richiesta nei suoi messaggi',
+            default  => $how,
+        };
         foreach ($m['leads'] as $lid) {
             Activities::add('lead', (int)$lid, 'system', "Già cliente: collegato alla scheda $label — $why.", $userId);
             Leads::pushSync((int)$lid);
@@ -305,8 +572,10 @@ final class LeadCustomers
      *  - a lead that is not a customer yet → its own contact carries its VAT, so
      *    the day the gestionale adds this customer the import ADOPTS the contact
      *    (it matches on VAT) instead of opening a second card beside it.
-     * Discarded leads are left alone. $leadId limits it to one lead (after an
-     * edit); null runs every lead (after an import, and once as the backfill).
+     * It links, it never closes: a lead whose customer appears in the registry
+     * after it is usually the sale that made them a customer. Discarded and
+     * closed leads are left alone. $leadId limits it to one lead (after an edit);
+     * null runs every lead (after an import, and once as the backfill).
      *
      * @return array{linked:int, vat_synced:int, left_two_cards:int, linked_ids:int[], synced_contacts:int[], plan?:array}
      */
@@ -319,7 +588,7 @@ final class LeadCustomers
         $rows = Db::pdo()->query(
             "SELECT l.id, l.vat_number AS lvat, l.contact_id, c.vat_number AS cvat, c.is_customer, c.customer_code
                FROM leads l LEFT JOIN contacts c ON c.id = l.contact_id
-              WHERE l.status <> 'junk'" . ($leadId ? ' AND l.id = ' . (int)$leadId : '') . ' ORDER BY l.id'
+              WHERE l.status IN ('open', 'converted')" . ($leadId ? ' AND l.id = ' . (int)$leadId : '') . ' ORDER BY l.id'
         )->fetchAll();
 
         foreach ($rows as $r) {
@@ -371,6 +640,30 @@ final class LeadCustomers
     }
 
     // ---- helpers ------------------------------------------------------------------------
+
+    private static function subjectFor(string $door, array $d, array $ctx, ?int $actorId): string
+    {
+        return match ($door) {
+            'website' => !empty($ctx['partner']) ? 'Nuova richiesta dal sito (link di ' . $ctx['partner'] . ')'
+                                                 : 'Nuova richiesta dal sito',
+            'fair'    => 'Nuova richiesta dalla fiera' . (!empty($d['fair_name']) ? ' ' . $d['fair_name'] : ''),
+            'partner' => 'Nuova richiesta dal partner ' . (string)($ctx['partner'] ?? ''),
+            'manual'  => 'Nuova richiesta inserita da ' . self::staffName($actorId),
+            'intake'  => 'Nuova richiesta' . (!empty($ctx['source']) ? ' (' . $ctx['source'] . ')' : ''),
+            'lead'    => 'Richiesta dal lead #' . (int)($ctx['lead_id'] ?? 0),
+            default   => 'Nuova richiesta',
+        };
+    }
+
+    private static function staffName(?int $userId): string
+    {
+        if (!$userId) {
+            return 'CRM';
+        }
+        $s = Db::pdo()->prepare("SELECT COALESCE(NULLIF(full_name, ''), username) FROM users WHERE id = ?");
+        $s->execute([$userId]);
+        return (string)($s->fetchColumn() ?: 'CRM');
+    }
 
     /**
      * Both spellings the CRM stores a number in: leads keep Notifier's (an Italian

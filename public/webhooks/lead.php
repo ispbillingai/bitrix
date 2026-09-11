@@ -21,6 +21,8 @@ declare(strict_types=1);
  *
  *   201 {"ok":true,"lead_id":42,"status":"created"}
  *   200 {"ok":true,"lead_id":42,"status":"duplicate"}   already had this one
+ *   200 {"ok":true,"lead_id":null,"status":"existing_customer"}   already a customer:
+ *       no lead — the request went into their messages and the office was told
  *
  * The only hard requirement is a contact: phone or email. Leads always land in
  * the "website" source category (the office filters on it there). `source_url`
@@ -155,6 +157,15 @@ try {
 } catch (Throwable $e) {
     Log::write('lead_api', 'intake_error', null, null, ['error' => $e->getMessage(), 'lead' => $lead]);
     $reply(500, ['ok' => false, 'error' => 'intake_failed', 'detail' => $e->getMessage()]);
+}
+
+// Already a customer: no lead was made — the request went into their messages.
+if (!empty($res['customer_id'])) {
+    Log::write('lead_api', 'lead_to_customer', 'contact', (int)$res['customer_id'],
+        ['source' => $lead['source'], 'source_url' => $lead['source_url'], 'external_id' => $lead['external_id'],
+         'ticket' => $res['ticket_id'] ?? null]);
+    $reply(200, ['ok' => true, 'lead_id' => null, 'status' => 'existing_customer']);
+    exit;
 }
 
 Log::write('lead_api', $res['duplicate'] ? 'lead_duplicate' : 'lead_received', 'lead', $res['lead_id'],

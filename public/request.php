@@ -127,6 +127,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $refCode = trim((string)($_POST['ref'] ?? ($_GET['ref'] ?? '')));
                 $partner = $refCode !== '' ? \Glue\Partner\Partners::byRefCode($refCode) : null;
 
+                // Already a customer — same VAT, or the phone/email of exactly one
+                // customer card: no lead. What they asked for goes into their
+                // messages and the administrators are told. The visitor sees the
+                // same thank-you either way. (LeadCustomers::intake)
+                $asCustomer = \Glue\Crm\LeadCustomers::intake([
+                    'name' => $name, 'email' => $email, 'phone' => $phone,
+                    'company' => trim((string)($_POST['company'] ?? '')),
+                    'comments' => trim((string)($_POST['message'] ?? '')),
+                    'vat_number' => (string)($_POST['vat_number'] ?? ''),
+                    'preferred_at' => trim((string)($_POST['preferred_at'] ?? '')),
+                ], 'website', ['partner' => $partner['name'] ?? null]);
+
                 // 90-day VAT exclusivity for partner entries: a VAT already claimed
                 // by someone else blocks the duplicate — the visitor still sees the
                 // success screen, the partner is notified it's taken, and the
@@ -134,7 +146,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $vat = \Glue\Crm\VatLock::normalize((string)($_POST['vat_number'] ?? ''));
                 $vatBlocked = false;
                 $vc = ['ok' => true, 'fresh' => false];
-                if ($vat !== '' && $partner) {
+                if ($vat !== '' && $partner && $asCustomer === null) {
                     $vc = \Glue\Crm\VatLock::claim($vat, 'partner', (int)$partner['id']);
                     if (!$vc['ok']) {
                         $vatBlocked = true;
@@ -149,7 +161,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
 
-                if (!$vatBlocked) {
+                if (!$vatBlocked && $asCustomer === null) {
                     $leadId = Leads::create([
                         'name'     => $name,
                         'email'    => $email,
@@ -171,7 +183,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 $preferred = trim((string)($_POST['preferred_at'] ?? ''));
-                if ($preferred !== '' && !$vatBlocked) {
+                if ($preferred !== '' && !$vatBlocked && $asCustomer === null) {
                     Appointments::request([
                         'name' => $name, 'email' => $email, 'phone' => $phone,
                         'preferred_at' => $preferred, 'lead_id' => $leadId, 'lang' => $lang,

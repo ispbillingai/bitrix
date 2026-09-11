@@ -49,7 +49,8 @@ if ($lead['name'] === '' && $lead['phone'] === '' && $lead['email'] === '') {
 
 try {
     $res = LeadIntake::submit($lead);
-    echo json_encode(['ok' => true, 'lead_id' => $res['lead_id'], 'duplicate' => $res['duplicate']]);
+    echo json_encode(['ok' => true, 'lead_id' => $res['lead_id'], 'duplicate' => $res['duplicate']]
+        + (!empty($res['customer_id']) ? ['existing_customer' => true] : []));
 } catch (Throwable $e) {
     Log::write('form_intake', 'intake_error', null, null, ['error' => $e->getMessage(), 'lead' => $lead]);
     http_response_code(500);

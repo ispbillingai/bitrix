@@ -765,6 +765,7 @@ final class Leads
                     COUNT(*)                 AS received,
                     SUM(status='converted')  AS converted,
                     SUM(status='junk')       AS junk,
+                    SUM(status='customer')   AS customer,
                     SUM(status='open')       AS still_open
              FROM leads
              WHERE received_at >= CONCAT(?, '-01')

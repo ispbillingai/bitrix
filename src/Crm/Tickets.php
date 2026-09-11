@@ -20,7 +20,7 @@ use Throwable;
 final class Tickets
 {
     /** Customer opens a new ticket (first message). Returns the ticket id. */
-    public static function open(int $contactId, string $subject, string $body, ?int $dealId = null, ?array $attachment = null): int
+    public static function open(int $contactId, string $subject, string $body, ?int $dealId = null, ?array $attachment = null, bool $notify = true): int
     {
         $agentId = self::agentForContact($contactId);
         $subject = trim($subject) !== '' ? mb_substr(trim($subject), 0, 190) : 'Support request';
@@ -34,7 +34,7 @@ final class Tickets
         $existing = (int)($dup->fetchColumn() ?: 0);
         if ($existing > 0) {
             $contact = Account::find($contactId);
-            self::reply($existing, 'customer', $contactId, (string)($contact['name'] ?? ''), $body, $attachment);
+            self::reply($existing, 'customer', $contactId, (string)($contact['name'] ?? ''), $body, $attachment, null, $notify);
             return $existing;
         }
 
@@ -49,7 +49,11 @@ final class Tickets
         self::addMessage($ticketId, 'customer', $contactId, (string)($contact['name'] ?? ''), $body, $attachment);
 
         Log::write('crm', 'ticket_opened', 'ticket', $ticketId, ['contact_id' => $contactId, 'agent_id' => $agentId]);
-        self::notifyStaff($ticketId);
+        // $notify = false: a request the office MOVED here from an old lead
+        // (LeadCustomers::closeIntoCustomer) — not a new one, so nobody is paged.
+        if ($notify) {
+            self::notifyStaff($ticketId);
+        }
         return $ticketId;
     }
 
@@ -93,7 +97,7 @@ final class Tickets
      * Post a reply. $senderType is customer|agent|admin. Updates the thread status
      * and notifies the other party.
      */
-    public static function reply(int $ticketId, string $senderType, ?int $senderId, string $senderName, string $body, ?array $attachment = null, ?int $signDocId = null): bool
+    public static function reply(int $ticketId, string $senderType, ?int $senderId, string $senderName, string $body, ?array $attachment = null, ?int $signDocId = null, bool $notify = true): bool
     {
         $body = trim($body);
         $ticket = self::find($ticketId);
@@ -108,7 +112,9 @@ final class Tickets
             ->execute([$status, $senderType, $ticketId]);
 
         Log::write('crm', 'ticket_reply', 'ticket', $ticketId, ['by' => $senderType]);
-        if ($senderType === 'customer') {
+        if (!$notify) {
+            // Moved in by the office, not written now: nobody is paged.
+        } elseif ($senderType === 'customer') {
             self::notifyStaff($ticketId);
         } else {
             self::notifyCustomer($ticketId);

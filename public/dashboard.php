@@ -582,6 +582,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $vatKind = $onBehalfOf > 0 ? 'partner' : 'agent';
                 $vatOwner = $onBehalfOf > 0 ? $onBehalfOf : (int)$uid;
 
+                // Already a customer — same VAT, or the phone/email of exactly one
+                // customer card: no lead. What they asked for goes into the
+                // customer's messages and the administrators are told. The office
+                // lands on that conversation; a seller is told where it went, not
+                // whose card it is (the same discretion as the phone check below).
+                $asCustomer = \Glue\Crm\LeadCustomers::intake([
+                    'name' => \Glue\Crm\Contacts::fullName((string)($_POST['first_name'] ?? ''), (string)($_POST['last_name'] ?? '')),
+                    'phone' => (string)($_POST['phone'] ?? ''), 'email' => (string)($_POST['email'] ?? ''),
+                    'company' => (string)($_POST['company'] ?? ''), 'comments' => (string)($_POST['comments'] ?? ''),
+                    'vat_number' => (string)($_POST['vat_number'] ?? ''),
+                    'fair_name' => (string)($_POST['fair_name'] ?? ''), 'fair_city' => (string)($_POST['fair_city'] ?? ''),
+                ], 'manual', [], $uid);
+                if ($asCustomer !== null) {
+                    $_SESSION['dash_flash'] = [$isAgent ? $t('lead_went_to_customer_agent')
+                        : sprintf($t('lead_went_to_customer'), (string)$asCustomer['card']['name']), 'ok'];
+                    header('Location: ' . ($isAgent ? '?tab=leads' : '?tab=tickets&tk=' . (int)$asCustomer['ticket_id']));
+                    exit;
+                }
+
                 // The same idea for the phone number, and with no expiry: a number
                 // that already belongs to a live lead or to a registry customer
                 // blocks the entry outright, instead of being quietly merged or
@@ -761,6 +780,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 Activities::add('lead', (int)$_POST['id'], 'note', (string)$_POST['body'], $uid);
                 $tab = 'leads';
                 break;
+            // An open lead that is an existing customer: its request goes into the
+            // customer's messages and the lead closes as 'customer' (quiet — an old
+            // request, not a new one). Admin only — not in the agent whitelist.
+            case 'lead_close_customer': {
+                $lc = \Glue\Crm\LeadCustomers::closeIntoCustomer((int)$_POST['id'], (int)($_POST['customer_id'] ?? 0), $uid);
+                if (empty($lc['ok'])) {
+                    $_SESSION['dash_flash'] = [$t('lead_link_err_' . ($lc['error'] ?? 'not_customer')), 'err'];
+                    header('Location: ?tab=leads&lead=' . (int)$_POST['id']);
+                } else {
+                    $_SESSION['dash_flash'] = [$t('lead_closed_customer'), 'ok'];
+                    header('Location: ?tab=tickets&tk=' . (int)$lc['ticket_id']);
+                }
+                exit;
+            }
             // The office confirms a "forse già cliente" suggestion: the lead moves onto
             // the customer's card and its own contact is merged into it. Admin only —
             // not in the agent whitelist.

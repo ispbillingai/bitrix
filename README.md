@@ -44,14 +44,17 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 - **Appointments**: requests come in → staff assign a seller and confirm a time →
   reminders fire to **both** parties before the event.
 - **Tasks + KPI**: assign work to sellers, score on completion, leaderboard.
-- **Returning customers** (`Crm\LeadCustomers`): a customer who bought one
-  product often comes back for another, as a new lead. That lead is put on the
-  customer's registry card, not left on a contact of its own: automatically when
-  its partita IVA matches a card (at creation, when the VAT is typed in later, and
-  after every registry import), and on the office's confirmation when only the
-  phone or email matches ("forse già cliente"). The lead-only contact is merged
-  into the card, which takes the phone, email and portal login it lacked. The
-  lead shows **Già cliente**, and the customer page lists the customer's requests.
+- **Returning customers** (`Crm\LeadCustomers`): a request from someone who is
+  already a customer does not become a lead. Same partita IVA as a registry card,
+  or the phone/email of exactly one card, and what they asked for goes into that
+  customer's messages (their chat); their agent and every administrator are told.
+  The same at every door: website and fair forms, a partner's area, the new-lead
+  form, the website API, the mailbox importer. A partner is told it is an existing
+  customer and is not credited. An open lead already in the CRM that turns out to
+  be a customer is moved the same way with one click and closed as **Già cliente**
+  (status `customer`: off the board, still on record, reversible) — never deleted,
+  because deals, invoices, partner commissions and quotes point at leads. A
+  converted lead is how the customer was won: it is only linked to the card.
 - **Quotes** (`views/quotes.php`): a seller asks the back office to price
   something and the finished quote comes back down the same wire. Two doors, one
   queue: a **Request quote** button inside the lead record (the lead already

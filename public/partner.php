@@ -102,6 +102,7 @@ if ($partner && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') ==
             'required'  => $t('err_required'),
             'vat_taken' => sprintf($t('err_vat_taken'), (string)($res['available_at'] ?? '')),
             'duplicate' => $t(($res['duplicate'] ?? '') === 'own' ? 'err_dup_own' : 'err_dup_other'),
+            'customer'  => $t('err_customer'),
             default     => $t('err_generic'),
         };
         $_SESSION['partner_notice'] = ['ok' => false, 'msg' => $msg];
@@ -380,7 +381,7 @@ function partner_strings(string $lang): array
         // what a partner is shown about a lead — a status that actually moves
         'st_new' => 'New', 'st_contacted' => 'Contacted', 'st_qualified' => 'Qualified',
         'st_working' => 'Being worked', 'st_negotiation' => 'In negotiation',
-        'st_won' => 'Closed', 'st_lost' => 'Lost',
+        'st_won' => 'Closed', 'st_lost' => 'Lost', 'st_customer' => 'Already our customer',
         'st_open' => 'In progress',   // the tile, which counts every one of the above
         // leads
         'referrals' => 'My leads', 'leads_sub' => 'The status of every lead you brought in. We message you as soon as one is closed or lost.',
@@ -404,6 +405,7 @@ function partner_strings(string $lang): array
         'err_dup_other' => 'Not filed: this customer is already in our system under another entry, so no new lead was created and this one is not assigned to you. Your notes have been recorded on the existing lead.',
         'err_required' => 'Please give the contact name and at least an email or a phone number.',
         'err_vat_taken' => 'This VAT number has already been entered by another associate. It becomes available again on %s.',
+        'err_customer' => 'Not filed: this business is already our customer. We have passed the request on to the office, who will follow it up.',
         'err_generic' => 'The lead could not be saved. Please try again.',
         // commissions
         'accruals' => 'Commissions', 'commission' => 'Your rate',
@@ -434,7 +436,7 @@ function partner_strings(string $lang): array
         'ov_won_sub' => 'chiuse positivamente', 'ov_lost_sub' => 'chiuse senza accordo',
         'st_new' => 'Nuova', 'st_contacted' => 'Contattata', 'st_qualified' => 'Qualificata',
         'st_working' => 'In lavorazione', 'st_negotiation' => 'In trattativa',
-        'st_won' => 'Chiusa', 'st_lost' => 'Persa',
+        'st_won' => 'Chiusa', 'st_lost' => 'Persa', 'st_customer' => 'Già nostro cliente',
         'st_open' => 'In corso',
         'referrals' => 'Le mie segnalazioni', 'leads_sub' => 'Lo stato di ogni segnalazione che hai portato. Ti scriviamo appena una viene chiusa o persa.',
         'no_referrals' => 'Ancora nessuna segnalazione — inserisci la prima.',
@@ -456,6 +458,7 @@ function partner_strings(string $lang): array
         'err_dup_other' => 'Non inserita: questo cliente è già presente con un’altra segnalazione, quindi non ne è stata creata una nuova e questa non è attribuita a te. Le tue note sono state registrate sulla segnalazione esistente.',
         'err_required' => 'Inserisci il nome del contatto e almeno email o telefono.',
         'err_vat_taken' => 'Questa partita IVA è già stata inserita da un altro collaboratore. Tornerà disponibile il %s.',
+        'err_customer' => 'Non inserita: questa attività è già nostra cliente. Abbiamo inoltrato la richiesta alla sede, che la seguirà.',
         'err_generic' => 'Non è stato possibile salvare la segnalazione. Riprova.',
         'accruals' => 'Provvigioni', 'commission' => 'La tua aliquota',
         'comm_sub' => 'Quanto hanno reso le tue segnalazioni chiuse.',

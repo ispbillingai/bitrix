@@ -232,22 +232,22 @@ $focus = $openLeadId > 0;
   </div>
   <div class="muted small" style="margin:-4px 0 12px"><?= $h($t('src_report_sub')) ?></div>
   <?php if (!$srcReport): ?><div class="empty"><?= $h($t('none_yet')) ?></div>
-  <?php else: $tot = ['received' => 0, 'converted' => 0, 'junk' => 0, 'still_open' => 0]; ?>
+  <?php else: $tot = ['received' => 0, 'converted' => 0, 'junk' => 0, 'customer' => 0, 'still_open' => 0]; ?>
   <div style="overflow-x:auto"><table><thead>
     <tr><th><?= $h($t('f_source')) ?></th>
         <th><?= $h($t('src_received')) ?></th><th><?= $h($t('src_converted')) ?></th>
-        <th><?= $h($t('src_junk')) ?></th><th><?= $h($t('src_open')) ?></th><th><?= $h($t('ov_conv')) ?></th><th></th></tr>
+        <th><?= $h($t('src_junk')) ?></th><th><?= $h($t('src_customer')) ?></th><th><?= $h($t('src_open')) ?></th><th><?= $h($t('ov_conv')) ?></th><th></th></tr>
   </thead><tbody>
-    <?php foreach ($srcReport as $sr): foreach ($tot as $k => $v) { $tot[$k] += (int)$sr[$k]; }
+    <?php foreach ($srcReport as $sr): foreach ($tot as $k => $v) { $tot[$k] += (int)($sr[$k] ?? 0); }
         $pct = (int)$sr['received'] > 0 ? round(100 * (int)$sr['converted'] / (int)$sr['received']) : 0; ?>
       <tr><td><a href="?tab=leads&src=<?= $h(urlencode($sr['source'])) ?>"><?= $h($sr['source']) ?></a></td>
           <td><?= (int)$sr['received'] ?></td><td><?= (int)$sr['converted'] ?></td>
-          <td><?= (int)$sr['junk'] ?></td><td><?= (int)$sr['still_open'] ?></td><td><?= $pct ?>%</td>
+          <td><?= (int)$sr['junk'] ?></td><td><?= (int)($sr['customer'] ?? 0) ?></td><td><?= (int)$sr['still_open'] ?></td><td><?= $pct ?>%</td>
           <td><a class="btn ghost tiny" href="?export=leads&m=<?= $h($ym) ?>&src=<?= $h(urlencode($sr['source'])) ?>"><?= $h($t('exp_excel')) ?></a></td></tr>
     <?php endforeach; $tpct = $tot['received'] > 0 ? round(100 * $tot['converted'] / $tot['received']) : 0; ?>
     <tr style="font-weight:600"><td><?= $h($t('src_total')) ?></td>
         <td><?= $tot['received'] ?></td><td><?= $tot['converted'] ?></td>
-        <td><?= $tot['junk'] ?></td><td><?= $tot['still_open'] ?></td><td><?= $tpct ?>%</td><td></td></tr>
+        <td><?= $tot['junk'] ?></td><td><?= $tot['customer'] ?></td><td><?= $tot['still_open'] ?></td><td><?= $tpct ?>%</td><td></td></tr>
   </tbody></table></div>
   <?php endif; ?>
 </div>
@@ -345,6 +345,14 @@ $focus = $openLeadId > 0;
             <span><b><?= $h($r['ct_name']) ?></b><?= !empty($r['ct_code']) ? ' · ' . $h($t('cu_code')) . ' ' . $h($r['ct_code']) : '' ?><?= !empty($r['ct_vat']) ? ' · ' . $h($t('f_vat')) . ' ' . $h($r['ct_vat']) : '' ?></span>
             <?php if (empty($isAgent)): ?>
               <a class="btn ghost tiny" href="?tab=customers&amp;id=<?= (int)$r['contact_id'] ?>"><?= $h($t('qt_open_customer')) ?></a>
+              <?php if (($r['status'] ?? '') === 'open'): ?>
+                <form method="post" style="margin:0" onsubmit="return confirm(<?= $h(json_encode($t('lead_close_confirm'), JSON_UNESCAPED_UNICODE)) ?>)">
+                  <input type="hidden" name="do" value="lead_close_customer">
+                  <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
+                  <input type="hidden" name="customer_id" value="<?= (int)$r['contact_id'] ?>">
+                  <button class="btn tiny"><?= svg('messages') ?> <?= $h($t('lead_close_btn')) ?></button>
+                </form>
+              <?php endif; ?>
             <?php endif; ?>
           </div>
           <div class="muted small" style="margin-top:4px"><?= $h($t('lead_cust_hint')) ?></div>
@@ -359,11 +367,14 @@ $focus = $openLeadId > 0;
               <?php if (empty($isAgent)): ?>
                 <span style="display:flex;gap:6px;flex-wrap:wrap">
                   <a class="btn ghost tiny" href="?tab=customers&amp;id=<?= (int)$hc['id'] ?>"><?= $h($t('cu_open')) ?></a>
-                  <form method="post" style="margin:0" onsubmit="return confirm(<?= $h(json_encode($t('lead_link_confirm'), JSON_UNESCAPED_UNICODE)) ?>)">
-                    <input type="hidden" name="do" value="lead_link_customer">
+                  <?php // An open lead goes into the customer's messages and closes; a
+                        // converted one is sales history — it is only linked. ?>
+                  <?php $closeIt = ($r['status'] ?? '') === 'open'; ?>
+                  <form method="post" style="margin:0" onsubmit="return confirm(<?= $h(json_encode($t($closeIt ? 'lead_close_confirm' : 'lead_link_confirm'), JSON_UNESCAPED_UNICODE)) ?>)">
+                    <input type="hidden" name="do" value="<?= $closeIt ? 'lead_close_customer' : 'lead_link_customer' ?>">
                     <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
                     <input type="hidden" name="customer_id" value="<?= (int)$hc['id'] ?>">
-                    <button class="btn tiny"><?= $h($t('lead_link_btn')) ?></button>
+                    <button class="btn tiny"><?= $h($t($closeIt ? 'lead_close_btn' : 'lead_link_btn')) ?></button>
                   </form>
                 </span>
               <?php endif; ?>

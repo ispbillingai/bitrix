@@ -186,7 +186,8 @@ final class LeadMailImporter
         // back to the lead it already created (LeadIntake dedups on source+external_id).
         $lead['external_id'] = 'mail:' . $key;
         $out = LeadIntake::submit($lead);
-        return ['imported', $out['duplicate'] ? 'duplicate_of_existing' : null, $out['lead_id']];
+        return ['imported', $out['duplicate'] ? 'duplicate_of_existing'
+                            : (!empty($out['customer_id']) ? 'existing_customer' : null), $out['lead_id']];
     }
 
     /**

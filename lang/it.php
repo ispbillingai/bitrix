@@ -103,6 +103,10 @@ return [
             "💬 Nuovo messaggio dal cliente {customer_name} — \"{subject}\" (ticket #{id}). "
             . "Rispondi dal CRM.",
 
+        'customer_request_admin' => // agli amministratori: un cliente esistente chiede qualcosa
+            "📩 Nuova richiesta da un cliente esistente: {customer_name}{code}.\n{request}\nDa: {from}\n"
+            . "È nei suoi messaggi: {link}",
+
         'ticket_reply' => // al cliente
             "{company}: hai una nuova risposta a \"{subject}\". "
             . "Apri la tua area per leggere e rispondere: {link}",
@@ -323,6 +327,12 @@ return [
             'subject' => 'Nuovo messaggio dal cliente — {subject} (#{id})',
             'html'    => '<p>{customer_name} ha inviato un nuovo messaggio sul ticket <strong>#{id}</strong> — "{subject}".</p>'
                 . '<p>Apri il CRM per rispondere.</p>',
+        ],
+        'customer_request_admin' => [
+            'subject' => 'Nuova richiesta da un cliente — {customer_name}',
+            'html'    => '<p>Nuova richiesta da un cliente esistente: <strong>{customer_html}</strong>.</p>'
+                . '<p>{request_html}</p><p>Da: {from_html}</p>'
+                . '<p><a href="{link}">Apri i messaggi del cliente nel CRM</a></p>',
         ],
         'ticket_reply' => [
             'subject' => 'Nuova risposta alla tua richiesta — {subject}',
