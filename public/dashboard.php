@@ -761,6 +761,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 Activities::add('lead', (int)$_POST['id'], 'note', (string)$_POST['body'], $uid);
                 $tab = 'leads';
                 break;
+            // The office confirms a "forse già cliente" suggestion: the lead moves onto
+            // the customer's card and its own contact is merged into it. Admin only —
+            // not in the agent whitelist.
+            case 'lead_link_customer': {
+                $lk = \Glue\Crm\LeadCustomers::link((int)$_POST['id'], (int)($_POST['customer_id'] ?? 0), 'manual', $uid);
+                $_SESSION['dash_flash'] = empty($lk['ok'])
+                    ? [$t('lead_link_err_' . ($lk['error'] ?? 'not_customer')), 'err']
+                    : [$t('lead_linked'), 'ok'];
+                header('Location: ?tab=leads&lead=' . (int)$_POST['id']);
+                exit;
+            }
             case 'lead_edit': // #15 edit a lead's name/other data
                 // Only send keys the form actually posted so update() leaves the rest
                 // untouched. A VAT change re-claims exclusivity for the enterer.

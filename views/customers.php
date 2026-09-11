@@ -209,6 +209,28 @@ if ($ov !== null):
     <?php endif; ?>
   </div>
 
+  <!-- ---- requests (leads) ---- -->
+  <?php // "He sells different products": a customer who bought a machine last year
+        // asks for another one this week, and that request arrives as a lead. It
+        // is listed here, on their card, next to their quotes and documents — the
+        // office sees a returning customer, not a stranger. ?>
+  <?php $cuLeads = \Glue\Crm\LeadCustomers::forCard($custId); if ($cuLeads): ?>
+  <div class="card">
+    <h3><?= svg('leads') ?> <?= $h($t('cu_leads_h')) ?> <span class="muted small">· <?= count($cuLeads) ?></span></h3>
+    <?php foreach ($cuLeads as $cl): ?>
+      <div style="display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;padding:9px 0;border-top:1px solid var(--line)">
+        <a href="?tab=leads&amp;lead=<?= (int)$cl['id'] ?>"><b><?= $h($cl['customer_name'] ?: ('#' . $cl['id'])) ?></b></a>
+        <span class="pill"><?= $h(stage_label($t, $cl['stage_code'], \Glue\Crm\Pipelines::label('lead', $cl['stage_code']))) ?></span>
+        <?= pill($h, $cl['status'], $t) ?>
+        <span class="muted small"><?= $h(short_time($cl['received_at'] ?? $cl['created_at'])) ?> · <?= $h($cl['agent_name'] ?: ($cl['agent_username'] ?: $t('unassigned'))) ?></span>
+        <?php if (trim((string)($cl['comments'] ?? '')) !== ''): ?>
+          <div class="muted small note-clip l2" style="flex-basis:100%">“<?= $h($cl['comments']) ?>”</div>
+        <?php endif; ?>
+      </div>
+    <?php endforeach; ?>
+  </div>
+  <?php endif; ?>
+
   <!-- ---- quote requests ---- -->
   <?php $cuQuotes = \Glue\Crm\QuoteRequests::forContact($custId); ?>
   <div class="card">

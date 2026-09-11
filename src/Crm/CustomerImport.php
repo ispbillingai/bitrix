@@ -186,6 +186,16 @@ final class CustomerImport
             )->execute([basename($path), $sha, $out['total'], $out['created'], $out['updated'], $out['skipped'], $userId]);
             $pdo->commit();
             Log::write('crm', 'customers_imported', null, null, $out);
+
+            // A lead converted last week is a gestionale customer this week — and
+            // this import has just made (or refreshed) its card without knowing
+            // the lead. Put such leads on their card now, by VAT. Never allowed to
+            // fail an import that is already committed.
+            try {
+                $out['leads_linked'] = LeadCustomers::reconcile()['linked'];
+            } catch (\Throwable $e) {
+                Log::write('crm', 'lead_reconcile_failed', null, null, ['error' => $e->getMessage()]);
+            }
         }
         return $out;
     }

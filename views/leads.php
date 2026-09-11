@@ -32,6 +32,10 @@ $zoneFilter = trim((string)($_GET['zone'] ?? ''));
 $openLeadId = (int)($_GET['lead'] ?? 0);
 $rows = \Glue\Crm\Leads::all(300, $scopeId ?? null, $srcFilter ?: null, $zoneFilter ?: null, $partnerFilter,
     $openLeadId ?: null, $leadQ !== '' ? $leadQ : null);
+// Leads that may be customers the registry already holds — a phone or email
+// shared with a card (by VAT they are linked automatically). One query for the
+// board and the list together. See LeadCustomers.
+$custHints = \Glue\Crm\LeadCustomers::suggestions(array_merge($rows, ...array_values($byStage)));
 // monthly per-source report (admin): ?m=YYYY-MM, defaults to the current month
 $ym = preg_match('/^\d{4}-\d{2}$/', (string)($_GET['m'] ?? '')) ? (string)$_GET['m'] : date('Y-m');
 $ymPrev = date('Y-m', strtotime($ym . '-01 -1 month'));
@@ -178,6 +182,11 @@ $focus = $openLeadId > 0;
             <?php if (!empty($c['company'])): ?>
               <div class="muted small" style="margin-top:2px"><?= $h($c['company']) ?></div>
             <?php endif; ?>
+            <?php if (!empty($c['ct_is_customer'])): ?>
+              <div style="margin-top:4px"><span class="pill" style="color:var(--green)">✓ <?= $h($t('lead_is_customer')) ?><?= !empty($c['ct_code']) ? ' · ' . $h($c['ct_code']) : '' ?></span></div>
+            <?php elseif (!empty($custHints[(int)$c['id']])): ?>
+              <div style="margin-top:4px"><span class="pill" style="color:var(--amber)"><?= $h($t('lead_maybe_customer')) ?></span></div>
+            <?php endif; ?>
             <div class="meta">
               <?php // The card IS the lead right after saving it: a seller who cannot
                     // see the number has to open the row below to call anybody.
@@ -295,6 +304,11 @@ $focus = $openLeadId > 0;
         <?php if ($msg !== ''): ?><span class="muted small note-clip l2" style="margin-top:2px">“<?= $h($msg) ?>”</span><?php endif; ?></span>
       <span class="pill"><?= $h(stage_label($t, $r['stage_code'], \Glue\Crm\Pipelines::label('lead', $r['stage_code']))) ?></span>
       <?= pill($h, $r['status'], $t) ?>
+      <?php if (!empty($r['ct_is_customer'])): ?>
+        <span class="pill" style="color:var(--green)">✓ <?= $h($t('lead_is_customer')) ?></span>
+      <?php elseif (!empty($custHints[(int)$r['id']])): ?>
+        <span class="pill" style="color:var(--amber)"><?= $h($t('lead_maybe_customer')) ?></span>
+      <?php endif; ?>
       <span class="muted small"><?= $ag ? $h($ag) : $h($t('unassigned')) ?></span>
       <?php $cby = $r['creator_name'] ?: $r['creator_username']; if ($cby): ?>
         <span class="byhand" title="<?= $h($t('entered_by_title')) ?>">
@@ -320,6 +334,42 @@ $focus = $openLeadId > 0;
         <div class="muted small" style="margin:8px 0 4px">
           <?= $h($t('f_source_url')) ?>:
           <a href="<?= $h($r['source_url']) ?>" target="_blank" rel="noopener nofollow"><?= $h($r['source_url']) ?></a>
+        </div>
+      <?php endif; ?>
+      <?php // A request from a customer the registry already holds: a new sale
+            // (another product), not a stranger — and not a duplicate either. ?>
+      <?php if (!empty($r['ct_is_customer'])): ?>
+        <div style="background:var(--surface2);border:1px solid var(--line);border-left:3px solid var(--green);border-radius:10px;padding:12px 14px;margin:8px 0 4px">
+          <div style="display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center">
+            <b style="color:var(--green)">✓ <?= $h($t('lead_cust_h')) ?></b>
+            <span><b><?= $h($r['ct_name']) ?></b><?= !empty($r['ct_code']) ? ' · ' . $h($t('cu_code')) . ' ' . $h($r['ct_code']) : '' ?><?= !empty($r['ct_vat']) ? ' · ' . $h($t('f_vat')) . ' ' . $h($r['ct_vat']) : '' ?></span>
+            <?php if (empty($isAgent)): ?>
+              <a class="btn ghost tiny" href="?tab=customers&amp;id=<?= (int)$r['contact_id'] ?>"><?= $h($t('qt_open_customer')) ?></a>
+            <?php endif; ?>
+          </div>
+          <div class="muted small" style="margin-top:4px"><?= $h($t('lead_cust_hint')) ?></div>
+        </div>
+      <?php elseif (!empty($custHints[(int)$r['id']])): ?>
+        <div style="background:var(--surface2);border:1px solid var(--line);border-left:3px solid var(--amber);border-radius:10px;padding:12px 14px;margin:8px 0 4px">
+          <div><b style="color:var(--amber)"><?= $h($t('lead_maybe_h')) ?></b> — <?= $h($t('lead_maybe_sub')) ?></div>
+          <?php foreach ($custHints[(int)$r['id']] as $hc): ?>
+            <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px 10px;margin-top:8px">
+              <span><b><?= $h($hc['name']) ?></b><?= $hc['code'] !== null ? ' · ' . $h($t('cu_code')) . ' ' . $h($hc['code']) : '' ?><?= $hc['vat'] !== null ? ' · ' . $h($t('f_vat')) . ' ' . $h($hc['vat']) : '' ?>
+                <span class="muted small"> · <?= $h(implode(', ', array_map(fn($w) => $t('lead_match_' . $w), $hc['how']))) ?></span></span>
+              <?php if (empty($isAgent)): ?>
+                <span style="display:flex;gap:6px;flex-wrap:wrap">
+                  <a class="btn ghost tiny" href="?tab=customers&amp;id=<?= (int)$hc['id'] ?>"><?= $h($t('cu_open')) ?></a>
+                  <form method="post" style="margin:0" onsubmit="return confirm(<?= $h(json_encode($t('lead_link_confirm'), JSON_UNESCAPED_UNICODE)) ?>)">
+                    <input type="hidden" name="do" value="lead_link_customer">
+                    <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
+                    <input type="hidden" name="customer_id" value="<?= (int)$hc['id'] ?>">
+                    <button class="btn tiny"><?= $h($t('lead_link_btn')) ?></button>
+                  </form>
+                </span>
+              <?php endif; ?>
+            </div>
+          <?php endforeach; ?>
+          <?php if (!empty($isAgent)): ?><div class="muted small" style="margin-top:6px"><?= $h($t('lead_link_ask')) ?></div><?php endif; ?>
         </div>
       <?php endif; ?>
       <div class="cols c-1-1" style="margin-bottom:0">

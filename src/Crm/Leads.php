@@ -530,7 +530,8 @@ final class Leads
         return Db::pdo()->query(
             "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name,
                     c.username AS creator_username, c.full_name AS creator_name,
-                    pt.name AS partner_name, ct.company AS company
+                    pt.name AS partner_name, ct.company AS company,
+                    ct.is_customer AS ct_is_customer, ct.customer_code AS ct_code, ct.name AS ct_name, ct.vat_number AS ct_vat
              FROM leads l
              LEFT JOIN users u ON u.id = l.assigned_to
              LEFT JOIN users c ON c.id = l.created_by
@@ -563,7 +564,8 @@ final class Leads
         $rows = Db::pdo()->query(
             "SELECT l.*, u.username AS agent_username, u.full_name AS agent_name,
                     c.username AS creator_username, c.full_name AS creator_name,
-                    pt.name AS partner_name, ct.company AS company
+                    pt.name AS partner_name, ct.company AS company,
+                    ct.is_customer AS ct_is_customer, ct.customer_code AS ct_code, ct.name AS ct_name, ct.vat_number AS ct_vat
              FROM leads l
              LEFT JOIN users u ON u.id = l.assigned_to
              LEFT JOIN users c ON c.id = l.created_by
@@ -706,19 +708,38 @@ final class Leads
             Db::pdo()->prepare('UPDATE leads SET ' . implode(', ', $sets) . ' WHERE id = ?')->execute($args);
         }
 
-        // Keep the linked contact's core fields in step (name/phone/email/company).
+        // Keep the linked contact's core fields in step (name/phone/email/company) —
+        // unless the contact is a CUSTOMER CARD. A lead for an existing customer
+        // sits on the registry card (LeadCustomers), and there the lead describes
+        // the person who asked while the card describes the business: renaming
+        // "MBC MERGELLINA SRL" to "Dario Imperatore" because his lead was edited is
+        // not keeping anything in step. On a card the lead only fills what is blank.
         $cid = (int)($lead['contact_id'] ?? 0);
-        if ($cid > 0) {
+        $ct  = $cid > 0 ? Contacts::find($cid) : null;
+        if ($ct) {
+            $isCard = (int)($ct['is_customer'] ?? 0) === 1;
             $cSets = [];
             $cArgs = [];
             foreach (['name' => 'name', 'phone' => 'phone', 'email' => 'email', 'company' => 'company'] as $in => $ccol) {
                 if (!array_key_exists($in, $d)) { continue; }
+                if ($isCard && ($in === 'name' || trim((string)($ct[$ccol] ?? '')) !== '')) { continue; }
                 $cSets[] = "$ccol = ?";
                 $cArgs[] = $in === 'phone' ? Notifier::normalizePhone((string)$d[$in]) : trim((string)$d[$in]);
             }
             if ($cSets) {
                 $cArgs[] = $cid;
                 Db::pdo()->prepare('UPDATE contacts SET ' . implode(', ', $cSets) . ' WHERE id = ?')->execute($cArgs);
+            }
+        }
+
+        // A VAT typed in (or corrected) is the moment a lead can turn out to be a
+        // customer the registry already holds — compare it now, not at the next
+        // import. Never allowed to fail the edit itself.
+        if (array_key_exists('vat_number', $d)) {
+            try {
+                LeadCustomers::reconcile($leadId);
+            } catch (Throwable $e) {
+                Log::write('crm', 'lead_reconcile_failed', 'lead', $leadId, ['error' => $e->getMessage()]);
             }
         }
 
@@ -779,7 +800,7 @@ final class Leads
     }
 
     /** Push to Bitrix only if the optional sync is enabled; never fatal. */
-    private static function pushSync(int $leadId): void
+    public static function pushSync(int $leadId): void
     {
         try {
             BitrixSync::pushLeadIfEnabled($leadId);
