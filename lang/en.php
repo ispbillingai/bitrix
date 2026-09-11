@@ -106,6 +106,11 @@ return [
             "📩 New request from an existing customer: {customer_name}{code}.\n{request}\nFrom: {from}\n"
             . "It is in their messages: {link}",
 
+        'customer_maybe_admin' => // to the administrators: maybe a customer (several cards match)
+            "📩 New request, maybe from an existing customer: {from}.\n"
+            . "Several customers in the registry have this phone or email: {cards}.\n{request}\n"
+            . "Find it among the leads and check whether it is the same customer: {link}",
+
         'ticket_reply' => // to the customer
             "{company}: you have a new reply to \"{subject}\". "
             . "Open your area to read and reply: {link}",
@@ -329,6 +334,13 @@ return [
             'html'    => '<p>New request from an existing customer: <strong>{customer_html}</strong>.</p>'
                 . '<p>{request_html}</p><p>From: {from_html}</p>'
                 . '<p><a href="{link}">Open the customer\'s messages in the CRM</a></p>',
+        ],
+        'customer_maybe_admin' => [
+            'subject' => 'New request, maybe from an existing customer',
+            'html'    => '<p>New request, maybe from an existing customer: <strong>{from_html}</strong>.</p>'
+                . '<p>Several customers in the registry have this phone or email: {cards_html}.</p>'
+                . '<p>{request_html}</p>'
+                . '<p><a href="{link}">Find it among the leads and check whether it is the same customer</a></p>',
         ],
         'ticket_reply' => [
             'subject' => 'New reply to your request — {subject}',

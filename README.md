@@ -55,6 +55,8 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
   (status `customer`: off the board, still on record, reversible) — never deleted,
   because deals, invoices, partner commissions and quotes point at leads. A
   converted lead is how the customer was won: it is only linked to the card.
+  When the phone or email sits on several cards, the request stays a lead
+  ("forse già cliente") and the administrators are alerted about it all the same.
 - **Quotes** (`views/quotes.php`): a seller asks the back office to price
   something and the finished quote comes back down the same wire. Two doors, one
   queue: a **Request quote** button inside the lead record (the lead already

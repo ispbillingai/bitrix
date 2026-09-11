@@ -38,7 +38,8 @@ use Throwable;
  *
  * A phone or email on TWO cards is a question for a person, not a match: such a
  * request becomes an ordinary lead that says "forse già cliente" (suggestions()),
- * and the office moves it with one click.
+ * and the office moves it with one click. The administrators are alerted about
+ * that request as well (maybeNotifications()) — "in all cases".
  *
  * Only a lead-born contact (is_customer = 0, no gestionale code) is ever merged
  * away. Two REGISTRY cards are never merged here.
@@ -76,8 +77,26 @@ final class LeadCustomers
         }
         $forms = self::phoneForms((string)($d['phone'] ?? ''));
         $mail  = mb_strtolower(trim((string)($d['email'] ?? '')));
-        if (!$forms && $mail === '') {
+        $cards = self::cardsByPhoneEmail($forms, $mail);
+        if (count($cards) !== 1) {
             return null;
+        }
+        $c   = $cards[0];
+        $how = [];
+        if ($forms && (in_array((string)$c['phone'], $forms, true) || in_array((string)$c['phone2'], $forms, true))) {
+            $how[] = 'phone';
+        }
+        if ($mail !== '' && mb_strtolower(trim((string)$c['email'])) === $mail) {
+            $how[] = 'email';
+        }
+        return ['card' => $c, 'how' => implode('+', $how) ?: 'phone'];
+    }
+
+    /** Registry cards with this phone (either spelling, either field) or this email — at most three. */
+    private static function cardsByPhoneEmail(array $forms, string $mail): array
+    {
+        if (!$forms && $mail === '') {
+            return [];
         }
         $conds = [];
         $args  = [];
@@ -94,19 +113,7 @@ final class LeadCustomers
             'SELECT * FROM contacts WHERE is_customer = 1 AND (' . implode(' OR ', $conds) . ') ORDER BY id LIMIT 3'
         );
         $s->execute($args);
-        $cards = $s->fetchAll();
-        if (count($cards) !== 1) {
-            return null;
-        }
-        $c   = $cards[0];
-        $how = [];
-        if ($forms && (in_array((string)$c['phone'], $forms, true) || in_array((string)$c['phone2'], $forms, true))) {
-            $how[] = 'phone';
-        }
-        if ($mail !== '' && mb_strtolower(trim((string)$c['email'])) === $mail) {
-            $how[] = 'email';
-        }
-        return ['card' => $c, 'how' => implode('+', $how) ?: 'phone'];
+        return $s->fetchAll() ?: [];
     }
 
     /**
@@ -216,6 +223,23 @@ final class LeadCustomers
     {
         $m = self::matchCustomer($d);
         if ($m === null) {
+            // Not ONE customer — but two or three cards may share this phone or
+            // email. Then it carries on as an ordinary lead ("forse già cliente")
+            // and the administrators are alerted about this request as well: "in
+            // all cases". Not from the new-lead form: there the phone check right
+            // after refuses a number that sits on a customer's card.
+            if ($door !== 'manual') {
+                $maybe = self::cardsByPhoneEmail(self::phoneForms((string)($d['phone'] ?? '')),
+                                                 mb_strtolower(trim((string)($d['email'] ?? ''))));
+                if (count($maybe) >= 2) {
+                    Log::write('crm', 'customer_maybe_request', 'contact', (int)$maybe[0]['id'], [
+                        'door'  => $door, 'cards' => array_map(static fn(array $c): int => (int)$c['id'], $maybe),
+                        'name'  => (string)($d['name'] ?? ''), 'phone' => (string)($d['phone'] ?? ''),
+                        'email' => (string)($d['email'] ?? ''),
+                    ]);
+                    self::notifyAdminsMaybe($maybe, $d, $door, $ctx, $actorId);
+                }
+            }
             return null;
         }
         $tk = self::requestToCustomer($m['card'], $d, $door, $ctx + ['how' => $m['how']], $actorId, true);
@@ -310,12 +334,7 @@ final class LeadCustomers
         if ($excerpt === '') {
             $excerpt = 'Richiesta di contatto, senza messaggio.';
         }
-        $users = Db::pdo()->query(
-            "SELECT id, full_name, username, phone, email FROM users
-              WHERE role = 'admin' AND active = 1
-                AND ((phone IS NOT NULL AND phone <> '') OR (email IS NOT NULL AND email <> ''))
-              ORDER BY id"
-        )->fetchAll();
+        $users = self::admins();
 
         $rows = [];
         foreach ($users as $u) {
@@ -324,7 +343,7 @@ final class LeadCustomers
                 'entity_id'      => (int)$card['id'],
                 'rule_key'       => 'customer_request_admin',
                 'recipient_type' => 'agent',
-                'channel'        => 'both',
+                'channel'        => self::channelFor($u),
                 'due_at'         => date('Y-m-d H:i:s'),
                 'dedupe_key'     => 'custreq:' . $ticketId . ':' . (int)$u['id'] . ':'
                                     . substr(md5($subject . '|' . $request . '|' . $from), 0, 12),
@@ -365,6 +384,77 @@ final class LeadCustomers
         } catch (Throwable $e) {
             // The request is in the customer's messages either way.
             Log::write('crm', 'customer_request_notify_failed', 'contact', (int)$card['id'], ['error' => $e->getMessage()]);
+        }
+    }
+
+    /**
+     * The alert for a request that MAY be a customer's: its phone or email sits
+     * on two or three cards, so it went on as an ordinary lead ("forse già
+     * cliente") for a person to check — and "in all cases the CRM administrators
+     * must be notified of the new request". The link opens the leads board
+     * searched on that phone (or email). Built apart from the sending, like
+     * adminNotifications().
+     *
+     * @return array<int,array> Scheduler::enqueue rows
+     */
+    public static function maybeNotifications(array $cards, array $d, string $door, array $ctx = [], ?int $actorId = null): array
+    {
+        $request = trim((string)($d['comments'] ?? ''));
+        $excerpt = $request === '' ? 'Richiesta di contatto, senza messaggio.'
+                 : (mb_strlen($request) > 400 ? mb_substr($request, 0, 400) . '…' : $request);
+        $phone = Notifier::normalizePhone((string)($d['phone'] ?? ''));
+        $email = trim((string)($d['email'] ?? ''));
+        $from  = implode(' · ', array_values(array_filter([
+            trim((string)($d['name'] ?? '')), $phone, $email, trim((string)($d['company'] ?? '')),
+        ], 'strlen'))) ?: '—';
+        $names = implode('; ', array_map(static fn(array $c): string => (string)$c['name']
+            . (!empty($c['customer_code']) ? ' (cod. ' . $c['customer_code'] . ')' : ''), $cards));
+        $q       = $phone !== '' ? $phone : ($email !== '' ? $email : trim((string)($d['name'] ?? '')));
+        $link    = Config::appBaseUrl() . '/dashboard.php?tab=leads&q=' . rawurlencode(mb_substr($q, 0, 100));
+        $subject = self::subjectFor($door, $d, $ctx, $actorId);
+
+        $rows = [];
+        foreach (self::admins() as $u) {
+            $rows[] = [
+                'entity_type'    => 'contact',
+                'entity_id'      => (int)$cards[0]['id'],
+                'rule_key'       => 'customer_maybe_admin',
+                'recipient_type' => 'agent',
+                'channel'        => self::channelFor($u),
+                'due_at'         => date('Y-m-d H:i:s'),
+                'dedupe_key'     => 'custmaybe:' . substr(md5($from . '|' . $request . '|' . date('YmdHi')), 0, 16)
+                                    . ':' . (int)$u['id'],
+                'payload'        => [
+                    'name'         => trim((string)($u['full_name'] ?? '')) ?: (string)$u['username'],
+                    'subject'      => $subject,
+                    'from'         => $from,
+                    'from_html'    => htmlspecialchars($from, ENT_QUOTES),
+                    'cards'        => $names,
+                    'cards_html'   => htmlspecialchars($names, ENT_QUOTES),
+                    'request'      => $excerpt,
+                    'request_html' => nl2br(htmlspecialchars($excerpt, ENT_QUOTES)),
+                    'link'         => $link,
+                    'agent_phone'  => (string)($u['phone'] ?? ''),
+                    'agent_email'  => (string)($u['email'] ?? ''),
+                ],
+            ];
+        }
+        return $rows;
+    }
+
+    private static function notifyAdminsMaybe(array $cards, array $d, string $door, array $ctx, ?int $actorId): void
+    {
+        // Always on; a test process switches it off for itself (Config overlay).
+        if (!Config::get('crm.customer_request_notify', true)) {
+            return;
+        }
+        try {
+            $sch = new Scheduler();
+            foreach (self::maybeNotifications($cards, $d, $door, $ctx, $actorId) as $row) {
+                $sch->enqueue($row);
+            }
+        } catch (Throwable $e) {
+            Log::write('crm', 'customer_request_notify_failed', 'contact', (int)$cards[0]['id'], ['error' => $e->getMessage()]);
         }
     }
 
@@ -653,6 +743,25 @@ final class LeadCustomers
             'lead'    => 'Richiesta dal lead #' . (int)($ctx['lead_id'] ?? 0),
             default   => 'Nuova richiesta',
         };
+    }
+
+    /** Active administrators with a phone or an email — who the alerts go to. */
+    private static function admins(): array
+    {
+        return Db::pdo()->query(
+            "SELECT id, full_name, username, phone, email FROM users
+              WHERE role = 'admin' AND active = 1
+                AND ((phone IS NOT NULL AND phone <> '') OR (email IS NOT NULL AND email <> ''))
+              ORDER BY id"
+        )->fetchAll() ?: [];
+    }
+
+    /** Only the channels this person has: an administrator with no email gets the WhatsApp alone. */
+    private static function channelFor(array $u): string
+    {
+        $phone = trim((string)($u['phone'] ?? '')) !== '';
+        $email = trim((string)($u['email'] ?? '')) !== '';
+        return $phone && $email ? 'both' : ($phone ? 'whatsapp' : 'email');
     }
 
     private static function staffName(?int $userId): string
