@@ -50,49 +50,66 @@ final class Reports
     }
 
     /**
-     * The contacts behind LEADS that match a search — the second list in the
-     * "new report" picker, next to the registry.
+     * LEADS that match a search — the second list in the "new report" picker,
+     * next to the registry. Every lead, in any state, whoever it belongs to:
+     * "you can enable installations for all leads as well as customers — leads
+     * to any state". An installation often comes right after the sale, on a lead
+     * just converted, sometimes on one the office has already closed.
      *
-     * The registry (contacts.is_customer = 1) is who the gestionale knows. A
-     * customer the seller signed last week is still only a lead, and an
-     * installation is often the first thing that happens to them: searching the
-     * registry alone, the installer found the lead on the Leads tab and could
-     * not put it on the report.
+     * Searched on the lead's OWN details — the person who asked: name, phone,
+     * email, VAT — as well as its contact's. That is what a lead sitting on a
+     * customer's registry card needs: the card is named after the company, so
+     * "Valentina Green" on GIORDANO & RAINONE IMMOBILIARE SRL was found by neither
+     * list. One row per contact, newest lead first; the report is filed on that
+     * contact.
      *
-     * Open and converted leads only — a junked one is not being installed.
-     * $agentId limits it to that seller's own leads: an agent who also installs
-     * keeps a seller's scope over the other sellers' customers.
-     *
-     * @return array<int,array> id (the contact), name, company, phone, email, lead_id
+     * @return array<int,array> id (the contact), name, company, phone, email,
+     *                          lead_id, status, is_customer
      */
-    public static function leadContacts(string $q, ?int $agentId = null, int $limit = 15): array
+    public static function leadContacts(string $q, int $limit = 15): array
     {
         $q = trim($q);
         if ($q === '') {
             return [];
         }
-        $like  = '%' . $q . '%';
-        $scope = $agentId ? ' AND l.assigned_to = ?' : '';
-        $args  = $agentId ? [$agentId] : [];
-        array_push($args, $like, $like, $like, $like, $like, $like, $like, $like, $like);
-        $limit = max(1, min(50, $limit));
-
+        $like = '%' . $q . '%';
         $s = Db::pdo()->prepare(
-            "SELECT c.id, c.name, c.company, c.phone, c.email,
-                    (SELECT MAX(l2.id) FROM leads l2 WHERE l2.contact_id = c.id) AS lead_id
-               FROM contacts c
-              WHERE c.is_customer = 0
-                AND EXISTS (SELECT 1 FROM leads l WHERE l.contact_id = c.id
-                               AND l.status IN ('open', 'converted')$scope)
-                AND (c.name LIKE ? OR c.company LIKE ? OR c.vat_number LIKE ? OR c.phone LIKE ?
-                     OR c.phone2 LIKE ? OR c.email LIKE ?
-                     OR EXISTS (SELECT 1 FROM leads l3 WHERE l3.contact_id = c.id
-                                   AND (l3.customer_name LIKE ? OR l3.vat_number LIKE ? OR l3.customer_phone LIKE ?)))
-              ORDER BY c.name
-              LIMIT $limit"
+            "SELECT l.id AS lead_id, l.customer_name, l.customer_phone, l.customer_email, l.status,
+                    c.id, c.name AS card_name, c.company, c.phone, c.email, c.is_customer, c.customer_code
+               FROM leads l JOIN contacts c ON c.id = l.contact_id
+              WHERE l.customer_name LIKE ? OR l.customer_phone LIKE ? OR l.customer_email LIKE ? OR l.vat_number LIKE ?
+                 OR c.name LIKE ? OR c.company LIKE ? OR c.vat_number LIKE ? OR c.phone LIKE ? OR c.phone2 LIKE ?
+                 OR c.email LIKE ?
+              ORDER BY l.id DESC
+              LIMIT 200"
         );
-        $s->execute($args);
-        return $s->fetchAll() ?: [];
+        $s->execute(array_fill(0, 10, $like));
+        $limit = max(1, min(50, $limit));
+        $out   = [];
+        foreach ($s->fetchAll() as $r) {
+            $cid = (int)$r['id'];
+            if (isset($out[$cid])) {
+                continue;   // the newest lead on this contact is already listed
+            }
+            $isCard = (int)$r['is_customer'] === 1;
+            $out[$cid] = [
+                'id'          => $cid,
+                'name'        => trim((string)$r['customer_name']) ?: (string)$r['card_name'],
+                // On a registry card, say which one: the report goes on that customer.
+                'company'     => $isCard
+                    ? (string)$r['card_name'] . (!empty($r['customer_code']) ? ' · cod. ' . $r['customer_code'] : '')
+                    : (string)($r['company'] ?? ''),
+                'phone'       => (string)($r['customer_phone'] ?: $r['phone']),
+                'email'       => (string)($r['customer_email'] ?: $r['email']),
+                'lead_id'     => (int)$r['lead_id'],
+                'status'      => (string)$r['status'],
+                'is_customer' => $isCard,
+            ];
+            if (count($out) >= $limit) {
+                break;
+            }
+        }
+        return array_values($out);
     }
 
     /** Editable while draft only — a sent report is what the customer signed. */

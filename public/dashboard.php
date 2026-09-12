@@ -1190,11 +1190,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $irContact = (int)($_POST['contact_id'] ?? 0);
                 $irRow     = $irContact > 0 ? Contacts::find($irContact) : null;
                 // An agent who installs reaches the two lists the picker shows
-                // them — the registry and their OWN leads — not any contact id
-                // typed into a forged form, such as another seller's lead.
+                // them — the registry and every lead, in any state — not any
+                // contact id typed into a forged form.
                 if ($irRow && $isAgent && empty($irRow['is_customer'])) {
-                    $irOwn = $pdo->prepare('SELECT 1 FROM leads WHERE contact_id = ? AND assigned_to = ? LIMIT 1');
-                    $irOwn->execute([$irContact, (int)$scopeId]);
+                    $irOwn = $pdo->prepare('SELECT 1 FROM leads WHERE contact_id = ? LIMIT 1');
+                    $irOwn->execute([$irContact]);
                     if (!$irOwn->fetchColumn()) {
                         $irRow = null;
                     }

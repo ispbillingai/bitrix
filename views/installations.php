@@ -251,10 +251,14 @@ if ($r !== null):
     $reports = Reports::all(200, $ownScope);
     $nq = trim((string)($_GET['nq'] ?? ''));
     $foundCustomers = $nq !== '' ? Customers::search(['q' => $nq], 1, 15)['rows'] : [];
-    // ...and the people who are not in the registry yet: the contact behind a
-    // lead. An agent reaches only their own leads; the office and the
-    // technicians all of them. See Reports::leadContacts().
-    $foundLeads = $nq !== '' ? Reports::leadContacts($nq, $isAgent ? (int)$scopeId : null) : [];
+    // ...and every LEAD, in any state and whoever it belongs to — found by the
+    // person's own details too. See Reports::leadContacts().
+    $foundLeads = $nq !== '' ? Reports::leadContacts($nq) : [];
+    // A contact on both lists (a lead sitting on a registry card) is shown once,
+    // as the lead: that row says who asked AND which customer card it is.
+    $leadCids = array_map(static fn(array $l): int => (int)$l['id'], $foundLeads);
+    $foundCustomers = array_values(array_filter($foundCustomers,
+        static fn(array $c): bool => !in_array((int)$c['id'], $leadCids, true)));
 ?>
 <h2><?= $h($t('nav_installations')) ?></h2>
 <p class="muted small" style="margin:-6px 0 14px"><?= $h($t('ir_sub')) ?></p>
@@ -295,6 +299,7 @@ if ($r !== null):
                   <b><?= $h($c['name']) ?></b>
                   <?php if ($c['_lead']): ?>
                     <span class="pill" style="color:var(--accent)"><?= $h($t('ir_lead_badge')) ?></span>
+                    <?= !empty($c['status']) ? pill($h, (string)$c['status'], $t) : '' ?>
                   <?php elseif (!empty($c['customer_code'])): ?>
                     <span class="muted small"> · <?= $h($c['customer_code']) ?></span>
                   <?php endif; ?>
