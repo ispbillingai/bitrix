@@ -459,16 +459,6 @@ final class Partners
             'lang'       => $d['lang'] ?? null,
         ];
 
-        // Already our customer: no referral. What they asked for goes into the
-        // customer's messages and the administrators are told; the partner hears
-        // that it is an existing customer — not credited, like a duplicate.
-        $asCustomer = \Glue\Crm\LeadCustomers::intake($fields, 'partner', ['partner' => (string)$partner['name']]);
-        if ($asCustomer !== null) {
-            Log::write('partner', 'lead_existing_customer', 'contact', (int)$asCustomer['card']['id'],
-                ['partner_id' => $partnerId, 'ticket' => $asCustomer['ticket_id']]);
-            return ['ok' => false, 'error' => 'customer'];
-        }
-
         // VAT exclusivity first: a blocked number must not create a lead at all.
         $vat = VatLock::normalize((string)($d['vat_number'] ?? ''));
         $claim = ['ok' => true, 'fresh' => false];

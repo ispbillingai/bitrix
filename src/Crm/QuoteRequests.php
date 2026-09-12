@@ -126,6 +126,7 @@ final class QuoteRequests
                 'source' => trim((string)($d['source'] ?? '')) ?: 'quote',
                 'lang' => $d['lang'] ?? null,
                 'comments' => $notes,
+                'notify_customer' => false,   // the quote request itself tells the office
             ], $userId);
             $created = true;
             // The seller typing a customer in owns them, exactly as lead_create

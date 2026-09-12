@@ -83,15 +83,31 @@ final class Leads
             // second contact row, and the lead would then hang off a twin the
             // customer's own page never shows.
             $contactId = (int)($d['contact_id'] ?? 0);
+            $custKind  = null;
             if ($contactId <= 0 || !Contacts::find($contactId)) {
-                $contactId = Contacts::findOrCreate([
+                $fields = [
                     'name' => $name ?: 'Unknown', 'phone' => $phone, 'email' => $email,
                     'company' => $d['company'] ?? null, 'lang' => $lang, 'source' => $source,
                     // The identifier that decides whether this is a business the
                     // CRM already knows. Withholding it here is what put a lead
                     // for an existing customer onto a fresh, empty contact.
                     'vat_number' => $vat,
-                ]);
+                ];
+                // An existing customer — same VAT, or the phone/email of exactly
+                // one registry card — gets the lead on their CARD: it is then in
+                // the customer's history, and an administrator gives it an agent.
+                // A phone/email on several cards is not a match: the lead gets a
+                // contact of its own and a person decides (LeadCustomers).
+                $cardMatch = LeadCustomers::matchCustomer($fields);
+                if ($cardMatch !== null) {
+                    $contactId = (int)$cardMatch['card']['id'];
+                    $custKind  = 'new';
+                } elseif (count(LeadCustomers::cardsFor($phone, $email)) >= 2) {
+                    $contactId = Contacts::create($fields);
+                    $custKind  = 'maybe';
+                } else {
+                    $contactId = Contacts::findOrCreate($fields);
+                }
             }
 
             $pipelineId = Pipelines::defaultId('lead');
@@ -141,6 +157,14 @@ final class Leads
         if (!$quiet) {
             Automation::welcome('lead', $leadId, $lang);
             Automation::inactivity('lead', $leadId, $firstStage);
+        }
+        // "In all cases the CRM administrators must be notified of the new
+        // request": a request from an existing customer, or one that may be
+        // (several cards), is announced to every administrator with the link to
+        // the lead, where they assign an agent. A quote raised from scratch is
+        // announced by the quote itself ('notify_customer' => false).
+        if (!$quiet && $custKind !== null && ($d['notify_customer'] ?? true)) {
+            LeadCustomers::announce($leadId, $custKind, (string)($d['comments'] ?? ''));
         }
 
         Activities::add('lead', $leadId, 'system',
@@ -335,6 +359,9 @@ final class Leads
             ['source' => $source, 'name' => (string)($d['name'] ?? ''),
              'phone' => (string)($d['phone'] ?? ''), 'email' => (string)($d['email'] ?? ''),
              'vat' => (string)($d['vat'] ?? '')]);
+        // A new request from a customer, added to the lead they already have open:
+        // the administrators hear about it too (only when the lead is on a card).
+        LeadCustomers::announce($leadId, 'grouped', $text);
     }
 
     /** Assign the lead to a seller and message the customer the seller's profile (#3). */

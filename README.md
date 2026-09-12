@@ -44,19 +44,17 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 - **Appointments**: requests come in → staff assign a seller and confirm a time →
   reminders fire to **both** parties before the event.
 - **Tasks + KPI**: assign work to sellers, score on completion, leaderboard.
-- **Returning customers** (`Crm\LeadCustomers`): a request from someone who is
-  already a customer does not become a lead. Same partita IVA as a registry card,
-  or the phone/email of exactly one card, and what they asked for goes into that
-  customer's messages (their chat); their agent and every administrator are told.
-  The same at every door: website and fair forms, a partner's area, the new-lead
-  form, the website API, the mailbox importer. A partner is told it is an existing
-  customer and is not credited. An open lead already in the CRM that turns out to
-  be a customer is moved the same way with one click and closed as **Già cliente**
-  (status `customer`: off the board, still on record, reversible) — never deleted,
-  because deals, invoices, partner commissions and quotes point at leads. A
-  converted lead is how the customer was won: it is only linked to the card.
-  When the phone or email sits on several cards, the request stays a lead
-  ("forse già cliente") and the administrators are alerted about it all the same.
+- **Returning customers** (`Crm\LeadCustomers`): a customer who bought one
+  product often comes back for another. That request is a lead like any other,
+  opened on the customer's registry card — same partita IVA, or the phone/email
+  of exactly one card — so it is in the customer's history ("Richieste (lead)"
+  on their page) and on the board marked **Già cliente**, where an administrator
+  assigns it an agent. Every administrator is alerted with the link to the lead:
+  for a new lead, for a request added to the lead they already have open, and
+  for a phone/email that sits on several cards (then the lead gets a contact of
+  its own and says "forse già cliente"; one click links it). The office can
+  still move a lead's request into the customer's chat and close it as
+  `customer`; leads are never deleted.
 - **Quotes** (`views/quotes.php`): a seller asks the back office to price
   something and the finished quote comes back down the same wire. Two doors, one
   queue: a **Request quote** button inside the lead record (the lead already

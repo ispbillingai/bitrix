@@ -103,14 +103,14 @@ return [
             "💬 Nuovo messaggio dal cliente {customer_name} — \"{subject}\" (ticket #{id}). "
             . "Rispondi dal CRM.",
 
-        'customer_request_admin' => // agli amministratori: un cliente esistente chiede qualcosa
-            "📩 Nuova richiesta da un cliente esistente: {customer_name}{code}.\n{request}\nDa: {from}\n"
-            . "È nei suoi messaggi: {link}",
+        'customer_lead_admin' => // agli amministratori: un cliente esistente chiede qualcosa — un lead da assegnare
+            "📩 Nuova richiesta da un cliente esistente: {customer_name}{code} — {what} ({assigned}).\n{request}\nDa: {from}\n"
+            . "Apri il lead e assegna un agente: {link}",
 
         'customer_maybe_admin' => // agli amministratori: forse è un cliente (più schede corrispondono)
-            "📩 Nuova richiesta, forse da un cliente esistente: {from}.\n"
+            "📩 Nuova richiesta, forse da un cliente esistente: {from} — {what}.\n"
             . "In anagrafica più clienti hanno questo telefono o email: {cards}.\n{request}\n"
-            . "Cercala tra i lead e verifica se è lo stesso cliente: {link}",
+            . "Apri il lead e verifica se è lo stesso cliente: {link}",
 
         'ticket_reply' => // al cliente
             "{company}: hai una nuova risposta a \"{subject}\". "
@@ -333,18 +333,18 @@ return [
             'html'    => '<p>{customer_name} ha inviato un nuovo messaggio sul ticket <strong>#{id}</strong> — "{subject}".</p>'
                 . '<p>Apri il CRM per rispondere.</p>',
         ],
-        'customer_request_admin' => [
+        'customer_lead_admin' => [
             'subject' => 'Nuova richiesta da un cliente — {customer_name}',
-            'html'    => '<p>Nuova richiesta da un cliente esistente: <strong>{customer_html}</strong>.</p>'
+            'html'    => '<p>Nuova richiesta da un cliente esistente: <strong>{customer_html}</strong> — {what} ({assigned_html}).</p>'
                 . '<p>{request_html}</p><p>Da: {from_html}</p>'
-                . '<p><a href="{link}">Apri i messaggi del cliente nel CRM</a></p>',
+                . '<p><a href="{link}">Apri il lead e assegna un agente</a></p>',
         ],
         'customer_maybe_admin' => [
             'subject' => 'Nuova richiesta, forse da un cliente esistente',
-            'html'    => '<p>Nuova richiesta, forse da un cliente esistente: <strong>{from_html}</strong>.</p>'
+            'html'    => '<p>Nuova richiesta, forse da un cliente esistente: <strong>{from_html}</strong> — {what}.</p>'
                 . '<p>In anagrafica più clienti hanno questo telefono o email: {cards_html}.</p>'
                 . '<p>{request_html}</p>'
-                . '<p><a href="{link}">Cercala tra i lead e verifica se è lo stesso cliente</a></p>',
+                . '<p><a href="{link}">Apri il lead e verifica se è lo stesso cliente</a></p>',
         ],
         'ticket_reply' => [
             'subject' => 'Nuova risposta alla tua richiesta — {subject}',

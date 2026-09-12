@@ -350,7 +350,7 @@ $focus = $openLeadId > 0;
                   <input type="hidden" name="do" value="lead_close_customer">
                   <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
                   <input type="hidden" name="customer_id" value="<?= (int)$r['contact_id'] ?>">
-                  <button class="btn tiny"><?= svg('messages') ?> <?= $h($t('lead_close_btn')) ?></button>
+                  <button class="btn ghost tiny"><?= svg('messages') ?> <?= $h($t('lead_close_btn')) ?></button>
                 </form>
               <?php endif; ?>
             <?php endif; ?>
@@ -367,14 +367,13 @@ $focus = $openLeadId > 0;
               <?php if (empty($isAgent)): ?>
                 <span style="display:flex;gap:6px;flex-wrap:wrap">
                   <a class="btn ghost tiny" href="?tab=customers&amp;id=<?= (int)$hc['id'] ?>"><?= $h($t('cu_open')) ?></a>
-                  <?php // An open lead goes into the customer's messages and closes; a
-                        // converted one is sales history — it is only linked. ?>
-                  <?php $closeIt = ($r['status'] ?? '') === 'open'; ?>
-                  <form method="post" style="margin:0" onsubmit="return confirm(<?= $h(json_encode($t($closeIt ? 'lead_close_confirm' : 'lead_link_confirm'), JSON_UNESCAPED_UNICODE)) ?>)">
-                    <input type="hidden" name="do" value="<?= $closeIt ? 'lead_close_customer' : 'lead_link_customer' ?>">
+                  <?php // The lead stays a lead — on the customer's card, in their
+                        // history — for an agent to work. ?>
+                  <form method="post" style="margin:0" onsubmit="return confirm(<?= $h(json_encode($t('lead_link_confirm'), JSON_UNESCAPED_UNICODE)) ?>)">
+                    <input type="hidden" name="do" value="lead_link_customer">
                     <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
                     <input type="hidden" name="customer_id" value="<?= (int)$hc['id'] ?>">
-                    <button class="btn tiny"><?= $h($t($closeIt ? 'lead_close_btn' : 'lead_link_btn')) ?></button>
+                    <button class="btn tiny"><?= $h($t('lead_link_btn')) ?></button>
                   </form>
                 </span>
               <?php endif; ?>

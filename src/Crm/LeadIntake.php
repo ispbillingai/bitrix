@@ -114,19 +114,10 @@ final class LeadIntake
 
     /**
      * Create the lead unless this payload was already delivered.
-     * @return array{lead_id:?int,duplicate:bool,customer_id?:int,ticket_id?:int}
-     *         lead_id is null when the sender is already a customer
+     * @return array{lead_id:int,duplicate:bool}
      */
     public static function submit(array $lead): array
     {
-        // Already a customer: no lead. What they asked for goes into their
-        // messages and the administrators are told (LeadCustomers::intake).
-        $asCustomer = LeadCustomers::intake($lead, 'intake', ['source' => (string)($lead['source'] ?? '')]);
-        if ($asCustomer !== null) {
-            return ['lead_id' => null, 'duplicate' => false,
-                    'customer_id' => (int)$asCustomer['card']['id'], 'ticket_id' => (int)$asCustomer['ticket_id']];
-        }
-
         $existing = self::findDuplicate($lead);
         if ($existing !== null) {
             // A retried delivery of the SAME message (same external_id already on
