@@ -134,7 +134,7 @@ $here = function (array $over = []) use ($filter): string {
             <option value="">—</option>
             <?php foreach ($dealRows as $d): ?>
               <option value="<?= $h($d['id']) ?>" <?= $prefDeal === (int)$d['id'] ? 'selected' : '' ?>>
-                #<?= $h($d['id']) ?> · <?= $h($d['title']) ?>
+                #<?= $h($d['id']) ?> · <?= $h(record_title($t, $d['title'])) ?>
               </option>
             <?php endforeach; ?>
           </select>

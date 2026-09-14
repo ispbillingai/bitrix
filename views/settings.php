@@ -330,14 +330,14 @@ $pipelines = \Glue\Crm\Pipelines::all();
                 : ($p['entity_type'] === 'deal' ? $t('nav_deals') : $p['name']);
     ?>
     <div style="margin-bottom:18px">
-      <h3 style="margin-bottom:8px"><?= $h($pipeName) ?> <span class="muted small">(<?= $h($p['entity_type']) ?>)</span></h3>
+      <h3 style="margin-bottom:8px"><?= $h($pipeName) ?> <span class="muted small">(<?= $h(code_label($t, 'ent_', $p['entity_type'])) ?>)</span></h3>
       <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px">
         <?php foreach ($stages as $s): $locked = $s['is_first'] || $s['is_won'] || $s['is_lost']; ?>
           <span class="pill" style="display:inline-flex;align-items:center;gap:7px">
             <span class="dotc" style="background:<?= $h($s['color'] ?: '#5b6cff') ?>"></span><?= $h(stage_label($t, $s['code'], $s['name'])) ?>
             <span class="muted">(<?= $h($s['code']) ?>)</span>
             <?php if (!$locked): ?>
-              <form method="post" style="display:inline" onsubmit="return confirm('?')">
+              <form method="post" style="display:inline" onsubmit="return confirm(<?= $h(json_encode($t('confirm_stage_delete'), JSON_UNESCAPED_UNICODE)) ?>)">
                 <input type="hidden" name="do" value="stage_delete"><input type="hidden" name="id" value="<?= $h($s['id']) ?>">
                 <button style="background:none;border:none;color:var(--red);cursor:pointer;padding:0;font-weight:700">×</button></form>
             <?php endif; ?>

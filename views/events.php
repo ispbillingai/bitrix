@@ -9,6 +9,6 @@ $rows = $pdo->query("SELECT * FROM events ORDER BY id DESC LIMIT 300")->fetchAll
 <?php if (!$rows): ?><tr><td colspan="4" class="muted"><?= $h($t('none_yet')) ?></td></tr><?php endif; ?>
 <?php foreach ($rows as $r): ?>
   <tr><td class="small"><?= $h($r['created_at']) ?></td><td><?= $h(code_label($t, 'src_', $r['source'])) ?></td>
-    <td><?= $h(code_label($t, 'evt_', $r['event_type'])) ?></td><td class="small"><?= $h($r['entity_type']) ?> <?= $h($r['entity_id']) ?></td></tr>
+    <td><?= $h(code_label($t, 'evt_', $r['event_type'])) ?></td><td class="small"><?= $h(code_label($t, 'ent_', $r['entity_type'])) ?> <?= $h($r['entity_id']) ?></td></tr>
 <?php endforeach; ?>
 </tbody></table>

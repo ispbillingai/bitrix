@@ -101,7 +101,7 @@ $mailOk = (string)$cfg('mail.from_email', '') !== '';
         <div class="feed-row">
           <div class="feed-ic"><?= svg(feed_icon($e['source'])) ?></div>
           <div class="feed-main"><b><?= $h(code_label($t, 'evt_', $e['event_type'])) ?></b>
-            <div class="meta"><?= $h(code_label($t, 'src_', $e['source'])) ?><?= $e['entity_type'] ? ' · ' . $h($e['entity_type']) . ' ' . $h($e['entity_id']) : '' ?></div></div>
+            <div class="meta"><?= $h(code_label($t, 'src_', $e['source'])) ?><?= $e['entity_type'] ? ' · ' . $h(code_label($t, 'ent_', $e['entity_type'])) . ' ' . $h($e['entity_id']) : '' ?></div></div>
           <div class="feed-time"><?= $h(short_time($e['created_at'])) ?></div>
         </div>
       <?php endforeach; ?>

@@ -341,7 +341,7 @@ if ($ov !== null):
       <th><?= $h($t('nav_deals')) ?></th><th><?= $h($t('cu_amount')) ?></th><th><?= $h($t('th_status')) ?></th><th class="small"><?= $h($t('th_created')) ?></th>
     </tr></thead><tbody>
     <?php foreach ($ov['deals'] as $d): ?>
-      <tr><td><?= $h($d['title']) ?></td><td><?= $eur($d['amount'], $d['currency']) ?></td>
+      <tr><td><?= $h(record_title($t, $d['title'])) ?></td><td><?= $eur($d['amount'], $d['currency']) ?></td>
           <td><?= pill($h, (string)$d['status'], $t) ?></td><td class="small muted"><?= $h(short_time($d['created_at'])) ?></td></tr>
     <?php endforeach; ?>
     </tbody></table>
@@ -351,7 +351,7 @@ if ($ov !== null):
       <th><?= $h($t('nav_leads')) ?></th><th><?= $h($t('th_source')) ?></th><th><?= $h($t('th_status')) ?></th><th class="small"><?= $h($t('th_created')) ?></th>
     </tr></thead><tbody>
     <?php foreach ($ov['leads'] as $l): ?>
-      <tr><td><?= $h($l['title'] ?: $l['customer_name'] ?: ('#' . $l['id'])) ?></td><td class="small"><?= $h($l['source'] ?? '') ?: $dash ?></td>
+      <tr><td><?= $h(record_title($t, $l['title']) ?: $l['customer_name'] ?: ('#' . $l['id'])) ?></td><td class="small"><?= !empty($l['source']) ? $h(source_label($t, $l['source'])) : $dash ?></td>
           <td><?= pill($h, (string)$l['status'], $t) ?></td><td class="small muted"><?= $h(short_time($l['created_at'])) ?></td></tr>
     <?php endforeach; ?>
     </tbody></table>
@@ -437,7 +437,7 @@ if ($ov !== null):
     <h3><?= $h($t('cu_registry')) ?></h3>
     <p class="muted" style="margin:4px 0"><?= $h($t('cu_balance')) ?>: <b><?= $eur($c['balance']) ?></b></p>
     <p class="muted" style="margin:4px 0"><?= $h($t('cu_since')) ?>: <?= $h($c['customer_since'] ? short_time($c['customer_since']) : '') ?: $dash ?></p>
-    <p class="muted" style="margin:4px 0"><?= $h($t('th_source')) ?>: <?= $h($c['source'] ?? '') ?: $dash ?></p>
+    <p class="muted" style="margin:4px 0"><?= $h($t('th_source')) ?>: <?= !empty($c['source']) ? $h(source_label($t, $c['source'])) : $dash ?></p>
     <p class="muted" style="margin:4px 0"><?= $h($t('cu_portal')) ?>:
       <?= (int)($c['portal_enabled'] ?? 0) === 1
           ? '<span class="pill pill-up">' . $h($t('cu_portal_on')) . '</span>' . ($c['last_login_at'] ? ' ' . $h(short_time($c['last_login_at'])) : '')

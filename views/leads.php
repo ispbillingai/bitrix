@@ -91,7 +91,7 @@ $focus = $openLeadId > 0;
       <label class="fld"><span><?= $h($t('f_source')) ?></span>
         <select name="source" onchange="document.getElementById('src-new').style.display=this.value===''?'':'none'">
           <?php foreach ($sources as $s): ?>
-            <option value="<?= $h($s) ?>"<?= $s === 'manual' ? ' selected' : '' ?>><?= $h($s) ?></option>
+            <option value="<?= $h($s) ?>"<?= $s === 'manual' ? ' selected' : '' ?>><?= $h(source_label($t, $s)) ?></option>
           <?php endforeach; ?>
           <option value=""><?= $h($t('src_new_opt')) ?></option>
         </select>
@@ -194,7 +194,7 @@ $focus = $openLeadId > 0;
                 <span><?= $tel ?></span>
               <?php endif; ?>
               <?php if (!empty($c['customer_email'])): ?><span><?= $h($c['customer_email']) ?></span><?php endif; ?>
-              <span><?= $h($c['source']) ?></span>
+              <span><?= $h(source_label($t, $c['source'])) ?></span>
               <span title="<?= $h(short_time($c['received_at'])) ?>"><?= $h(time_ago($c['received_at'], $t)) ?></span>
               <?php if ($ag): ?><span><?= avatar($h, $ag) ?> <?= $h($ag) ?></span><?php endif; ?>
               <?php if ($cby): ?>
@@ -240,7 +240,7 @@ $focus = $openLeadId > 0;
   </thead><tbody>
     <?php foreach ($srcReport as $sr): foreach ($tot as $k => $v) { $tot[$k] += (int)($sr[$k] ?? 0); }
         $pct = (int)$sr['received'] > 0 ? round(100 * (int)$sr['converted'] / (int)$sr['received']) : 0; ?>
-      <tr><td><a href="?tab=leads&src=<?= $h(urlencode($sr['source'])) ?>"><?= $h($sr['source']) ?></a></td>
+      <tr><td><a href="?tab=leads&src=<?= $h(urlencode($sr['source'])) ?>"><?= $h(source_label($t, $sr['source'])) ?></a></td>
           <td><?= (int)$sr['received'] ?></td><td><?= (int)$sr['converted'] ?></td>
           <td><?= (int)$sr['junk'] ?></td><td><?= (int)($sr['customer'] ?? 0) ?></td><td><?= (int)$sr['still_open'] ?></td><td><?= $pct ?>%</td>
           <td><a class="btn ghost tiny" href="?export=leads&m=<?= $h($ym) ?>&src=<?= $h(urlencode($sr['source'])) ?>"><?= $h($t('exp_excel')) ?></a></td></tr>
@@ -260,7 +260,7 @@ $focus = $openLeadId > 0;
     <span class="pill"><?= $h(str_replace('{q}', $leadQ, $t('lead_search_pill'))) ?></span>
   <?php endif; ?>
   <?php if ($srcFilter !== ''): ?>
-    <span class="pill"><?= $h($t('f_source')) ?>: <?= $h($srcFilter) ?></span>
+    <span class="pill"><?= $h($t('f_source')) ?>: <?= $h(source_label($t, $srcFilter)) ?></span>
   <?php endif; ?>
   <?php if ($partnerRow): ?>
     <span class="bypartner" title="<?= $h($t('from_partner_title')) ?>">

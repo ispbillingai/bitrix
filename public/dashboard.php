@@ -2402,6 +2402,18 @@ function code_label(callable $t, string $prefix, ?string $code): string {
     return $tr !== $key ? $tr : $code;
 }
 /**
+ * A lead's or contact's source ("website", "manual", "cashmatic") for display.
+ * Generic sources have a name in the lang files (src_website = "Sito web");
+ * a partner brand or a source someone typed has none and is shown with a
+ * capital letter. Values stay codes everywhere else — filters, exports and
+ * the datalist a source is typed into all use the code itself.
+ */
+function source_label(callable $t, ?string $code): string {
+    $code = (string)$code;
+    $l = code_label($t, 'src_', $code);
+    return $l === $code ? ucfirst($code) : $l;
+}
+/**
  * A lead/deal title in the reader's language. Titles are stored as the intake
  * wrote them ("Request: Mario Rossi", "New request"); the shape is recognised
  * and rebuilt, anything else (a title someone typed) is shown as it is.
