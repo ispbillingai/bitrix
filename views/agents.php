@@ -26,7 +26,7 @@ $meId = (int)($_SESSION['glue_user']['id'] ?? 0);
   <div class="row">
     <label class="fld"><span><?= $h($t('u_fullname')) ?></span><input name="full_name"></label>
     <label class="fld"><span><?= $h($t('u_title')) ?></span><input name="title" placeholder="<?= $h($t('u_title_ph')) ?>"></label>
-    <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone"></label>
+    <?php phone_field($h, $t('f_phone'), 'phone', null, $lang); ?>
     <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email"></label>
   </div>
   <button class="btn"><?= $h($t('u_create')) ?></button>
@@ -84,7 +84,7 @@ $meId = (int)($_SESSION['glue_user']['id'] ?? 0);
               <option value="admin"<?= $u['role'] === 'admin' ? ' selected' : '' ?>><?= $h($t('role_admin')) ?></option></select></label>
         </div>
         <div class="row">
-          <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone" value="<?= $h($u['phone'] ?? '') ?>"></label>
+          <?php phone_field($h, $t('f_phone'), 'phone', $u['phone'] ?? null, $lang); ?>
           <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email" value="<?= $h($u['email'] ?? '') ?>"></label>
         </div>
         <div class="ci-fld" style="margin-bottom:10px<?= $u['role'] === 'agent' ? '' : ';display:none' ?>">

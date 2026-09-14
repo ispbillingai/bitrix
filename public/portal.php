@@ -202,7 +202,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $asRes = \Glue\Portal\AssistRequests::submit(
             $cid, (string)($_POST['subject'] ?? ''), (string)$_POST['body'], $att, [
                 'choice' => $asChoice ?: 'skip',
-                'phone'  => (string)($_POST['alt_phone'] ?? ''),
+                'phone'  => \Glue\Crm\Phone::compose((string)($_POST['alt_phone'] ?? ''), (string)($_POST['alt_phone_cc'] ?? '')),
                 'source' => 'portal',
             ]);
         if ($asRes['status'] === 'awaiting_payment') {
@@ -613,7 +613,15 @@ if ($tkCur && $page === 'support') {
         <input type="hidden" name="do" value="ticket_open">
         <label><?= $h($t('tk_subject')) ?><input name="subject" maxlength="190" required></label>
         <label><?= $h($t('tk_message')) ?><textarea name="body" rows="3" required></textarea></label>
-        <label><?= $h($t('as_phone')) ?><input name="alt_phone" inputmode="tel" placeholder="+39 …">
+        <label><?= $h($t('as_phone')) ?>
+          <span class="phonewrap">
+            <select name="alt_phone_cc" aria-label="<?= $h($t('as_phone_cc')) ?>" title="<?= $h($t('as_phone_cc')) ?>">
+              <?php foreach (array_keys(\Glue\Crm\Phone::COUNTRIES) as $dial): $dial = (string)$dial; ?>
+                <option value="<?= $h($dial) ?>"<?= $dial === \Glue\Crm\Phone::defaultCc() ? ' selected' : '' ?>><?= $h(\Glue\Crm\Phone::optionLabel($dial, $lang)) ?></option>
+              <?php endforeach; ?>
+            </select>
+            <input name="alt_phone" type="tel" inputmode="tel" placeholder="<?= $h($t('as_phone_ph')) ?>">
+          </span>
           <small class="muted" style="font-weight:400"><?= $h($t('as_phone_h')) ?></small></label>
         <label><?= $h($t('tk_attach')) ?><input type="file" name="attachment"></label>
         <?php if (!$asCover['covered'] && $asOffer !== null): ?>
@@ -815,6 +823,8 @@ function portal_strings(string $lang): array
         'as_need_consent' => 'Please choose whether to activate the Helpdesk contract or continue without.',
         'as_phone' => 'Callback number for this request (if different)',
         'as_phone_h' => 'Must be reachable on WhatsApp. Leave empty to use your registered number.',
+        'as_phone_cc' => 'Country code',
+        'as_phone_ph' => 'e.g. 339 1234567',
         'as_pending_t' => 'Request awaiting payment',
         'as_pending' => 'it will be forwarded to a technician with priority as soon as the Helpdesk contract ({amount}) is paid.',
         'as_pay' => 'Activate and pay now',
@@ -877,6 +887,8 @@ function portal_strings(string $lang): array
         'as_need_consent' => 'Scegli se attivare il contratto Helpdesk o proseguire senza.',
         'as_phone' => 'Telefono per questo intervento (se diverso)',
         'as_phone_h' => 'Deve essere raggiungibile su WhatsApp. Lascia vuoto per usare il numero registrato.',
+        'as_phone_cc' => 'Prefisso internazionale',
+        'as_phone_ph' => 'es. 339 1234567',
         'as_pending_t' => 'Richiesta in attesa di pagamento',
         'as_pending' => 'sarà inoltrata a un tecnico in via prioritaria appena il contratto Helpdesk ({amount}) risulterà pagato.',
         'as_pay' => 'Attiva e paga ora',
@@ -963,6 +975,11 @@ h1{font-size:24px;margin-bottom:4px;letter-spacing:-.3px}
 label{display:block;margin:13px 0;font-size:13px;font-weight:600;color:#49536a}
 input,textarea{width:100%;margin-top:7px;padding:12px 14px;border:1.5px solid #dde2ec;border-radius:11px;font-size:15px;outline:none;background:#fbfcfe;font-family:inherit;transition:.15s}
 input:focus,textarea:focus{border-color:var(--accent);background:#fff;box-shadow:0 0 0 3px rgba(91,108,255,.13)}
+/* Phone: country selector (Italy by default) beside the number box. */
+.phonewrap{display:flex;gap:8px;margin-top:7px}
+.phonewrap select{flex:0 0 auto;max-width:130px;padding:12px 8px;border:1.5px solid #dde2ec;border-radius:11px;font-size:15px;outline:none;background:#fbfcfe;font-family:inherit;color:inherit}
+.phonewrap select:focus{border-color:var(--accent);background:#fff;box-shadow:0 0 0 3px rgba(91,108,255,.13)}
+.phonewrap input{flex:1;min-width:0;margin-top:0}
 .btn{display:inline-block;margin-top:6px;padding:12px 20px;border:none;border-radius:11px;background:var(--accent);color:#fff;font-weight:700;font-size:14.5px;cursor:pointer;font-family:inherit;box-shadow:0 4px 14px -5px rgba(91,108,255,.55);transition:.15s}
 .btn:hover{transform:translateY(-1px);box-shadow:0 7px 18px -5px rgba(91,108,255,.6)}
 .btn:active{transform:none}

@@ -199,8 +199,7 @@ $here = function (array $over = []) use ($view, $filter, $q): string {
           <h3 style="margin-top:0"><?= $h($t('inv_contact_details')) ?></h3>
           <p class="muted small" style="margin-top:-6px"><?= $h($t('inv_contact_h')) ?></p>
           <div class="row">
-            <label class="fld"><span><?= $h($t('f_phone')) ?></span>
-              <input name="phone" value="<?= $h($oc['phone'] ?? '') ?>" placeholder="+39…"></label>
+            <?php phone_field($h, $t('f_phone'), 'phone', $oc['phone'] ?? null, $lang); ?>
             <label class="fld"><span><?= $h($t('f_email')) ?></span>
               <input name="email" type="email" value="<?= $h($oc['email'] ?? '') ?>"></label>
           </div>

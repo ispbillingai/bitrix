@@ -14,7 +14,7 @@ $rows = \Glue\Crm\Appointments::all(300, $scopeId ?? null);
     <input type="hidden" name="do" value="appt_create">
     <div class="row">
       <label class="fld"><span><?= $h($t('f_name')) ?></span><input name="name" required></label>
-      <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone"></label>
+      <?php phone_field($h, $t('f_phone'), 'phone', null, $lang); ?>
       <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email"></label>
     </div>
     <div class="row">

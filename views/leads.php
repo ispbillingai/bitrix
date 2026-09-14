@@ -82,7 +82,7 @@ $focus = $openLeadId > 0;
     <div class="row">
       <label class="fld"><span><?= $h($t('f_first_name')) ?></span><input name="first_name" required></label>
       <label class="fld"><span><?= $h($t('f_last_name')) ?></span><input name="last_name"></label>
-      <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone" placeholder="+39…"></label>
+      <?php phone_field($h, $t('f_phone'), 'phone', null, $lang); ?>
       <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email"></label>
     </div>
     <div class="row">
@@ -134,7 +134,7 @@ $focus = $openLeadId > 0;
       <div class="row">
         <label class="fld"><span><?= $h($t('f_first_name')) ?></span><input name="first_name" required></label>
         <label class="fld"><span><?= $h($t('f_last_name')) ?></span><input name="last_name"></label>
-        <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone" placeholder="+39…"></label>
+        <?php phone_field($h, $t('f_phone'), 'phone', null, $lang); ?>
         <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email"></label>
       </div>
       <div class="row">
@@ -394,7 +394,7 @@ $focus = $openLeadId > 0;
               <div class="row">
                 <label class="fld"><span><?= $h($t('f_first_name')) ?></span><input name="first_name" value="<?= $h($edFirst) ?>" required></label>
                 <label class="fld"><span><?= $h($t('f_last_name')) ?></span><input name="last_name" value="<?= $h($edLast) ?>"></label>
-                <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone" value="<?= $h($r['customer_phone']) ?>" placeholder="+39…"></label>
+                <?php phone_field($h, $t('f_phone'), 'phone', $r['customer_phone'], $lang); ?>
               </div>
               <div class="row">
                 <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email" value="<?= $h($r['customer_email']) ?>"></label>
@@ -559,7 +559,7 @@ $focus = $openLeadId > 0;
             <?php if (!$timeline): ?><div class="empty"><?= $h($t('none_yet')) ?></div><?php endif; ?>
             <?php foreach ($timeline as $a): ?>
               <div class="tl-row"><div class="tl-ic"><?= svg($a['type'] === 'note' ? 'messages' : ($a['type'] === 'stage' ? 'pipeline' : 'events')) ?></div>
-                <div class="tl-main"><?= $h($a['body']) ?>
+                <div class="tl-main"><?= $h(activity_text($t, (string)$a['body'])) ?>
                   <div class="meta"><?= $h($a['full_name'] ?: $a['username'] ?: $t('system')) ?> · <?= $h(short_time($a['created_at'])) ?></div></div></div>
             <?php endforeach; ?>
           </div>

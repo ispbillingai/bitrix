@@ -37,7 +37,7 @@ foreach ($byStage as $code => $cards) {
     </div>
     <div class="row">
       <label class="fld"><span><?= $h($t('f_name')) ?></span><input name="name"></label>
-      <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone"></label>
+      <?php phone_field($h, $t('f_phone'), 'phone', null, $lang); ?>
       <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email"></label>
     </div>
     <button class="btn"><?= $h($t('save')) ?></button>
@@ -55,7 +55,7 @@ foreach ($byStage as $code => $cards) {
       <div class="kbody" data-stage="<?= $h($s['code']) ?>">
         <?php foreach ($cards as $c): $ag = $c['agent_name'] ?: $c['agent_username']; ?>
           <div class="kcard" draggable="true" data-id="<?= $h($c['id']) ?>">
-            <b><?php if (!empty($c['offer_status']) && isset($ledColor[$c['offer_status']])): ?><span class="dotc" style="background:<?= $ledColor[$c['offer_status']] ?>" title="<?= $h($ledLabel($c['offer_status'])) ?>"></span> <?php endif; ?><?= $h($c['title']) ?></b>
+            <b><?php if (!empty($c['offer_status']) && isset($ledColor[$c['offer_status']])): ?><span class="dotc" style="background:<?= $ledColor[$c['offer_status']] ?>" title="<?= $h($ledLabel($c['offer_status'])) ?>"></span> <?php endif; ?><?= $h(record_title($t, $c['title'])) ?></b>
             <div class="meta">
               <span class="amt"><?= $h($money($c['amount'], $c['currency'])) ?></span>
               <?php if ($ag): ?><span><?= avatar($h, $ag) ?> <?= $h($ag) ?></span><?php endif; ?>
@@ -74,7 +74,7 @@ foreach ($byStage as $code => $cards) {
     $timeline = \Glue\Crm\Activities::forEntity('deal', (int)$r['id'], 20); ?>
   <details class="drawer card" style="padding:0;margin-bottom:8px">
     <summary class="dw-sum">
-      <span class="dw-info"><?php if (!empty($r['offer_status']) && isset($ledColor[$r['offer_status']])): ?><span class="dotc" style="background:<?= $ledColor[$r['offer_status']] ?>" title="<?= $h($ledLabel($r['offer_status'])) ?>"></span> <?php endif; ?><b><?= $h($r['title']) ?></b>
+      <span class="dw-info"><?php if (!empty($r['offer_status']) && isset($ledColor[$r['offer_status']])): ?><span class="dotc" style="background:<?= $ledColor[$r['offer_status']] ?>" title="<?= $h($ledLabel($r['offer_status'])) ?>"></span> <?php endif; ?><b><?= $h(record_title($t, $r['title'])) ?></b>
         <span class="muted small"> · <?= $h($r['customer_name']) ?></span></span>
       <span class="amt" style="color:var(--green);font-weight:600"><?= $h($money($r['amount'], $r['currency'])) ?></span>
       <span class="pill"><?= $h(stage_label($t, $r['stage_code'], \Glue\Crm\Pipelines::label('deal', $r['stage_code']))) ?></span>
@@ -121,7 +121,7 @@ foreach ($byStage as $code => $cards) {
             <?php if (!$timeline): ?><div class="empty"><?= $h($t('none_yet')) ?></div><?php endif; ?>
             <?php foreach ($timeline as $a): ?>
               <div class="tl-row"><div class="tl-ic"><?= svg($a['type'] === 'note' ? 'messages' : ($a['type'] === 'stage' ? 'pipeline' : 'events')) ?></div>
-                <div class="tl-main"><?= $h($a['body']) ?>
+                <div class="tl-main"><?= $h(activity_text($t, (string)$a['body'])) ?>
                   <div class="meta"><?= $h($a['full_name'] ?: $a['username'] ?: $t('system')) ?> · <?= $h(short_time($a['created_at'])) ?></div></div></div>
             <?php endforeach; ?>
           </div>

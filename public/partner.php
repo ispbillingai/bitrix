@@ -82,6 +82,7 @@ $notice = $_SESSION['partner_notice'] ?? null;
 unset($_SESSION['partner_notice']);
 
 if ($partner && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'lead') {
+    \Glue\Crm\Phone::applyPosted($_POST); // country selector + number -> one international number
     $res = Partners::submitLead($pid, [
         'name'       => (string)($_POST['name'] ?? ''),
         'company'    => (string)($_POST['company'] ?? ''),
@@ -255,7 +256,7 @@ foreach ($refs as $r) {
     </div>
     <div class="row">
       <label class="fld"><span><?= $h($t('f_email')) ?></span><input type="email" name="email"></label>
-      <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone" placeholder="<?= $h($t('f_phone_ph')) ?>"></label>
+      <?php phone_field($h, $t('f_phone'), 'phone', null, $lang, ['placeholder' => $t('f_phone_ph')]); ?>
     </div>
     <p class="muted small" style="margin:-8px 0 16px"><?= $h($t('f_contact_hint')) ?></p>
     <div class="row">
@@ -392,7 +393,7 @@ function partner_strings(string $lang): array
         'new_lead_sub' => 'Fill in your contact and we take it from here. You will hear from us when the lead is closed or lost.',
         'f_name' => 'Contact name', 'f_company' => 'Company',
         'f_email' => 'Email', 'f_phone' => 'Phone', 'f_phone_ph' => 'e.g. 339 1234567',
-        'f_contact_hint' => 'Give at least one of email or phone. For a number outside Italy, start it with + and the country code.',
+        'f_contact_hint' => 'Give at least one of email or phone. For a number outside Italy, pick the country next to the number.',
         'f_vat' => 'VAT number (optional)', 'f_vat_ph' => 'e.g. 01234567890',
         'f_vat_hint' => 'Entering the VAT number reserves the customer for you for 90 days.',
         'f_zone' => 'Zone', 'f_zone_ph' => 'e.g. Naples North',
@@ -444,7 +445,7 @@ function partner_strings(string $lang): array
         'new_lead_sub' => 'Compila i dati del contatto e al resto pensiamo noi. Ti avviseremo quando la segnalazione sarà chiusa o persa.',
         'f_name' => 'Nome del contatto', 'f_company' => 'Azienda',
         'f_email' => 'Email', 'f_phone' => 'Telefono', 'f_phone_ph' => 'es. 339 1234567',
-        'f_contact_hint' => 'Indica almeno email o telefono. Per un numero estero, inizia con + e il prefisso internazionale.',
+        'f_contact_hint' => 'Indica almeno email o telefono. Per un numero estero, scegli il paese accanto al numero.',
         'f_vat' => 'Partita IVA (facoltativa)', 'f_vat_ph' => 'es. 01234567890',
         'f_vat_hint' => 'Inserendo la partita IVA il cliente resta riservato a te per 90 giorni.',
         'f_zone' => 'Zona', 'f_zone_ph' => 'es. Napoli Nord',

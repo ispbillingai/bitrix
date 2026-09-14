@@ -173,6 +173,32 @@ function chat_recorder_js(string $rec, string $stop, string $ready, string $deny
 JS;
 }
 
+/**
+ * A phone field: country selector (Italy by default) + number box, as one
+ * .fld label. The form posts NAME and NAME_cc; Glue\Crm\Phone::applyPosted()
+ * joins them into the international number before any handler reads $_POST.
+ * A stored number is split back into selector + box so an edit form shows
+ * "+39" selected and the national part in the box.
+ *
+ * $a: required (bool), placeholder (string), hint (string, shown under the box).
+ */
+function phone_field(callable $h, string $label, string $name, ?string $value, string $lang = 'it', array $a = []): void {
+    $split = \Glue\Crm\Phone::split($value);
+    $ccLabel = $lang === 'it' ? 'Prefisso internazionale' : 'Country code'; ?>
+<label class="fld"><span><?= $h($label) ?></span>
+  <span class="phonewrap">
+    <select name="<?= $h($name) ?>_cc" aria-label="<?= $h($ccLabel) ?>" title="<?= $h($ccLabel) ?>">
+      <?php foreach (array_keys(\Glue\Crm\Phone::COUNTRIES) as $dial): $dial = (string)$dial; ?>
+        <option value="<?= $h($dial) ?>"<?= $dial === $split['cc'] ? ' selected' : '' ?>><?= $h(\Glue\Crm\Phone::optionLabel($dial, $lang)) ?></option>
+      <?php endforeach; ?>
+    </select>
+    <input name="<?= $h($name) ?>" type="tel" inputmode="tel" autocomplete="tel-national" value="<?= $h($split['number']) ?>"
+      placeholder="<?= $h($a['placeholder'] ?? ($lang === 'it' ? 'es. 339 1234567' : 'e.g. 339 1234567')) ?>"<?= !empty($a['required']) ? ' required' : '' ?>>
+  </span>
+  <?php if (!empty($a['hint'])): ?><small class="muted"><?= $h($a['hint']) ?></small><?php endif; ?>
+</label>
+<?php }
+
 function css(): void { ?>
 <style>
 :root{
@@ -248,6 +274,12 @@ input,select,textarea{width:100%;padding:10px 12px;border:1px solid var(--line);
 input:focus,select:focus,textarea:focus{border-color:var(--accent);}
 input[readonly]{color:var(--muted);cursor:pointer;}
 .fld small{display:block;margin-top:6px;font-size:12px;line-height:1.5;}
+/* Phone field: country selector + number box on one line, the box taking the
+   room. The selector is narrow on purpose — the closed control shows the flag
+   and +39, the open list shows the country names. */
+.fld .phonewrap{display:flex;gap:6px;margin:0;}
+.phonewrap select{width:auto;flex:0 0 auto;max-width:118px;padding-left:8px;padding-right:8px;}
+.phonewrap input{flex:1;min-width:0;}
 /* Masked credential field: the eye sits inside the input, not beside it, so the
    field keeps the same width as every other one on the row. */
 .secretwrap{position:relative;display:block;}

@@ -354,6 +354,10 @@ if (($_GET['export'] ?? '') === 'leads' && !$isAgent) {
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $do = $_POST['do'] ?? '';
     $ajax = ($_POST['ajax'] ?? '') === '1';
+    // Every phone field posts number + country selector (phone_field() in
+    // _ui.php); joined here, once, so each handler below finds the
+    // international number in $_POST['phone'] as before.
+    \Glue\Crm\Phone::applyPosted($_POST);
     // Agents may only run their own whitelisted actions; block admin actions.
     if ($isAgent && !in_array($do, $agentActions, true)) {
         if ($ajax) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
@@ -1341,6 +1345,25 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
 
+            case 'customer_delete': { // admin only — the card and what lived only on it
+                $cuId = (int)($_POST['id'] ?? 0);
+                $cuDel = \Glue\Crm\Customers::delete($cuId, $uid ?: null);
+                if ($cuDel['ok']) {
+                    // A gestionale customer comes back with the next CLIENTI
+                    // import as long as it is in the export — say so now, not
+                    // in fifteen minutes when it reappears.
+                    $_SESSION['dash_flash'] = [$t('cu_deleted') . ($cuDel['code'] !== null ? ' ' . $t('cu_deleted_reimport') : ''), 'ok'];
+                    header('Location: ?tab=customers');
+                } elseif ($cuDel['error'] === 'install_reports') {
+                    $_SESSION['dash_flash'] = [sprintf($t('cu_del_reports'), (int)$cuDel['reports']), 'err'];
+                    header('Location: ?tab=customers&id=' . $cuId);
+                } else {
+                    $_SESSION['dash_flash'] = [$t('not_allowed'), 'err'];
+                    header('Location: ?tab=customers');
+                }
+                exit;
+            }
+
             // The gestionale's CLIENTI export, uploaded by hand. The FTP drop
             // directory goes through bin/import-clienti.php instead.
             case 'customer_import': {
@@ -2170,9 +2193,21 @@ function feed_icon(string $source): string {
         'scheduler' => 'clock', 'campaign' => 'mega', 'appointment' => 'appointments',
         'request_form' => 'leads'][$source] ?? 'events';
 }
+/**
+ * "10 set, 18:41" / "Sep 10, 18:41" — the reader's language, read from the
+ * page's $lang (set once at the top of dashboard.php; the ~40 call sites all
+ * predate the Italian month names and none of them has a $t to hand over).
+ */
 function short_time(?string $dt): string {
     $ts = $dt ? strtotime($dt) : false;
-    return $ts ? date('M j, H:i', $ts) : (string)$dt;
+    if (!$ts) {
+        return (string)$dt;
+    }
+    if (($GLOBALS['lang'] ?? 'en') === 'it') {
+        static $mesi = ['gen', 'feb', 'mar', 'apr', 'mag', 'giu', 'lug', 'ago', 'set', 'ott', 'nov', 'dic'];
+        return date('j', $ts) . ' ' . $mesi[(int)date('n', $ts) - 1] . ', ' . date('H:i', $ts);
+    }
+    return date('M j, H:i', $ts);
 }
 /** Compact localized "how long ago" — e.g. "35 min ago" / "3 h fa" / "2 days ago". */
 function time_ago(?string $dt, callable $t): string {
@@ -2364,5 +2399,81 @@ function code_label(callable $t, string $prefix, ?string $code): string {
     $key = $prefix . $code;
     $tr  = $t($key);
     return $tr !== $key ? $tr : $code;
+}
+/**
+ * A lead/deal title in the reader's language. Titles are stored as the intake
+ * wrote them ("Request: Mario Rossi", "New request"); the shape is recognised
+ * and rebuilt, anything else (a title someone typed) is shown as it is.
+ */
+function record_title(callable $t, ?string $title): string {
+    $title = (string)$title;
+    if (preg_match('/^Request: (.+)$/u', $title, $m)) {
+        return sprintf($t('title_request'), $m[1]);
+    }
+    if ($title === 'New request') {
+        return $t('title_new_request');
+    }
+    return $title;
+}
+/**
+ * A timeline line in the reader's language. The lines the system writes are
+ * stored in English, the language of the code; the Cronologia shows them in
+ * the language of the page. Each known line is recognised by its shape and
+ * rebuilt from lang keys, the variable parts (names, numbers, dates, the note
+ * text) carried over; a note, or a line this table does not know, is shown
+ * as stored. Stage names inside "Stage: A → B" go through stage_label(), so a
+ * seeded stage reads "Preventivo inviato" and a renamed one keeps its name.
+ */
+function activity_text(callable $t, string $body): string {
+    static $seedCode = ['New' => 'NEW', 'In Contact' => 'CONTACTED', 'Qualified' => 'QUALIFIED',
+        'Converted' => 'CONVERTED', 'Junk' => 'JUNK', 'Quote sent' => 'QUOTE', 'Negotiation' => 'NEGOTIATION',
+        'Signature' => 'SIGNATURE', 'Won' => 'WON', 'Lost' => 'LOST'];
+    $stage = fn(string $name): string => stage_label($t, $seedCode[trim($name)] ?? '', trim($name));
+    $was   = fn(?string $w): string => ($w ?? '') !== '' ? ' ' . sprintf($t('act_was'), $w) : '';
+    $body  = trim($body);
+    $rules = [
+        ['/^Deal created$/', fn($m) => $t('act_deal_created')],
+        ['/^Lead details edited$/', fn($m) => $t('act_lead_edited')],
+        ['/^Portal access (?:link )?sent to customer$/', fn($m) => $t('act_portal_sent')],
+        ['/^Appointment requested$/', fn($m) => $t('act_appt_requested')],
+        ['/^Contract signed by customer \(OTP\)$/', fn($m) => $t('act_contract_signed')],
+        ['/^Stage: (.+?) → (.+)$/u', fn($m) => sprintf($t('act_stage'), $stage($m[1]), $stage($m[2]))],
+        ['/^Assigned to (.+)$/u', fn($m) => sprintf($t('act_assigned'), $m[1])],
+        ['/^Converted to deal #(\d+)$/', fn($m) => sprintf($t('act_converted'), $m[1])],
+        ['/^Lead created from (.+?)(?: \((\S+)\))?( \(internal — no welcome message sent\))?$/u',
+            fn($m) => sprintf($t('act_lead_created'), $m[1]) . (($m[2] ?? '') !== '' ? " ({$m[2]})" : '')
+                . (($m[3] ?? '') !== '' ? ' ' . $t('act_lead_internal') : '')],
+        ['/^New request from (.+?) grouped onto this lead(?::\n([\s\S]*))?$/u',
+            fn($m) => sprintf($t('act_grouped'), $m[1]) . (($m[2] ?? '') !== '' ? ":\n" . $m[2] : '')],
+        ['/^Quote requested from the back office \(#(\d+)\):\n([\s\S]*)$/u',
+            fn($m) => sprintf($t('act_quote_requested'), $m[1]) . ":\n" . $m[2]],
+        ['/^Quote uploaded by the back office for request #(\d+)$/', fn($m) => sprintf($t('act_quote_uploaded'), $m[1])],
+        ['/^Quote #(\d+) sent to the customer for review and signature$/', fn($m) => sprintf($t('act_quote_sent'), $m[1])],
+        ['/^Quote request #(\d+) cancelled$/', fn($m) => sprintf($t('act_quote_cancelled'), $m[1])],
+        ['/^Lead attributed to partner (.+?)(?: \(was (.+)\))?$/u', fn($m) => sprintf($t('act_partner_set'), $m[1]) . $was($m[2] ?? null)],
+        ['/^Partner attribution removed(?: \(was (.+)\))?$/u', fn($m) => $t('act_partner_removed') . $was($m[1] ?? null)],
+        ['/^Blocked duplicate entry of VAT (\S+)(?: via partner (.+?))? \(locked until (.+)\)$/u',
+            fn($m) => ($m[2] ?? '') !== ''
+                ? sprintf($t('act_vat_blocked_partner'), $m[1], $m[2], $m[3])
+                : sprintf($t('act_vat_blocked'), $m[1], $m[3])],
+        ['/^Payment contract opened: (.+) — (.+)$/u', fn($m) => sprintf($t('act_pay_opened'), $m[1], $m[2])],
+        ['/^Payment contract active — first payment collected$/u', fn($m) => $t('act_pay_active')],
+        ['/^SmallPay refused the first payment$/', fn($m) => $t('act_pay_refused')],
+        ['/^A payment came back unpaid$/', fn($m) => $t('act_pay_unpaid_1')],
+        ['/^(\d+) payments came back unpaid$/', fn($m) => sprintf($t('act_pay_unpaid_n'), (int)$m[1])],
+        ['/^Payment contract cancelled$/', fn($m) => $t('act_pay_cancelled')],
+        ['/^A new first-payment link was sent by SmallPay$/', fn($m) => $t('act_pay_newlink')],
+        ['/^(\d+) unpaid payment\(s\) retried$/', fn($m) => sprintf($t('act_pay_retried'), (int)$m[1])],
+        ['/^(\d+) payment\(s\) marked settled in cash$/', fn($m) => sprintf($t('act_pay_cash'), (int)$m[1])],
+        ['/^Payment link sent to the customer$/', fn($m) => $t('act_pay_link')],
+        ['/^Confirmed for (.+)$/u', fn($m) => sprintf($t('act_appt_confirmed'), $m[1])],
+        ['/^Status: (\S+)$/', fn($m) => sprintf($t('act_status'), code_label($t, 'stt_', $m[1]))],
+    ];
+    foreach ($rules as [$re, $fn]) {
+        if (preg_match($re, $body, $m)) {
+            return $fn($m);
+        }
+    }
+    return $body;
 }
 

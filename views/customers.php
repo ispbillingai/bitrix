@@ -412,8 +412,8 @@ if ($ov !== null):
         <label class="fld"><span><?= $h($t('cu_vat')) ?></span><input name="vat_number" value="<?= $h($c['vat_number'] ?? '') ?>"></label>
       </div>
       <div class="row">
-        <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone" value="<?= $h($c['phone'] ?? '') ?>"></label>
-        <label class="fld"><span><?= $h($t('cu_phone2')) ?></span><input name="phone2" value="<?= $h($c['phone2'] ?? '') ?>"></label>
+        <?php phone_field($h, $t('f_phone'), 'phone', $c['phone'] ?? null, $lang); ?>
+        <?php phone_field($h, $t('cu_phone2'), 'phone2', $c['phone2'] ?? null, $lang); ?>
       </div>
       <div class="row">
         <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email" value="<?= $h($c['email'] ?? '') ?>"></label>
@@ -447,6 +447,16 @@ if ($ov !== null):
       <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
       <button class="btn ghost tiny"><?= svg('link') ?> <?= $h($t('cu_portal_send')) ?></button>
       <small class="muted" style="display:block;margin-top:4px"><?= $h($t('cu_portal_send_h')) ?></small>
+    </form>
+    <?php // Deleting the card. The name goes into the confirm so the admin sees
+          // whom they are about to remove; json_encode keeps an apostrophe in
+          // "D'Amico" from ending the JavaScript string. ?>
+    <form method="post" style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)"
+          onsubmit="return confirm(<?= $h(json_encode(sprintf($t('confirm_cu_delete'), $c['name']), JSON_UNESCAPED_UNICODE)) ?>)">
+      <input type="hidden" name="do" value="customer_delete">
+      <input type="hidden" name="id" value="<?= (int)$c['id'] ?>">
+      <button class="btn ghost tiny" style="color:var(--red)"><?= $h($t('cu_delete')) ?></button>
+      <small class="muted" style="display:block;margin-top:4px"><?= $h($t('cu_delete_h')) ?></small>
     </form>
   </div>
 </div>
@@ -506,8 +516,8 @@ if ($ov !== null):
           <label class="fld"><span><?= $h($t('cu_contract_expiry')) ?></span><input type="date" name="contract_expiry"></label>
         </div>
         <div class="row">
-          <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone"></label>
-          <label class="fld"><span><?= $h($t('cu_phone2')) ?></span><input name="phone2"></label>
+          <?php phone_field($h, $t('f_phone'), 'phone', null, $lang); ?>
+          <?php phone_field($h, $t('cu_phone2'), 'phone2', null, $lang); ?>
           <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email" type="email"></label>
         </div>
         <div class="row">

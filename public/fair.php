@@ -65,26 +65,7 @@ $T = [
 ][$lang];
 
 // Same country list as request.php — customers rarely type +39 themselves.
-$countries = [
-    '39'  => ['🇮🇹', 'Italia', 'Italy'],
-    '44'  => ['🇬🇧', 'Regno Unito', 'United Kingdom'],
-    '33'  => ['🇫🇷', 'Francia', 'France'],
-    '49'  => ['🇩🇪', 'Germania', 'Germany'],
-    '34'  => ['🇪🇸', 'Spagna', 'Spain'],
-    '41'  => ['🇨🇭', 'Svizzera', 'Switzerland'],
-    '43'  => ['🇦🇹', 'Austria', 'Austria'],
-    '32'  => ['🇧🇪', 'Belgio', 'Belgium'],
-    '31'  => ['🇳🇱', 'Paesi Bassi', 'Netherlands'],
-    '351' => ['🇵🇹', 'Portogallo', 'Portugal'],
-    '30'  => ['🇬🇷', 'Grecia', 'Greece'],
-    '40'  => ['🇷🇴', 'Romania', 'Romania'],
-    '48'  => ['🇵🇱', 'Polonia', 'Poland'],
-    '355' => ['🇦🇱', 'Albania', 'Albania'],
-    '1'   => ['🇺🇸', 'USA / Canada', 'USA / Canada'],
-    '971' => ['🇦🇪', 'Emirati Arabi', 'UAE'],
-    '212' => ['🇲🇦', 'Marocco', 'Morocco'],
-    '254' => ['🇰🇪', 'Kenya', 'Kenya'],
-];
+$countries = \Glue\Crm\Phone::COUNTRIES;
 
 $h = fn($s): string => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
 $company = (string)Config::get('app.company_name', (string)Config::get('mail.from_name', 'Company'));
@@ -110,19 +91,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $old = $_POST;
 
         // Prepend the chosen country prefix unless already international.
-        $cc = (string)($_POST['phone_cc'] ?? '39');
-        $cc = isset($countries[$cc]) ? $cc : '39';
-        if ($phone !== '') {
-            $digits = preg_replace('/\D+/', '', $phone) ?? '';
-            if (str_starts_with($phone, '+')) {
-                $phone = $digits === '' ? '' : '+' . $digits;
-            } elseif (str_starts_with($digits, '00')) {
-                $phone = '+' . substr($digits, 2);
-            } else {
-                $digits = ltrim($digits, '0'); // drop a single trunk zero
-                $phone = $digits === '' ? '' : '+' . $cc . $digits;
-            }
-        }
+        $phone = \Glue\Crm\Phone::compose($phone, (string)($_POST['phone_cc'] ?? ''));
 
         if ($name === '' || ($email === '' && $phone === '')) {
             $error = $T['err_required'];

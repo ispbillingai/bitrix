@@ -60,26 +60,7 @@ $T = [
 // Country dial codes for the phone field. Customers are almost all Italian and
 // rarely type +39 themselves, so the form asks for the country (default Italy)
 // and prepends the prefix server-side. dial => [flag, it-name, en-name].
-$countries = [
-    '39'  => ['🇮🇹', 'Italia', 'Italy'],
-    '44'  => ['🇬🇧', 'Regno Unito', 'United Kingdom'],
-    '33'  => ['🇫🇷', 'Francia', 'France'],
-    '49'  => ['🇩🇪', 'Germania', 'Germany'],
-    '34'  => ['🇪🇸', 'Spagna', 'Spain'],
-    '41'  => ['🇨🇭', 'Svizzera', 'Switzerland'],
-    '43'  => ['🇦🇹', 'Austria', 'Austria'],
-    '32'  => ['🇧🇪', 'Belgio', 'Belgium'],
-    '31'  => ['🇳🇱', 'Paesi Bassi', 'Netherlands'],
-    '351' => ['🇵🇹', 'Portogallo', 'Portugal'],
-    '30'  => ['🇬🇷', 'Grecia', 'Greece'],
-    '40'  => ['🇷🇴', 'Romania', 'Romania'],
-    '48'  => ['🇵🇱', 'Polonia', 'Poland'],
-    '355' => ['🇦🇱', 'Albania', 'Albania'],
-    '1'   => ['🇺🇸', 'USA / Canada', 'USA / Canada'],
-    '971' => ['🇦🇪', 'Emirati Arabi', 'UAE'],
-    '212' => ['🇲🇦', 'Marocco', 'Morocco'],
-    '254' => ['🇰🇪', 'Kenya', 'Kenya'],
-];
+$countries = \Glue\Crm\Phone::COUNTRIES;
 
 $h = fn($s): string => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
 $company = (string)Config::get('app.company_name', (string)Config::get('mail.from_name', 'Company'));
@@ -102,19 +83,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         // Prepend the chosen country prefix (default Italy) unless the customer
         // already typed an international number (+... or 00...).
-        $cc = (string)($_POST['phone_cc'] ?? '39');
-        $cc = isset($countries[$cc]) ? $cc : '39';
-        if ($phone !== '') {
-            $digits = preg_replace('/\D+/', '', $phone) ?? '';
-            if (str_starts_with($phone, '+')) {
-                $phone = $digits === '' ? '' : '+' . $digits;
-            } elseif (str_starts_with($digits, '00')) {
-                $phone = '+' . substr($digits, 2);
-            } else {
-                $digits = ltrim($digits, '0'); // drop a single trunk zero
-                $phone = $digits === '' ? '' : '+' . $cc . $digits;
-            }
-        }
+        $phone = \Glue\Crm\Phone::compose($phone, (string)($_POST['phone_cc'] ?? ''));
 
         if ($name === '' || ($email === '' && $phone === '')) {
             $error = $T['err_required'];

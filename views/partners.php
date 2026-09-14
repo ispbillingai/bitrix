@@ -21,7 +21,7 @@ $money = fn($n) => (string)\Glue\Config::get('crm.currency', 'EUR') . ' ' . numb
     <div class="row">
       <label class="fld"><span><?= $h($t('pt_name')) ?></span><input name="name" required></label>
       <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email"></label>
-      <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone"></label>
+      <?php phone_field($h, $t('f_phone'), 'phone', null, $lang); ?>
     </div>
     <div class="row">
       <label class="fld"><span><?= $h($t('pt_ref')) ?></span><input name="ref_code" placeholder="<?= $h($t('pt_ref_ph')) ?>"></label>
@@ -58,7 +58,7 @@ $money = fn($n) => (string)\Glue\Config::get('crm.currency', 'EUR') . ' ' . numb
         <div class="row">
           <label class="fld"><span><?= $h($t('pt_name')) ?></span><input name="name" value="<?= $h($p['name']) ?>" required></label>
           <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email" value="<?= $h($p['email'] ?? '') ?>"></label>
-          <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone" value="<?= $h($p['phone'] ?? '') ?>"></label>
+          <?php phone_field($h, $t('f_phone'), 'phone', $p['phone'] ?? null, $lang); ?>
         </div>
         <div class="row">
           <label class="fld"><span><?= $h($t('pt_ref')) ?></span><input name="ref_code" value="<?= $h($p['ref_code']) ?>"></label>

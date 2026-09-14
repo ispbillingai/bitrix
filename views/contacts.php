@@ -24,7 +24,7 @@ $link   = static fn(int $id): string => '?tab=contacts' . ($id ? '&c=' . $id : '
       <label class="fld"><span><?= $h($t('f_company')) ?></span><input name="company"></label>
     </div>
     <div class="row">
-      <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone"></label>
+      <?php phone_field($h, $t('f_phone'), 'phone', null, $lang); ?>
       <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email"></label>
       <label class="fld"><span><?= $h($t('f_lang')) ?></span>
         <select name="lang"><option value="it">IT</option><option value="en">EN</option></select></label>
@@ -66,7 +66,7 @@ $link   = static fn(int $id): string => '?tab=contacts' . ($id ? '&c=' . $id : '
         <label class="fld"><span><?= $h($t('f_company')) ?></span><input name="company" value="<?= $h($r['company'] ?? '') ?>"></label>
       </div>
       <div class="row">
-        <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone" value="<?= $h($r['phone'] ?? '') ?>"></label>
+        <?php phone_field($h, $t('f_phone'), 'phone', $r['phone'] ?? null, $lang); ?>
         <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email" value="<?= $h($r['email'] ?? '') ?>"></label>
         <label class="fld"><span><?= $h($t('f_lang')) ?></span>
           <select name="lang">

@@ -58,7 +58,7 @@ $qColor = [QuoteRequests::OPEN => 'var(--amber)', QuoteRequests::READY => 'var(-
     <div class="row">
       <label class="fld"><span><?= $h($t('f_first_name')) ?></span><input name="first_name"></label>
       <label class="fld"><span><?= $h($t('f_last_name')) ?></span><input name="last_name"></label>
-      <label class="fld"><span><?= $h($t('f_phone')) ?></span><input name="phone" placeholder="+39…"></label>
+      <?php phone_field($h, $t('f_phone'), 'phone', null, $lang); ?>
       <label class="fld"><span><?= $h($t('f_email')) ?></span><input name="email"></label>
     </div>
     <div class="row">

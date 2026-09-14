@@ -89,22 +89,7 @@ $T = [
 ][$lang];
 
 // Same country list as request.php: customers rarely type +39 themselves.
-$countries = [
-    '39'  => ['🇮🇹', 'Italia', 'Italy'],
-    '44'  => ['🇬🇧', 'Regno Unito', 'United Kingdom'],
-    '33'  => ['🇫🇷', 'Francia', 'France'],
-    '49'  => ['🇩🇪', 'Germania', 'Germany'],
-    '34'  => ['🇪🇸', 'Spagna', 'Spain'],
-    '41'  => ['🇨🇭', 'Svizzera', 'Switzerland'],
-    '43'  => ['🇦🇹', 'Austria', 'Austria'],
-    '32'  => ['🇧🇪', 'Belgio', 'Belgium'],
-    '31'  => ['🇳🇱', 'Paesi Bassi', 'Netherlands'],
-    '351' => ['🇵🇹', 'Portogallo', 'Portugal'],
-    '40'  => ['🇷🇴', 'Romania', 'Romania'],
-    '48'  => ['🇵🇱', 'Polonia', 'Poland'],
-    '355' => ['🇦🇱', 'Albania', 'Albania'],
-    '1'   => ['🇺🇸', 'USA / Canada', 'USA / Canada'],
-];
+$countries = \Glue\Crm\Phone::COUNTRIES;
 
 $h = fn($s): string => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
 $company = (string)Config::get('app.company_name', (string)Config::get('mail.from_name', 'Company'));
@@ -142,15 +127,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $body  = trim((string)($_POST['message'] ?? ''));
         // Prefix logic identical to request.php: +/00 respected, else the
         // chosen country code (Italy by default) is prepended.
-        $phoneRaw = trim((string)($_POST['phone'] ?? ''));
-        $cc = (string)($_POST['phone_cc'] ?? '39');
-        $cc = isset($countries[$cc]) ? $cc : '39';
-        $phone = '';
-        if ($phoneRaw !== '') {
-            $phone = str_starts_with($phoneRaw, '+') || str_starts_with(preg_replace('/\D+/', '', $phoneRaw) ?? '', '00')
-                ? Notifier::normalizePhone($phoneRaw)
-                : Notifier::normalizePhone('+' . $cc . ltrim(preg_replace('/\D+/', '', $phoneRaw) ?? '', '0'));
-        }
+        $phone = \Glue\Crm\Phone::compose((string)($_POST['phone'] ?? ''), (string)($_POST['phone_cc'] ?? ''));
 
         if ($vat === '' || $name === '' || $phone === '' || $body === '') {
             $error = $T['err_required'];

@@ -14,9 +14,10 @@ use PDO;
  * A customer is a contacts row with is_customer = 1. That single decision is
  * what makes the customer page cheap: tickets, sign documents, payment
  * contracts, portal logins, leads and deals already point at contact_id, and
- * Sibill invoices resolve to it by VAT. This class only aggregates; the one
- * thing it writes is the flag itself (a won deal becomes a customer) and the
- * router link (a network area assigned to a customer site).
+ * Sibill invoices resolve to it by VAT. This class mostly aggregates; what it
+ * writes is the flag itself (a won deal becomes a customer), the router link
+ * (a network area assigned to a customer site), a card typed in by hand, and
+ * the removal of a card (delete(), which unlinks what must outlive it).
  *
  * The rows themselves come from two places: the gestionale export via
  * CustomerImport (identity = customer_code), and won deals (markFromDeal).
@@ -388,5 +389,98 @@ final class Customers
                     vat_number = COALESCE(NULLIF(vat_number, ''), ?)
               WHERE id = ?"
         )->execute([$vat, $contactId]);
+    }
+
+    // ---- deleting a card ----------------------------------------------------
+
+    /**
+     * Remove a customer card. What only ever existed on the card goes with it:
+     * the chat threads with their attachments, assistance requests, portal
+     * logins and one-time codes, the card's own timeline. Records that stand
+     * on their own — leads, deals, appointments, signed documents, Sibill
+     * invoices, payment contracts, routers — are kept and unlinked, so the
+     * pipeline history and the legal papers survive the card.
+     *
+     * Installation reports are the exception: they are listed through the
+     * customer (JOIN contacts) and carry the technician's signed PDF, so a
+     * card with reports is refused until those are deleted first.
+     *
+     * A card that came from the gestionale will be recreated by the next
+     * CLIENTI import while its code is still in the export — the caller tells
+     * the user so (the returned code says whether that applies).
+     *
+     * @return array{ok:bool, error:?string, reports:int, code:?string}
+     */
+    public static function delete(int $contactId, ?int $userId = null): array
+    {
+        $pdo = Db::pdo();
+        $c = Contacts::find($contactId);
+        if (!$c) {
+            return ['ok' => false, 'error' => 'not_found', 'reports' => 0, 'code' => null];
+        }
+        $code = trim((string)($c['customer_code'] ?? '')) ?: null;
+
+        $q = $pdo->prepare('SELECT COUNT(*) FROM install_reports WHERE contact_id = ?');
+        $q->execute([$contactId]);
+        $reports = (int)$q->fetchColumn();
+        if ($reports > 0) {
+            return ['ok' => false, 'error' => 'install_reports', 'reports' => $reports, 'code' => $code];
+        }
+
+        // Attachments on disk. Chat messages and assistance requests share the
+        // ticket upload directory (a forwarded request hands its file to the
+        // thread it becomes, so a name can appear twice — unlinking twice is
+        // harmless). Collected before the rows go, removed after the commit.
+        $q = $pdo->prepare(
+            'SELECT m.attachment_path FROM ticket_messages m JOIN tickets t ON t.id = m.ticket_id
+             WHERE t.contact_id = ? AND m.attachment_path IS NOT NULL'
+        );
+        $q->execute([$contactId]);
+        $files = $q->fetchAll(PDO::FETCH_COLUMN);
+        $q = $pdo->prepare('SELECT attachment_path FROM assist_requests WHERE contact_id = ? AND attachment_path IS NOT NULL');
+        $q->execute([$contactId]);
+        $files = array_merge($files, $q->fetchAll(PDO::FETCH_COLUMN));
+
+        $counts = [];
+        $pdo->beginTransaction();
+        try {
+            $q = $pdo->prepare('SELECT id FROM tickets WHERE contact_id = ?');
+            $q->execute([$contactId]);
+            $ticketIds = array_map('intval', $q->fetchAll(PDO::FETCH_COLUMN));
+            if ($ticketIds) {
+                $in = implode(',', $ticketIds);
+                $pdo->exec("DELETE FROM ticket_messages WHERE ticket_id IN ($in)");
+                $pdo->exec("DELETE FROM tickets WHERE id IN ($in)");
+            }
+            $counts['tickets'] = count($ticketIds);
+            foreach (['assist_requests', 'otp_codes', 'portal_access_log'] as $table) {
+                $st = $pdo->prepare("DELETE FROM $table WHERE contact_id = ?");
+                $st->execute([$contactId]);
+                $counts[$table] = $st->rowCount();
+            }
+            $pdo->prepare("DELETE FROM activities WHERE entity_type = 'contact' AND entity_id = ?")->execute([$contactId]);
+            $pdo->prepare("UPDATE reminders SET status = 'cancelled' WHERE status = 'pending' AND entity_type = 'contact' AND entity_id = ?")
+                ->execute([$contactId]);
+            foreach (['leads', 'deals', 'appointments', 'sign_documents', 'sign_signatures', 'sibill_invoices',
+                      'sibill_customers', 'payment_contracts', 'network_areas'] as $table) {
+                $st = $pdo->prepare("UPDATE $table SET contact_id = NULL WHERE contact_id = ?");
+                $st->execute([$contactId]);
+                $counts[$table] = $st->rowCount();
+            }
+            $pdo->prepare('DELETE FROM contacts WHERE id = ?')->execute([$contactId]);
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+        foreach ($files as $f) {
+            @unlink(Tickets::uploadDir() . '/' . basename((string)$f));
+        }
+
+        \Glue\Event\Log::write('crm', 'customer_deleted', 'contact', $contactId, [
+            'name' => $c['name'] ?? null, 'code' => $code, 'vat' => $c['vat_number'] ?? null,
+            'by' => $userId, 'removed' => $counts,
+        ]);
+        return ['ok' => true, 'error' => null, 'reports' => 0, 'code' => $code];
     }
 }
