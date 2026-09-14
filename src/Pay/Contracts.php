@@ -418,6 +418,16 @@ final class Contracts
     /** The customer's first payment went through, or the contract ended. */
     private static function onStatusChange(array $c, string $from, string $to): void
     {
+        // A payment reminder's position: the money is for invoices in the
+        // gestionale, not for a contract, so it has its own messages and the
+        // administrators are told to record it. A one-off paid in one go
+        // lands straight on 'completed', so both arrivals count as "paid".
+        if (in_array($to, ['active', 'completed'], true)
+            && in_array($from, ['draft', 'awaiting_customer', 'failed'], true)
+            && \Glue\Sibill\Customers::onChasePaid($c)) {
+            self::activity($c, 'Payment contract active — first payment collected');
+            return;
+        }
         if ($to === 'active' && in_array($from, ['draft', 'awaiting_customer', 'failed'], true)) {
             self::notifyCustomer($c, self::RULE_ACTIVE, [
                 'description' => (string)$c['description'],

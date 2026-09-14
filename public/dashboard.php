@@ -407,7 +407,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'save_settings':
                 $allowed = [
                     'app.company_name', 'app.default_lang', 'app.timezone', 'app.base_url', 'app.intake_secret',
-                    'app.default_country_code',
+                    'app.default_country_code', 'app.iban', 'app.bank_name',
                     'crm.currency', 'crm.deal_quote_stage',
                     'reminders.lead_inactivity_hours', 'reminders.deal_inactivity_hours',
                     'reminders.lead_nudge_repeat_hours', 'reminders.lead_customer_after_hours',
@@ -454,6 +454,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pairs['bitrix.sync_enabled'] = $post('bitrix.sync_enabled') !== null ? 'true' : 'false';
                 $pairs['sibill.enabled'] = $post('sibill.enabled') !== null ? 'true' : 'false';
                 $pairs['sibill.chase_enabled'] = $post('sibill.chase_enabled') !== null ? 'true' : 'false';
+                $pairs['sibill.chase_pay_link'] = $post('sibill.chase_pay_link') !== null ? 'true' : 'false';
                 $pairs['leads_mailbox.enabled'] = $post('leads_mailbox.enabled') !== null ? 'true' : 'false';
                 $pairs['smallpay.enabled'] = $post('smallpay.enabled') !== null ? 'true' : 'false';
                 $pairs['smallpay.modify_installments'] = $post('smallpay.modify_installments') !== null ? 'true' : 'false';

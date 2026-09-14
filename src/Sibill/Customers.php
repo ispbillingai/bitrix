@@ -511,6 +511,11 @@ final class Customers
             }
         }
 
+        // A SmallPay page for exactly this amount, when the setting asks for
+        // one — '' when off or when SmallPay could not be reached, and the
+        // reminder still goes, without that line ({?pay_link}…{/pay_link}).
+        $payLink = self::payLink($c, $open, $owed);
+
         // Channel: whatever is configured, narrowed to what we can actually reach.
         $channel = (string)Config::get('sibill.chase_channel', 'both');
         if ($phone === '') {
@@ -556,6 +561,7 @@ final class Customers
                 'oldest_due'    => $oldest !== null ? date('d/m/Y', strtotime($oldest)) : '',
                 'days_late'     => $oldest !== null
                     ? (string)(int)((time() - strtotime($oldest)) / 86400) : '0',
+                'pay_link'      => $payLink,
             ],
         ], false);
 
@@ -568,6 +574,163 @@ final class Customers
             }
         }
         return $rid;
+    }
+
+    // ---- paying online from the reminder --------------------------------------
+
+    /** How long chasing pauses after an online payment, for the books to catch up. */
+    public const PAID_PAUSE_DAYS = 14;
+
+    /** Reminders carry a SmallPay page when the setting asks for one and SmallPay is live. */
+    public static function payLinkEnabled(): bool
+    {
+        return (bool)Config::get('sibill.chase_pay_link', false) && \Glue\Pay\SmallPay::enabled();
+    }
+
+    /**
+     * The cashier URL to put in a reminder for these invoices: a one-off
+     * SmallPay position for exactly the chased amount, by card. The customer
+     * row keeps the position it last issued — while that one is unpaid and for
+     * the same figure the link is reused (the same page for the same debt);
+     * otherwise it is cancelled and a new one opened, so the link in the
+     * newest message always matches the amount written next to it. Returns ''
+     * when the feature is off or SmallPay could not be reached: the reminder
+     * still goes, without that line.
+     */
+    private static function payLink(array $c, array $open, float $owed): string
+    {
+        if (!self::payLinkEnabled()) {
+            return '';
+        }
+        $cents = (int)round($owed * 100);
+        if ($cents <= 0) {
+            return '';
+        }
+        $prev = !empty($c['pay_contract_id']) ? \Glue\Pay\Contracts::find((int)$c['pay_contract_id']) : null;
+        if ($prev !== null) {
+            if ((string)$prev['status'] === 'awaiting_customer'
+                && (int)$prev['first_amount_cents'] === $cents
+                && trim((string)($prev['checkout_url'] ?? '')) !== '') {
+                return trim((string)$prev['checkout_url']);
+            }
+            if (in_array((string)$prev['status'], ['draft', 'awaiting_customer'], true)) {
+                try {
+                    \Glue\Pay\Contracts::cancel((int)$prev['id']);
+                } catch (Throwable $e) {
+                    Log::write('sibill', 'chase_link_cancel_failed', 'payment_contract', (int)$prev['id'],
+                        ['error' => $e->getMessage()]);
+                }
+            }
+        }
+
+        $numbers = array_values(array_filter(array_map(
+            static fn($i) => trim((string)($i['number'] ?? '')), $open
+        ), 'strlen'));
+        $it   = substr((string)($c['lang'] ?? 'it'), 0, 2) !== 'en';
+        $desc = (count($numbers) === 1 ? ($it ? 'Fattura ' : 'Invoice ') : ($it ? 'Fatture ' : 'Invoices '))
+            . implode(', ', array_slice($numbers, 0, 5));
+        try {
+            $contract = \Glue\Pay\Contracts::open([
+                'kind'           => 'one_off',
+                'gateway'        => \Glue\Pay\SmallPay::GW_CARD, // a debt is paid, not a mandate signed
+                'contact_id'     => $c['contact_id'] ?? null,
+                'description'    => mb_substr(trim($desc), 0, 120),
+                'amount_cents'   => $cents,
+                'customer_name'  => (string)$c['name'],
+                'customer_phone' => (string)($c['phone'] ?? ''),
+                'customer_email' => (string)($c['email'] ?? ''),
+                'lang'           => $c['lang'] ?? null,
+            ]);
+        } catch (Throwable $e) {
+            Log::write('sibill', 'chase_link_failed', 'sibill_customer', (int)$c['id'], ['error' => $e->getMessage()]);
+            return '';
+        }
+        Db::pdo()->prepare('UPDATE sibill_customers SET pay_contract_id = ? WHERE id = ?')
+            ->execute([(int)$contract['id'], (int)$c['id']]);
+        Log::write('sibill', 'chase_link_opened', 'sibill_customer', (int)$c['id'],
+            ['contract' => (int)$contract['id'], 'cents' => $cents]);
+        return trim((string)($contract['checkout_url'] ?? ''));
+    }
+
+    /**
+     * A reminder's SmallPay position was paid (Pay\Contracts hands over the
+     * status change). The customer is thanked, every administrator is told to
+     * record the payment in the gestionale and in Sibill — Sibill cannot learn
+     * of it any other way — and reminders to this customer pause meanwhile, so
+     * the next pass does not chase money already in the bank. Returns false
+     * when the contract is not a reminder's, so the caller treats it as an
+     * ordinary sale.
+     */
+    public static function onChasePaid(array $contract): bool
+    {
+        $q = Db::pdo()->prepare('SELECT * FROM sibill_customers WHERE pay_contract_id = ? LIMIT 1');
+        $q->execute([(int)$contract['id']]);
+        $c = $q->fetch();
+        if (!$c) {
+            return false;
+        }
+        $cid  = (int)$c['id'];
+        $days = self::PAID_PAUSE_DAYS;
+        Db::pdo()->prepare(
+            'UPDATE sibill_customers
+                SET snooze_until = GREATEST(COALESCE(snooze_until, CURDATE()), DATE_ADD(CURDATE(), INTERVAL ? DAY))
+              WHERE id = ?'
+        )->execute([$days, $cid]);
+
+        $amount = \Glue\Pay\Contracts::money($contract);
+        $desc   = (string)$contract['description'];
+        $sched  = new Scheduler();
+        $phone  = trim((string)($contract['customer_phone'] ?? '')) ?: trim((string)($c['phone'] ?? ''));
+        $email  = trim((string)($contract['customer_email'] ?? '')) ?: trim((string)($c['email'] ?? ''));
+        if ($phone !== '' || $email !== '') {
+            $sched->enqueue([
+                'entity_type'    => 'payment_contract',
+                'entity_id'      => (int)$contract['id'],
+                'rule_key'       => 'invoice_paid',
+                'recipient_type' => 'customer',
+                'channel'        => $phone !== '' && $email !== '' ? 'both' : ($phone !== '' ? 'whatsapp' : 'email'),
+                'due_at'         => date('Y-m-d H:i:s'),
+                'lang'           => $c['lang'] ?? null,
+                'dedupe_key'     => 'pay:invoice_paid:' . (int)$contract['id'],
+                'payload'        => [
+                    'name'           => (string)$c['name'],
+                    'customer_phone' => $phone,
+                    'customer_email' => $email,
+                    'amount'         => $amount,
+                    'description'    => $desc,
+                ],
+            ]);
+        }
+        // Same queue, same addressing as the other administrator alerts: the
+        // payload carries each admin's own phone and email.
+        $link = Config::appBaseUrl() . '/dashboard.php?tab=invoices&c=' . $cid;
+        foreach (\Glue\Crm\LeadCustomers::admins() as $u) {
+            $sched->enqueue([
+                'entity_type'    => 'payment_contract',
+                'entity_id'      => (int)$contract['id'],
+                'rule_key'       => 'invoice_paid_admin',
+                'recipient_type' => 'agent',
+                'channel'        => \Glue\Crm\LeadCustomers::channelFor($u),
+                'due_at'         => date('Y-m-d H:i:s'),
+                'dedupe_key'     => 'pay:invoice_paid_admin:' . (int)$contract['id'] . ':' . (int)$u['id'],
+                'payload'        => [
+                    'name'             => trim((string)($u['full_name'] ?? '')) ?: (string)$u['username'],
+                    'agent_phone'      => (string)($u['phone'] ?? ''),
+                    'agent_email'      => (string)($u['email'] ?? ''),
+                    'customer_name'    => (string)$c['name'],
+                    'customer_html'    => htmlspecialchars((string)$c['name'], ENT_QUOTES),
+                    'amount'           => $amount,
+                    'description'      => $desc,
+                    'description_html' => htmlspecialchars($desc, ENT_QUOTES),
+                    'days'             => (string)$days,
+                    'link'             => $link,
+                ],
+            ]);
+        }
+        Log::write('sibill', 'chase_paid_online', 'sibill_customer', $cid, [
+            'contract' => (int)$contract['id'], 'amount' => $amount, 'paused_days' => $days,
+        ]);
+        return true;
     }
 
     /**

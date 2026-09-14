@@ -653,8 +653,8 @@ final class LeadCustomers
 
     // ---- helpers ------------------------------------------------------------------------
 
-    /** Active administrators with a phone or an email — who the alerts go to. */
-    private static function admins(): array
+    /** Active administrators with a phone or an email — who the office alerts go to. */
+    public static function admins(): array
     {
         return Db::pdo()->query(
             "SELECT id, full_name, username, phone, email FROM users
@@ -665,7 +665,7 @@ final class LeadCustomers
     }
 
     /** Only the channels this person has: an administrator with no email gets the WhatsApp alone. */
-    private static function channelFor(array $u): string
+    public static function channelFor(array $u): string
     {
         $phone = trim((string)($u['phone'] ?? '')) !== '';
         $email = trim((string)($u['email'] ?? '')) !== '';

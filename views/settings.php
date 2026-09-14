@@ -53,6 +53,13 @@ $pipelines = \Glue\Crm\Pipelines::all();
   </div>
   <div class="row">
     <?php
+    // Bank details for the payment reminders ({bank_details} in the templates).
+    fld($h, 'app.iban', $t('f_iban'), $cfg('app.iban', ''), $t('f_iban_h'));
+    fld($h, 'app.bank_name', $t('f_bank_name'), $cfg('app.bank_name', ''));
+    ?>
+  </div>
+  <div class="row">
+    <?php
     fld($h, 'app.base_url', $t('f_base_url'), $cfg('app.base_url', ''), $t('f_base_url_h'));
     secret_fld($h, 'app.intake_secret', $t('f_intake'), $cfg('app.intake_secret', ''), $t('f_intake_h'));
     ?>
@@ -206,6 +213,11 @@ $pipelines = \Glue\Crm\Pipelines::all();
       <?php endforeach; ?>
     </select>
     <small class="muted"><?= $h($t('f_chase_channel_h')) ?></small>
+  </label>
+  <label class="fld" style="display:flex;flex-direction:row;align-items:flex-start;gap:10px">
+    <input type="checkbox" name="sibill.chase_pay_link" value="true" style="width:auto;margin-top:3px" <?= (bool)$cfg('sibill.chase_pay_link', false) ? 'checked' : '' ?>>
+    <span style="margin:0"><?= $h($t('f_chase_pay_link')) ?>
+      <small class="muted" style="display:block;margin-top:4px;font-weight:400"><?= $h($t('f_chase_pay_link_h')) ?></small></span>
   </label>
 
   <h3><?= $h($t('sec_smallpay')) ?> <span class="pill"><?= $h($t('optional')) ?></span></h3>

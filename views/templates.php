@@ -17,7 +17,10 @@ $placeholders = ['{name}', '{first_name}', '{last_name}', '{company}',
     '{agent_name}', '{agent_phone}', '{agent_email}',
     '{when}', '{deadline}', '{link}', '{code}', '{minutes}', '{id}', '{subject}',
     '{customer_name}', '{customer_first_name}', '{customer_last_name}',
-    '{customer_phone}', '{customer_email}', '{username}', '{password}'];
+    '{customer_phone}', '{customer_email}', '{username}', '{password}',
+    // Bank details (Settings → General) and the SmallPay link of a payment
+    // reminder; both are usually wrapped in an optional section, see below.
+    '{bank_details}', '{iban}', '{bank_name}', '{pay_link}'];
 ?>
 <h2><?= $h($t('tpl_title')) ?></h2>
 <p class="muted small" style="max-width:760px"><?= $h($t('tpl_intro')) ?></p>
@@ -29,6 +32,7 @@ $placeholders = ['{name}', '{first_name}', '{last_name}', '{company}',
       <code style="background:rgba(255,255,255,.07);padding:2px 7px;border-radius:6px;font-size:12px"><?= $h($p) ?></code>
     <?php endforeach; ?>
   </div>
+  <div class="muted small" style="margin-top:9px"><?= $h($t('tpl_ph_optional')) ?></div>
   <div class="muted small" style="margin-top:9px"><?= $h($t('tpl_lang_note')) ?>
     <b><?= strtoupper($h($lang)) ?></b>.</div>
 </div>

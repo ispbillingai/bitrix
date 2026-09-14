@@ -163,11 +163,25 @@ return [
             . "Fatture non pagate: {count}\n"
             . "Totale dovuto: € {total}\n"
             . "Numeri: {invoices}\n"
-            . "Scadenza più remota: {oldest_due}\n\n"
-            . "Se il pagamento è già stato effettuato la preghiamo di ignorare questo messaggio "
+            . "Scadenza più remota: {oldest_due}"
+            // Le due righe seguenti compaiono solo quando c'è qualcosa da dire:
+            // l'IBAN è impostato in Impostazioni → Generale, il link di pagamento
+            // esiste solo se i solleciti con link SmallPay sono attivi.
+            . "{?bank_details}\nPer pagare con bonifico: {bank_details}{/bank_details}"
+            . "{?pay_link}\nOppure paghi online in modo sicuro (carta): {pay_link}{/pay_link}"
+            . "\n\nSe il pagamento è già stato effettuato la preghiamo di ignorare questo messaggio "
             . "e, se possibile, di inviarci la contabile.\n"
             . "Per qualsiasi chiarimento può rispondere a questo messaggio.\n"
             . "Grazie, {company}",
+
+        'invoice_paid' => // al CLIENTE: il pagamento online del sollecito è arrivato
+            "Grazie {name}! ✅ Abbiamo ricevuto il suo pagamento di {amount} per {description}. "
+            . "Lo registriamo in contabilità nei prossimi giorni: non deve fare altro. — {company}",
+
+        'invoice_paid_admin' => // agli AMMINISTRATORI: registrare l'incasso nel gestionale
+            "💶 Pagamento online ricevuto: {customer_name} ha pagato {amount} per {description} "
+            . "tramite SmallPay. Registra l'incasso nel gestionale e in Sibill — il CRM sospende "
+            . "i solleciti a questo cliente per {days} giorni.\n{link}",
 
         // ---- Contratti SmallPay ----
         // Il link è tutto il messaggio: qualunque preambolo commerciale lo fa
@@ -401,10 +415,29 @@ return [
                 . 'Totale dovuto: <strong>&euro; {total}</strong><br>'
                 . 'Numeri: {invoices}<br>'
                 . 'Scadenza più remota: <strong>{oldest_due}</strong> ({days_late} giorni fa)</p>'
+                . '{?bank_details}<p>Per pagare con bonifico: <strong>{bank_details}</strong></p>{/bank_details}'
+                . '{?pay_link}<p>Oppure paghi online in modo sicuro (carta): <a href="{pay_link}">Apri la pagina di pagamento</a><br>'
+                . 'Se il link non si apre, copi questo indirizzo nel browser: {pay_link}</p>{/pay_link}'
                 . '<p>Se il pagamento è già stato effettuato la preghiamo di ignorare questa comunicazione e, '
                 . 'se possibile, di inviarci la contabile.</p>'
                 . '<p>Per qualsiasi chiarimento può rispondere a questa email.</p>'
                 . '<p>Cordiali saluti,<br>{company}</p>',
+        ],
+        'invoice_paid' => [
+            'subject' => 'Pagamento ricevuto — {description}',
+            'html'    => '<p>Gentile {name},</p>'
+                . '<p>grazie: abbiamo ricevuto il suo pagamento di <strong>{amount}</strong> per '
+                . '<strong>{description}</strong>.</p>'
+                . '<p>Lo registriamo in contabilità nei prossimi giorni: non deve fare altro.</p>'
+                . '<p>Cordiali saluti,<br>{company}</p>',
+        ],
+        'invoice_paid_admin' => [
+            'subject' => 'Pagamento online ricevuto — {customer_name}',
+            'html'    => '<p>Pagamento online ricevuto: <strong>{customer_html}</strong> ha pagato '
+                . '<strong>{amount}</strong> per {description_html} tramite SmallPay.</p>'
+                . '<p>Registra l\'incasso nel gestionale e in Sibill. Il CRM sospende i solleciti a questo '
+                . 'cliente per {days} giorni.</p>'
+                . '<p><a href="{link}">Apri la scheda del cliente</a></p>',
         ],
 
         // ---- Contratti SmallPay ----

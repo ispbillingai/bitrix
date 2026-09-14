@@ -62,10 +62,21 @@ final class Templates
         return $day . ' ' . date('j', $ts) . ' ' . $month . ' ' . date('Y', $ts) . " $at " . date('H:i', $ts);
     }
 
-    /** Fill "{name}" style placeholders from $vars; unknown ones stay literal. */
+    /**
+     * Fill "{name}" style placeholders from $vars; unknown ones stay literal.
+     *
+     * An optional section "{?iban}…{/iban}" is kept only when that variable
+     * has a value, and dropped whole otherwise — so a template can carry a
+     * "Coordinate per il bonifico: {bank_details}" line that simply is not
+     * there for a company that never filled in an IBAN, or a pay-link line
+     * that disappears when no link was issued. Sections do not nest.
+     */
     public static function render(string $tpl, array $vars): string
     {
         $vars += self::nameParts($vars);
+        $tpl = preg_replace_callback('/\{\?(\w+)\}(.*?)\{\/\1\}/s', static function ($m) use ($vars) {
+            return trim((string)($vars[$m[1]] ?? '')) !== '' ? $m[2] : '';
+        }, $tpl) ?? $tpl;
         return preg_replace_callback('/\{(\w+)\}/', static function ($m) use ($vars) {
             return array_key_exists($m[1], $vars) ? (string)$vars[$m[1]] : $m[0];
         }, $tpl) ?? $tpl;

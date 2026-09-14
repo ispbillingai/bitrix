@@ -239,6 +239,17 @@ $here = function (array $over = []) use ($view, $filter, $q): string {
                 <?= $h($t('inv_last_reminded')) ?>: <?= $h($oc['last_reminded_at']) ?>
                 (<?= $h((string)(int)$oc['reminders_sent']) ?>)</p>
             <?php endif; ?>
+            <?php // The SmallPay page the last reminder carried, if any: still
+                  // open, or paid — in which case the books need the entry.
+                  $pc = !empty($oc['pay_contract_id']) ? \Glue\Pay\Contracts::find((int)$oc['pay_contract_id']) : null;
+                  if ($pc !== null && in_array($pc['status'], ['awaiting_customer', 'active', 'completed'], true)):
+                      $pcPaid = $pc['status'] !== 'awaiting_customer';
+                      $pcAmt  = $plain(((int)$pc['first_amount_cents'] ?: (int)$pc['amount_cents']) / 100);
+                      $pcDate = substr((string)($pcPaid ? ($pc['last_paid_at'] ?: $pc['activated_at'] ?: $pc['created_at']) : $pc['created_at']), 0, 10); ?>
+              <p class="small" style="margin-bottom:0<?= $pcPaid ? ';color:var(--green)' : '' ?>">
+                <?= $pcPaid ? '✅' : '🔗' ?> <?= $h(str_replace(['{amount}', '{date}'], [$pcAmt, $pcDate], $t($pcPaid ? 'inv_pay_link_paid' : 'inv_pay_link_open'))) ?>
+                <a href="?tab=payments&c=<?= (int)$pc['id'] ?>">#<?= (int)$pc['id'] ?></a></p>
+            <?php endif; ?>
           <?php endif; ?>
         </div>
       </div>

@@ -238,6 +238,28 @@ Per customer there is also `chase_enabled` (exclude this account entirely) and
 per customer per day; the "Send reminder now" button bypasses that, because a
 human pressing it has decided otherwise.
 
+### Bank details and a pay-online link in the reminder
+
+The reminder can also say *how* to pay. Settings → General holds the company
+IBAN (and, optionally, the bank); the Scheduler exposes it to every template
+as `{iban}`, `{bank_name}` and `{bank_details}` ("IBAN IT60 …, intestato a
+Company, Banca X"). Settings → Sibill → "link per pagare online" makes each
+reminder open a **one-off SmallPay position, by card, for the chased amount**
+and add its cashier page as `{pay_link}` (`Customers::payLink()`): the link is
+reused while unpaid and for the same figure, cancelled and reissued when the
+balance moved, so the link in the newest message always matches the amount
+next to it. SmallPay fees apply, which is why it is off by default. Both lines
+sit in optional sections of the default templates — `{?bank_details}…
+{/bank_details}`, `{?pay_link}…{/pay_link}` — so they vanish when there is
+nothing to say (see `Templates::render()`).
+
+When the position is paid, `Pay\Contracts` hands the status change to
+`Customers::onChasePaid()`: the customer is thanked (`invoice_paid`), every
+administrator is told to record the payment in the gestionale and in Sibill
+(`invoice_paid_admin`) — Sibill cannot learn of it any other way — and the
+customer's `snooze_until` moves `PAID_PAUSE_DAYS` (14) out, so the next pass
+does not chase money already collected while the books catch up.
+
 The copy lives under `invoice_overdue` in `lang/it.php` / `lang/en.php` and is
 editable from Templates like every other rule. Figures sit on labelled lines
 rather than inside a sentence, so "1 invoice" and "5 invoices" don't need two
