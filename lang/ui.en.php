@@ -1288,9 +1288,11 @@ return [
     'f_chase_pay_link'   => 'Put a link to pay online (SmallPay) in the reminder',
     'f_chase_pay_link_h' => 'Each reminder opens a one-off SmallPay position for the chased amount and adds it to the message as {pay_link}. SmallPay fees apply. When the customer pays, the CRM thanks them, tells the administrators to record the payment in the gestionale and in Sibill, and pauses reminders to that customer for 14 days. Needs SmallPay switched on.',
     'f_iban'             => 'IBAN for bank transfers',
-    'f_iban_h'           => 'Appears in payment reminders as {bank_details} (IBAN, account holder, bank). Empty = the transfer line is not sent.',
+    'f_iban_h'           => 'Appears in payment reminders as {bank_details} (IBAN, account holder, bank) and as {iban}. Empty = the transfer line is not sent.',
+    'f_bank_holder'      => 'Account holder',
+    'f_bank_holder_h'    => 'The legal name on the account, when it differs from the name the messages are signed with.',
     'f_bank_name'        => 'Bank (optional)',
-    'tpl_ph_optional'    => 'A part between {?name} and {/name} is sent only when that placeholder has a value — e.g. {?bank_details}Transfer: {bank_details}{/bank_details}. In reminders: {bank_details}, {iban}, {bank_name}, {pay_link}.',
+    'tpl_ph_optional'    => 'A part between {?name} and {/name} is sent only when that placeholder has a value — e.g. {?bank_details}Transfer: {bank_details}{/bank_details}. In reminders: {bank_details}, {iban}, {bank_holder}, {bank_name}, {pay_link}.',
     'inv_pay_link_open'  => 'Online payment link open for EUR {amount} (since {date}), not paid yet.',
     'inv_pay_link_paid'  => 'Paid online through SmallPay: EUR {amount} on {date} — to be recorded in the gestionale.',
 

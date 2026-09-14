@@ -241,9 +241,9 @@ human pressing it has decided otherwise.
 ### Bank details and a pay-online link in the reminder
 
 The reminder can also say *how* to pay. Settings → General holds the company
-IBAN (and, optionally, the bank); the Scheduler exposes it to every template
-as `{iban}`, `{bank_name}` and `{bank_details}` ("IBAN IT60 …, intestato a
-Company, Banca X"). Settings → Sibill → "link per pagare online" makes each
+IBAN, the account holder and, optionally, the bank; the Scheduler exposes them
+to every template as `{iban}`, `{bank_holder}`, `{bank_name}` and
+`{bank_details}` ("IBAN IT60 …, intestato a Company Srl, Banca X"). Settings → Sibill → "link per pagare online" makes each
 reminder open a **one-off SmallPay position, by card, for the chased amount**
 and add its cashier page as `{pay_link}` (`Customers::payLink()`): the link is
 reused while unpaid and for the same figure, cancelled and reissued when the

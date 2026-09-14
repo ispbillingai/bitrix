@@ -1286,9 +1286,11 @@ return [
     'f_chase_pay_link'   => 'Metti nel sollecito un link per pagare online (SmallPay)',
     'f_chase_pay_link_h' => 'Ogni sollecito apre una posizione SmallPay una tantum per l\'importo sollecitato e la aggiunge al messaggio come {pay_link}. Si applicano le commissioni SmallPay. Quando il cliente paga, il CRM lo ringrazia, avvisa gli amministratori di registrare l\'incasso nel gestionale e in Sibill, e sospende i solleciti a quel cliente per 14 giorni. Richiede SmallPay attivo.',
     'f_iban'             => 'IBAN per i bonifici',
-    'f_iban_h'           => 'Compare nei solleciti di pagamento come {bank_details} (IBAN, intestatario, banca). Vuoto = la riga del bonifico non viene inviata.',
+    'f_iban_h'           => 'Compare nei solleciti di pagamento come {bank_details} (IBAN, intestatario, banca) e come {iban}. Vuoto = la riga del bonifico non viene inviata.',
+    'f_bank_holder'      => 'Intestatario del conto',
+    'f_bank_holder_h'    => 'La ragione sociale sul conto, se diversa dal nome con cui firmi i messaggi.',
     'f_bank_name'        => 'Banca (facoltativa)',
-    'tpl_ph_optional'    => 'Una parte tra {?nome} e {/nome} viene inviata solo se quel segnaposto ha un valore — es. {?bank_details}Bonifico: {bank_details}{/bank_details}. Nei solleciti: {bank_details}, {iban}, {bank_name}, {pay_link}.',
+    'tpl_ph_optional'    => 'Una parte tra {?nome} e {/nome} viene inviata solo se quel segnaposto ha un valore — es. {?bank_details}Bonifico: {bank_details}{/bank_details}. Nei solleciti: {bank_details}, {iban}, {bank_holder}, {bank_name}, {pay_link}.',
     'inv_pay_link_open'  => 'Link di pagamento online aperto per € {amount} (dal {date}), non ancora pagato.',
     'inv_pay_link_paid'  => 'Pagato online tramite SmallPay: € {amount} il {date} — da registrare nel gestionale.',
 

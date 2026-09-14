@@ -514,31 +514,35 @@ final class Scheduler
 
     /**
      * The company's bank details, for any template that asks a customer to pay
-     * by transfer: {iban}, {bank_name}, and {bank_details} — the whole line
-     * ("IBAN IT60…, intestato a Company, Banca X") or '' when no IBAN is set,
-     * so a template can wrap it in {?bank_details}…{/bank_details}.
+     * by transfer: {iban}, {bank_holder}, {bank_name}, and {bank_details} —
+     * the whole line ("IBAN IT60 …, intestato a Company Srl, Banca X") or ''
+     * when no IBAN is set, so a template can wrap it in
+     * {?bank_details}…{/bank_details}. The holder is the legal name on the
+     * account (Settings → General), which is not always the trading name the
+     * messages are signed with; it falls back to that name.
      *
      * @return array<string,string>
      */
     public static function bankVars(?string $lang = null): array
     {
-        $iban = strtoupper(preg_replace('/\s+/', '', (string)Config::get('app.iban', '')) ?? '');
-        $bank = trim((string)Config::get('app.bank_name', ''));
-        $company = (string)Config::get('mail.from_name', '')
+        $iban   = strtoupper(preg_replace('/\s+/', '', (string)Config::get('app.iban', '')) ?? '');
+        $bank   = trim((string)Config::get('app.bank_name', ''));
+        $holder = trim((string)Config::get('app.bank_holder', ''))
+            ?: (string)Config::get('mail.from_name', '')
             ?: (string)Config::get('app.company_name', '');
         $details = '';
         if ($iban !== '') {
             $it = Templates::lang($lang) === 'it';
             // Groups of four read off a screen far more reliably than one run of 27.
             $details = 'IBAN ' . trim(chunk_split($iban, 4, ' '));
-            if ($company !== '') {
-                $details .= ($it ? ', intestato a ' : ', account holder ') . $company;
+            if ($holder !== '') {
+                $details .= ($it ? ', intestato a ' : ', account holder ') . $holder;
             }
             if ($bank !== '') {
                 $details .= ', ' . $bank;
             }
         }
-        return ['iban' => $iban, 'bank_name' => $bank, 'bank_details' => $details];
+        return ['iban' => $iban, 'bank_holder' => $holder, 'bank_name' => $bank, 'bank_details' => $details];
     }
 
     /** Build template vars from the local record (resolver) + payload + company. */

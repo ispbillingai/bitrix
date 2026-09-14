@@ -55,6 +55,7 @@ $pipelines = \Glue\Crm\Pipelines::all();
     <?php
     // Bank details for the payment reminders ({bank_details} in the templates).
     fld($h, 'app.iban', $t('f_iban'), $cfg('app.iban', ''), $t('f_iban_h'));
+    fld($h, 'app.bank_holder', $t('f_bank_holder'), $cfg('app.bank_holder', ''), $t('f_bank_holder_h'));
     fld($h, 'app.bank_name', $t('f_bank_name'), $cfg('app.bank_name', ''));
     ?>
   </div>
