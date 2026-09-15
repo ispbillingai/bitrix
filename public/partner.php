@@ -19,7 +19,9 @@ declare(strict_types=1);
  *                tells the partner nothing (Partners::status). A lead reaching
  *                the converted stage reads CLOSED — that is this office's
  *                finish line.
- *   Commissions  what their closed leads earned
+ *   Commissions  the office's commission statements (download the calculation,
+ *                upload the invoice, follow the payment) and what their closed
+ *                leads earned
  *   Referral link  the ?ref= link, which files leads under them the same way
  *
  * They are messaged only when a lead ends — see Partner\Partners::notifyOutcome.
@@ -46,7 +48,10 @@ if (isset($_GET['lang']) && in_array($_GET['lang'], $avail, true)) {
 $lang = in_array($_COOKIE['crm_partner_lang'] ?? '', $avail, true)
     ? $_COOKIE['crm_partner_lang']
     : (in_array(Config::get('app.default_lang', 'it'), $avail, true) ? (string)Config::get('app.default_lang', 'it') : 'en');
-$S = partner_strings($lang);
+// The partner area's own copy first; the commission-statement card and invoice
+// form (views/_ui.php, shared with the dashboard) take their cm_* wording from
+// the dashboard's language file.
+$S = partner_strings($lang) + (require __DIR__ . '/../lang/ui.' . $lang . '.php');
 $t = fn(string $k): string => $S[$k] ?? $k;
 
 // ---- logout ----
@@ -112,6 +117,27 @@ if ($partner && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') ==
     exit;
 }
 
+// ---- commission statements: their files, and the partner's invoice ----
+// A partner sees and invoices only their own statements (checked again inside
+// Statements::submitInvoice); anyone else's reads as not found.
+if ($partner && isset($_GET['cmf'])) {
+    $cmSt = \Glue\Commission\Statements::find((int)$_GET['cmf']);
+    if ($cmSt && $cmSt['payee_type'] === 'partner' && (int)$cmSt['payee_id'] === $pid) {
+        \Glue\Commission\Statements::stream($cmSt, (string)($_GET['w'] ?? 'calc'));
+    }
+    http_response_code(404);
+    exit('Not found');
+}
+if ($partner && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'cm_invoice') {
+    $cmId = (int)($_POST['id'] ?? 0);
+    $res = \Glue\Commission\Statements::submitInvoice($cmId, $_POST, $_FILES['invoice'] ?? null, 'payee', 'partner', $pid);
+    $_SESSION['partner_notice'] = !empty($res['ok'])
+        ? ['ok' => true, 'msg' => $t('cm_invoice_flash')]
+        : ['ok' => false, 'msg' => $t('cm_err_' . ($res['error'] ?? 'not_found'))];
+    header('Location: partner.php?tab=commissions&st=' . $cmId . '#cm-' . $cmId);
+    exit;
+}
+
 // ---- not logged in: the same login card the staff dashboard shows ----
 if (!$partner) {
     $brand = (string)Config::get('app.company_name', '') ?: $t('title');
@@ -149,9 +175,12 @@ $icons = ['overview' => 'overview', 'new' => 'pen', 'leads' => 'leads',
           'commissions' => 'money', 'link' => 'link'];
 
 $brand  = (string)Config::get('app.company_name', '') ?: $t('title');
-$money  = fn($n): string => (string)Config::get('crm.currency', 'EUR') . ' ' . number_format((float)$n, 2);
+$money  = fn($n): string => \Glue\Commission\Statements::money((float)$n); // "€ 1.234,56", as on an invoice
 $refs   = Partners::referrals($pid);
 $tot    = Partners::totals($pid);
+$cmRows = \Glue\Commission\Statements::forPayee('partner', $pid);   // the office's statements, newest first
+$cmTot  = \Glue\Commission\Statements::totals('partner', $pid);
+$cmToInvoice = (int)$cmTot['n_sent'];                                // waiting for their invoice
 $refUrl = Config::appBaseUrl() . '/request.php?ref=' . rawurlencode((string)$partner['ref_code']);
 
 // Their own numbers, counted the same way the list shows them.
@@ -172,7 +201,7 @@ foreach ($refs as $r) {
     </div>
     <nav>
       <?php foreach ($nav as $key => $label): ?>
-        <a class="<?= $tab === $key ? 'active' : '' ?>" href="?tab=<?= $h($key) ?>"><?= svg($icons[$key]) ?><span><?= $h($t($label)) ?></span></a>
+        <a class="<?= $tab === $key ? 'active' : '' ?>" href="?tab=<?= $h($key) ?>"><?= svg($icons[$key]) ?><span><?= $h($t($label)) ?></span><?php if ($key === 'commissions' && $cmToInvoice > 0): ?><span class="nav-n"><?= $cmToInvoice ?></span><?php endif; ?></a>
       <?php endforeach; ?>
     </nav>
   </aside>
@@ -238,9 +267,10 @@ foreach ($refs as $r) {
 
     <div class="panel">
       <div class="panel-h"><h3><?= svg('money') ?> <?= $h($t('nav_commissions')) ?></h3></div>
-      <div class="lb"><span class="nm"><?= $h($t('pending')) ?></span><span class="sc" style="color:var(--amber)"><?= $h($money($tot['pending'])) ?></span></div>
-      <div class="lb"><span class="nm"><?= $h($t('approved')) ?></span><span class="sc"><?= $h($money($tot['approved'])) ?></span></div>
-      <div class="lb"><span class="nm"><?= $h($t('paid')) ?></span><span class="sc" style="color:var(--green)"><?= $h($money($tot['paid'])) ?></span></div>
+      <div class="lb"><span class="nm"><?= $h($t('cm_to_invoice')) ?></span><span class="sc" style="color:var(--amber)"><?= $h($money($cmTot['sent'])) ?></span></div>
+      <div class="lb"><span class="nm"><?= $h($t('cm_awaiting')) ?></span><span class="sc" style="color:var(--accent)"><?= $h($money($cmTot['invoiced'])) ?></span></div>
+      <div class="lb"><span class="nm"><?= $h($t('cm_paid_total')) ?></span><span class="sc" style="color:var(--green)"><?= $h($money($cmTot['paid'])) ?></span></div>
+      <?php if ($cmToInvoice > 0): ?><a class="btn tiny" style="margin-top:12px" href="?tab=commissions"><?= $h(sprintf($t('pc_invoice_cta'), $cmToInvoice)) ?></a><?php endif; ?>
       <p class="muted small" style="margin-top:12px"><?= $h($t('commission')) ?>: <strong><?= number_format((float)$partner['commission_pct'], 1) ?>%</strong></p>
     </div>
   </div>
@@ -299,16 +329,35 @@ foreach ($refs as $r) {
 
 <?php elseif ($tab === 'commissions'): ?>
   <h2><?= $h($t('accruals')) ?></h2>
-  <p class="lead"><?= $h($t('comm_sub')) ?> <?= $h($t('commission')) ?>: <strong><?= number_format((float)$partner['commission_pct'], 1) ?>%</strong></p>
+  <p class="lead"><?= $h($t('pc_sub')) ?></p>
   <div class="grid">
-    <div class="tile"><div class="tile-top"><?= svg('clock') ?><span><?= $h($t('pending')) ?></span></div>
-      <span class="big" style="color:var(--amber)"><?= $h($money($tot['pending'])) ?></span></div>
-    <div class="tile"><div class="tile-top"><?= svg('check') ?><span><?= $h($t('approved')) ?></span></div>
-      <span class="big"><?= $h($money($tot['approved'])) ?></span></div>
-    <div class="tile"><div class="tile-top"><?= svg('money') ?><span><?= $h($t('paid')) ?></span></div>
-      <span class="big" style="color:var(--green)"><?= $h($money($tot['paid'])) ?></span></div>
+    <div class="tile"><div class="tile-top"><?= svg('clock') ?><span><?= $h($t('cm_to_invoice')) ?></span></div>
+      <span class="big" style="color:var(--amber)"><?= $h($money($cmTot['sent'])) ?></span>
+      <div class="sub"><?= (int)$cmTot['n_sent'] ?> <?= $h($t('cm_statements')) ?></div></div>
+    <div class="tile"><div class="tile-top"><?= svg('check') ?><span><?= $h($t('cm_awaiting')) ?></span></div>
+      <span class="big" style="color:var(--accent)"><?= $h($money($cmTot['invoiced'])) ?></span>
+      <div class="sub"><?= (int)$cmTot['n_invoiced'] ?> <?= $h($t('cm_statements')) ?></div></div>
+    <div class="tile"><div class="tile-top"><?= svg('money') ?><span><?= $h($t('cm_paid_total')) ?></span></div>
+      <span class="big" style="color:var(--green)"><?= $h($money($cmTot['paid'])) ?></span>
+      <div class="sub"><?= (int)$cmTot['n_paid'] ?> <?= $h($t('cm_statements')) ?></div></div>
   </div>
+
+  <?php // The office's statements: download the calculation, upload the invoice,
+        // follow the payment — paid and unpaid alike. One waiting for an invoice
+        // opens by itself. ?>
+  <h3 style="margin:20px 0 10px"><?= $h($t('pc_statements_h')) ?></h3>
+  <?php if (!$cmRows): ?>
+    <div class="card"><div class="empty"><?= $h($t('pc_none')) ?></div></div>
+  <?php else: $cmOpen = (int)($_GET['st'] ?? 0); ?>
+    <?php foreach ($cmRows as $s): ?>
+      <?= commission_card($s, $t, $h, commission_invoice_form($s, $t, $h, 'cm_invoice'),
+            $cmOpen === (int)$s['id'] || ($cmOpen === 0 && $s['status'] === 'sent')) ?>
+    <?php endforeach; ?>
+  <?php endif; ?>
+
   <?php $accr = Partners::accruals($pid); ?>
+  <h3 style="margin:24px 0 6px"><?= $h($t('pc_accruals_h')) ?></h3>
+  <p class="muted small" style="margin:0 0 10px"><?= $h($t('comm_sub')) ?> <?= $h($t('commission')) ?>: <strong><?= number_format((float)$partner['commission_pct'], 1) ?>%</strong></p>
   <?php if (!$accr): ?>
     <div class="card"><div class="empty"><?= $h($t('no_accruals')) ?></div></div>
   <?php else: ?>
@@ -321,7 +370,8 @@ foreach ($refs as $r) {
             <td><?= $h($a['customer_name'] ?: $a['deal_title'] ?: '—') ?></td>
             <td class="muted"><?= $h($money($a['base_amount'])) ?></td>
             <td><strong><?= $h($money($a['amount'])) ?></strong></td>
-            <td><span class="pill pill-<?= $h($a['status']) ?>"><?= $h($t('acc_' . $a['status'])) ?></span></td>
+            <td><span class="pill pill-<?= $h($a['status']) ?>"><?= $h($t('acc_' . $a['status'])) ?></span><?php
+              if (!empty($a['statement_id'])): ?> <a class="muted small" href="?tab=commissions&amp;st=<?= (int)$a['statement_id'] ?>#cm-<?= (int)$a['statement_id'] ?>"><?= $h($t('cm_no')) ?> <?= (int)$a['statement_id'] ?></a><?php endif; ?></td>
             <td class="muted small"><?= $h(substr((string)$a['created_at'], 0, 10)) ?></td>
           </tr>
         <?php endforeach; ?>
@@ -413,6 +463,12 @@ function partner_strings(string $lang): array
         'base' => 'Deal value', 'amount' => 'Commission',
         'acc_pending' => 'Pending', 'acc_approved' => 'Approved', 'acc_paid' => 'Paid', 'acc_cancelled' => 'Cancelled',
         'no_accruals' => 'No commissions yet — they appear here once a lead of yours is closed.',
+        // commission statements from the office (the card and form take cm_* from lang/ui.*.php)
+        'pc_sub' => 'The commission statements the office sends you: download the calculation, upload your invoice and follow the payment. Paid and unpaid, all here.',
+        'pc_statements_h' => 'Commission statements and invoices',
+        'pc_none' => 'No statements yet. When the office sends you one you get a message, and it appears here ready for your invoice.',
+        'pc_accruals_h' => 'Commissions earned on your leads',
+        'pc_invoice_cta' => 'Upload the invoice (%d)',
         // referral link
         'your_link' => 'Your referral link',
         'your_link_sub' => 'Share this link. Anyone who requests a quote through it becomes your lead, exactly as if you had entered them here.',
@@ -464,6 +520,11 @@ function partner_strings(string $lang): array
         'base' => 'Valore trattativa', 'amount' => 'Provvigione',
         'acc_pending' => 'In attesa', 'acc_approved' => 'Approvata', 'acc_paid' => 'Pagata', 'acc_cancelled' => 'Annullata',
         'no_accruals' => 'Ancora nessuna provvigione — compaiono qui quando una tua segnalazione viene chiusa.',
+        'pc_sub' => 'I conteggi delle provvigioni che ti invia l’ufficio: scarica il conteggio, carica la tua fattura e segui il pagamento. Pagate e da pagare, tutto qui.',
+        'pc_statements_h' => 'Conteggi provvigioni e fatture',
+        'pc_none' => 'Ancora nessun conteggio. Quando l’ufficio te ne invia uno ricevi un messaggio, e lo trovi qui pronto per la fattura.',
+        'pc_accruals_h' => 'Provvigioni maturate sulle tue segnalazioni',
+        'pc_invoice_cta' => 'Carica la fattura (%d)',
         'your_link' => 'Il tuo link di segnalazione',
         'your_link_sub' => 'Condividi questo link. Chi richiede un preventivo tramite esso diventa una tua segnalazione, esattamente come se l’avessi inserita qui.',
         'copy' => 'Copia link',

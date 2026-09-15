@@ -217,6 +217,33 @@ return [
             "⏳ Trial ends in {days} days ({date}): {customer_name} "
             . "({customer_phone}) — machine {model}, serial {serial}. "
             . "Contact the customer to close it out: purchase, rental or pick-up.",
+
+        // ---- commission statements (Provvigioni) — src/Commission/Statements.php ----
+        // To the PARTNER or AGENT: the office uploaded a commission statement; the
+        // link opens their area, where they download it and upload the invoice.
+        'commission_statement' =>
+            "Hi {payee_name}, the office has sent you a commission statement:\n"
+            . "*{title}* — *{amount}*\n\n"
+            . "Download it and upload your invoice here: {link}\n— {company}",
+
+        // To the partner/agent: the invoice was sent back, with the reason.
+        'commission_rejected' =>
+            "Hi {payee_name}, your invoice for *{title}* ({amount}) has been sent back.\n"
+            . "Reason: {reason}\n\n"
+            . "Please correct it and upload it again here: {link}\n— {company}",
+
+        // To the partner/agent: paid.
+        'commission_paid' =>
+            "Hi {payee_name}, we have paid your commission *{title}*: *{paid_amount}* on {paid_on}."
+            . "{?payment_ref}\nReference: {payment_ref}{/payment_ref}\n\n"
+            . "Your history: {link}\n— {company}",
+
+        // To the OFFICE (every active administrator): a partner/agent uploaded the invoice.
+        'commission_invoice_admin' =>
+            "🧾 Commission invoice received from {payee_name}\n"
+            . "Statement: *{title}* ({amount})\n"
+            . "Invoice no. {invoice_number} — {invoice_amount}\n\n"
+            . "To pay: {link}",
     ],
 
     'email' => [
@@ -489,6 +516,35 @@ return [
                 . '({customer_phone}) ends on <strong>{date}</strong>.</p>'
                 . '<p>Machine: <strong>{model}</strong> — serial {serial}.</p>'
                 . '<p>Contact the customer to close it out: purchase, rental or pick-up.</p>',
+        ],
+
+        // ---- commission statements ----
+        'commission_statement' => [
+            'subject' => 'Commission statement: {title} — {amount}',
+            'html'    => '<p>Hi {payee_name},</p>'
+                . '<p>the office has sent you a commission statement: <strong>{title}</strong>, for <strong>{amount}</strong>.</p>'
+                . '<p>Download it and upload your invoice from your area: <a href="{link}">{link}</a></p>'
+                . '<p>{company}</p>',
+        ],
+        'commission_rejected' => [
+            'subject' => 'Commission invoice to correct: {title}',
+            'html'    => '<p>Hi {payee_name},</p>'
+                . '<p>your invoice for <strong>{title}</strong> ({amount}) has been sent back.</p>'
+                . '<p>Reason: <strong>{reason}</strong></p>'
+                . '<p>Please correct it and upload it again: <a href="{link}">{link}</a></p><p>{company}</p>',
+        ],
+        'commission_paid' => [
+            'subject' => 'Commission paid: {title} — {paid_amount}',
+            'html'    => '<p>Hi {payee_name},</p>'
+                . '<p>we have paid your commission <strong>{title}</strong>: <strong>{paid_amount}</strong> on {paid_on}.</p>'
+                . '{?payment_ref}<p>Reference: {payment_ref}</p>{/payment_ref}'
+                . '<p>Your commissions and invoices: <a href="{link}">{link}</a></p><p>{company}</p>',
+        ],
+        'commission_invoice_admin' => [
+            'subject' => 'Commission invoice received from {payee_name} — {invoice_amount}',
+            'html'    => '<p>🧾 <strong>{payee_name}</strong> has uploaded the invoice for the statement <strong>{title}</strong> ({amount}).</p>'
+                . '<p>Invoice no. <strong>{invoice_number}</strong> — {invoice_amount}</p>'
+                . '<p><a href="{link}">Open it and record the payment</a></p>',
         ],
     ],
 ];

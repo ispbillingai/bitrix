@@ -221,6 +221,33 @@ return [
             "⏳ Fine test tra {days} giorni ({date}): {customer_name} "
             . "({customer_phone}) — macchina {model}, matricola {serial}. "
             . "Contattare il cliente per chiudere: acquisto, noleggio o ritiro.",
+
+        // ---- conteggi provvigioni (Provvigioni) — src/Commission/Statements.php ----
+        // Al PARTNER o all'AGENTE: l'ufficio ha caricato un conteggio provvigioni;
+        // il link porta alla sua area, dove scarica il conteggio e carica la fattura.
+        'commission_statement' =>
+            "Ciao {payee_name}, l'ufficio ti ha inviato un conteggio provvigioni:\n"
+            . "*{title}* — *{amount}*\n\n"
+            . "Scarica il conteggio e carica la tua fattura qui: {link}\n— {company}",
+
+        // Al partner/agente: la fattura è stata rimandata indietro, con il motivo.
+        'commission_rejected' =>
+            "Ciao {payee_name}, la fattura per *{title}* ({amount}) è stata rimandata indietro.\n"
+            . "Motivo: {reason}\n\n"
+            . "Correggila e caricala di nuovo qui: {link}\n— {company}",
+
+        // Al partner/agente: pagata.
+        'commission_paid' =>
+            "Ciao {payee_name}, abbiamo pagato le tue provvigioni *{title}*: *{paid_amount}* il {paid_on}."
+            . "{?payment_ref}\nRiferimento: {payment_ref}{/payment_ref}\n\n"
+            . "Il tuo storico: {link}\n— {company}",
+
+        // All'UFFICIO (ogni amministratore attivo): un partner/agente ha caricato la fattura.
+        'commission_invoice_admin' =>
+            "🧾 Fattura provvigioni ricevuta da {payee_name}\n"
+            . "Conteggio: *{title}* ({amount})\n"
+            . "Fattura n. {invoice_number} — {invoice_amount}\n\n"
+            . "Da pagare: {link}",
     ],
 
     'email' => [
@@ -495,6 +522,35 @@ return [
                 . '({customer_phone}) termina il <strong>{date}</strong>.</p>'
                 . '<p>Macchina: <strong>{model}</strong> — matricola {serial}.</p>'
                 . '<p>Contattare il cliente per chiudere: acquisto, noleggio o ritiro.</p>',
+        ],
+
+        // ---- conteggi provvigioni ----
+        'commission_statement' => [
+            'subject' => 'Conteggio provvigioni: {title} — {amount}',
+            'html'    => '<p>Ciao {payee_name},</p>'
+                . '<p>l’ufficio ti ha inviato un conteggio provvigioni: <strong>{title}</strong>, per <strong>{amount}</strong>.</p>'
+                . '<p>Scarica il conteggio e carica la tua fattura dalla tua area: <a href="{link}">{link}</a></p>'
+                . '<p>{company}</p>',
+        ],
+        'commission_rejected' => [
+            'subject' => 'Fattura provvigioni da correggere: {title}',
+            'html'    => '<p>Ciao {payee_name},</p>'
+                . '<p>la fattura per <strong>{title}</strong> ({amount}) è stata rimandata indietro.</p>'
+                . '<p>Motivo: <strong>{reason}</strong></p>'
+                . '<p>Correggila e caricala di nuovo: <a href="{link}">{link}</a></p><p>{company}</p>',
+        ],
+        'commission_paid' => [
+            'subject' => 'Provvigioni pagate: {title} — {paid_amount}',
+            'html'    => '<p>Ciao {payee_name},</p>'
+                . '<p>abbiamo pagato le tue provvigioni <strong>{title}</strong>: <strong>{paid_amount}</strong> il {paid_on}.</p>'
+                . '{?payment_ref}<p>Riferimento: {payment_ref}</p>{/payment_ref}'
+                . '<p>Lo storico delle tue provvigioni e fatture: <a href="{link}">{link}</a></p><p>{company}</p>',
+        ],
+        'commission_invoice_admin' => [
+            'subject' => 'Fattura provvigioni ricevuta da {payee_name} — {invoice_amount}',
+            'html'    => '<p>🧾 <strong>{payee_name}</strong> ha caricato la fattura per il conteggio <strong>{title}</strong> ({amount}).</p>'
+                . '<p>Fattura n. <strong>{invoice_number}</strong> — {invoice_amount}</p>'
+                . '<p><a href="{link}">Apri e registra il pagamento</a></p>',
         ],
     ],
 ];

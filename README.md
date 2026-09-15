@@ -248,6 +248,29 @@ WhatsApp, ticket status, stage move, lead edit/create, appointment) is only
 person confirms. Set the Anthropic API key in Settings → Assistente AI and use
 "Prova assistente" to check it. Usage is billed to that key.
 
+## Commission statements (Provvigioni)
+
+**Provvigioni** (sidebar, admins) is where the office pays partners and agents.
+The secretary picks the payee, types the amount (for example 900,00), a title
+and period, and attaches the calculation (PDF or spreadsheet). For a partner the
+statement can also take in the commissions the CRM accrued on their won deals.
+The payee gets a WhatsApp message and an email. They find the statement in
+their own area: **Provvigioni** in the partner area (`partner.php`), **Le mie
+provvigioni** for an agent. There they download the calculation and upload
+their invoice (PDF, e-invoice XML/.p7m or a photo, with number, date and amount).
+
+The office is told when an invoice comes in. It then records the payment (date,
+amount, bank reference) or sends the invoice back with a reason, and the payee
+is told either way. An invoice that arrived by email can be recorded by the
+office for the payee. Both sides keep the full history, paid and unpaid.
+
+Statuses run `sent` → `invoiced` → `paid`, or `cancelled` before payment. Files
+live in `storage/uploads/commissions` and are served only through `?cmf=`, to
+the office and to the payee. Tables: migration 056 (`commission_statements`,
+plus `partner_accruals.statement_id`). Code: `src/Commission/Statements.php`,
+`views/commissions.php`, `views/my_commissions.php`. The four notices are
+editable under Templates (`commission_*`).
+
 ## Optional: Bitrix24 sync
 
 The CRM is fully standalone. To **also** mirror new leads/deals into a Bitrix24

@@ -140,7 +140,9 @@ final class Partners
         }
         $pdo  = Db::pdo();
         $refs = (int)$pdo->query('SELECT COUNT(*) FROM leads WHERE referred_by_partner_id = ' . (int)$id)->fetchColumn();
-        $accr = (int)$pdo->query('SELECT COUNT(*) FROM partner_accruals WHERE partner_id = ' . (int)$id)->fetchColumn();
+        $accr = (int)$pdo->query('SELECT COUNT(*) FROM partner_accruals WHERE partner_id = ' . (int)$id)->fetchColumn()
+              // commission statements are money owed or paid, the same as accruals
+              + (int)$pdo->query("SELECT COUNT(*) FROM commission_statements WHERE payee_type = 'partner' AND payee_id = " . (int)$id)->fetchColumn();
         if ($refs > 0 || $accr > 0) {
             return ['ok' => false, 'error' => 'in_use', 'referrals' => $refs, 'accruals' => $accr];
         }

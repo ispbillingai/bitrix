@@ -44,6 +44,18 @@ $meId = (int)($_SESSION['glue_user']['id'] ?? 0);
       <span class="badge <?= $u['active'] ? 'ok' : 'no' ?>"><span class="dot"></span><?= $u['active'] ? $h($t('u_active')) : $h($t('u_disabled')) ?></span>
     </summary>
     <div style="padding:6px 18px 18px;border-top:1px solid var(--line)">
+      <?php if ($u['role'] === 'agent'): // Commission statements (Provvigioni) for this agent
+            $cmT = \Glue\Commission\Statements::totals('agent', $id);
+            $cmN = $cmT['n_sent'] + $cmT['n_invoiced'] + $cmT['n_paid'] + $cmT['n_cancelled']; ?>
+      <div class="cm-strip" style="margin:6px 0 14px">
+        <b><?= $h($t('cm_pt_h')) ?></b>
+        <span class="muted small" style="flex:1"><?= $h(sprintf($t('cm_pt_summary'), $cmN,
+            \Glue\Commission\Statements::money($cmT['sent']), \Glue\Commission\Statements::money($cmT['invoiced']),
+            \Glue\Commission\Statements::money($cmT['paid']))) ?></span>
+        <?php if ((int)$u['active'] === 1): ?><a class="btn tiny" href="?tab=commissions&amp;new=agent:<?= $id ?>#cm-new"><?= svg('commissions') ?> <?= $h($t('cm_pt_new')) ?></a><?php endif; ?>
+        <?php if ($cmN > 0): ?><a class="btn tiny ghost" href="?tab=commissions&amp;payee=agent:<?= $id ?>"><?= $h($t('cm_pt_history')) ?></a><?php endif; ?>
+      </div>
+      <?php endif; ?>
       <?php
       // #6 — this agent's assigned leads with current stage/status, so an admin can
       // click an agent and see all their leads at a glance.

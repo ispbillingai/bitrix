@@ -124,7 +124,7 @@ if ($filterAgentId !== null) {
 // Admin-only too: ?partner=<id> narrows the Leads board to the leads one partner
 // brought in — entered in their own area or through their referral link.
 $filterPartnerId = (!$isAgent && !empty($_GET['partner'])) ? (int)$_GET['partner'] : null;
-$agentViews   = ['overview', 'leads', 'deals', 'quotes', 'articles', 'appointments', 'tasks', 'messages', 'tickets', 'team', 'documents', 'instructions'];
+$agentViews   = ['overview', 'leads', 'deals', 'quotes', 'articles', 'appointments', 'tasks', 'messages', 'tickets', 'team', 'documents', 'instructions', 'my_commissions'];
 $techViews    = ['devices', 'network_areas', 'installations', 'support', 'tickets', 'team'];
 // The installation-report flow: open a draft, fill it in, attach the photos,
 // send it for signature. Deleting a report stays admin-only.
@@ -145,7 +145,7 @@ $agentActions = [
     // job; uploading the quote and cancelling a request are the office's.
     'quote_scratch', 'quote_send', 'quote_revise',
 ];
-$agentActions = array_merge($agentActions, $teamActions);
+$agentActions = array_merge($agentActions, $teamActions, ['cm_invoice']); // an agent invoices their own statements
 // An agent who also installs — the tick box on their account — gets the
 // Installations tab and the report flow on top, with a technician's scope:
 // only the reports they opened. Read from the users row on every request, not
@@ -160,6 +160,20 @@ if ($isAgent && $uid) {
 if ($agentInstalls) {
     $agentViews[] = 'installations';
     $agentActions = array_merge($agentActions, $installActions);
+}
+
+// ---- commission statement files (?cmf=<statement_id>&w=calc|invoice) ----
+// The calculation and the invoice are kept outside the web root; this is the
+// only way out. The office sees every statement's files, an agent only their
+// own, a technician none.
+if (isset($_GET['cmf'])) {
+    $cmSt = \Glue\Commission\Statements::find((int)$_GET['cmf']);
+    if ($cmSt && !$isTech && (!$isAgent
+            || ($uid && $cmSt['payee_type'] === 'agent' && (int)$cmSt['payee_id'] === (int)$uid))) {
+        \Glue\Commission\Statements::stream($cmSt, (string)($_GET['w'] ?? 'calc'));
+    }
+    http_response_code(404);
+    exit('Not found');
 }
 
 // ---- team chat attachment (?tdl=<message_id>) ----
@@ -2015,6 +2029,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $flashType = 'err';
                     break;
                 }
+                // Commission statements name their agent: deleting the account would
+                // leave them pointing at nobody. Disabling it keeps the history.
+                $cmHas = (int)$pdo->query("SELECT COUNT(*) FROM commission_statements WHERE payee_type = 'agent' AND payee_id = " . (int)$_POST['id'])->fetchColumn();
+                if ($cmHas > 0) {
+                    $flash = sprintf($t('cm_user_has_statements'), $cmHas);
+                    $flashType = 'err';
+                    break;
+                }
                 try {
                     Auth::delete((int)$_POST['id']);
                     $flash = $t('u_deleted');
@@ -2086,6 +2108,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 $tab = 'partners';
                 break;
+            // ---- commission statements (Provvigioni) — src/Commission/Statements.php ----
+            // Every one lands back on a GET: a reload must not re-send a file.
+            case 'cm_create': // office: a statement for a partner or an agent, with the calculation
+                $cmUser = $uid ? (int)$uid : null;
+                [$cmType, $cmPid] = array_pad(explode(':', (string)($_POST['payee'] ?? ''), 2), 2, '0');
+                $cmRes = \Glue\Commission\Statements::create([
+                    'payee_type' => $cmType, 'payee_id' => (int)$cmPid,
+                    'title' => (string)($_POST['title'] ?? ''), 'period' => (string)($_POST['period'] ?? ''),
+                    'notes' => (string)($_POST['notes'] ?? ''), 'amount' => (string)($_POST['amount'] ?? ''),
+                    'accrual_ids' => (array)($_POST['accrual_ids'] ?? []),
+                ], $_FILES['calc'] ?? null, $cmUser);
+                $_SESSION['dash_flash'] = $cmRes['ok'] ? [$t('cm_created_flash'), 'ok'] : [$t('cm_err_' . $cmRes['error']), 'err'];
+                header('Location: ?tab=commissions' . ($cmRes['ok']
+                    ? '&st=' . $cmRes['id'] . '#cm-' . $cmRes['id']
+                    : '&new=' . rawurlencode((string)($_POST['payee'] ?? '')) . '#cm-new'));
+                exit;
+            case 'cm_invoice':        // agent: the invoice for one of their own statements
+            case 'cm_invoice_office': // office: an invoice that arrived by email
+                $cmUser = $uid ? (int)$uid : null;
+                $cmId = (int)($_POST['id'] ?? 0);
+                $cmRes = $do === 'cm_invoice'
+                    ? \Glue\Commission\Statements::submitInvoice($cmId, $_POST, $_FILES['invoice'] ?? null, 'payee', 'agent', (int)$uid, $cmUser)
+                    : \Glue\Commission\Statements::submitInvoice($cmId, $_POST, $_FILES['invoice'] ?? null, 'office', null, null, $cmUser);
+                $_SESSION['dash_flash'] = $cmRes['ok']
+                    ? [$t($do === 'cm_invoice' ? 'cm_invoice_flash' : 'cm_invoice_office_flash'), 'ok']
+                    : [$t('cm_err_' . $cmRes['error']), 'err'];
+                header('Location: ?tab=' . ($do === 'cm_invoice' ? 'my_commissions' : 'commissions') . '&st=' . $cmId . '#cm-' . $cmId);
+                exit;
+            case 'cm_pay':    // office: paid
+            case 'cm_reject': // office: the invoice goes back to the payee, with the reason
+            case 'cm_cancel': // office: withdrawn before payment
+                $cmUser = $uid ? (int)$uid : null;
+                $cmId = (int)($_POST['id'] ?? 0);
+                $cmRes = match ($do) {
+                    'cm_pay'    => \Glue\Commission\Statements::markPaid($cmId, $_POST, $cmUser),
+                    'cm_reject' => \Glue\Commission\Statements::reject($cmId, (string)($_POST['reason'] ?? ''), $cmUser),
+                    default     => \Glue\Commission\Statements::cancel($cmId, (string)($_POST['note'] ?? ''), $cmUser),
+                };
+                $_SESSION['dash_flash'] = $cmRes['ok']
+                    ? [$t(['cm_pay' => 'cm_paid_flash', 'cm_reject' => 'cm_rejected_flash', 'cm_cancel' => 'cm_cancelled_flash'][$do]), 'ok']
+                    : [$t('cm_err_' . $cmRes['error']), 'err'];
+                header('Location: ?tab=commissions&st=' . $cmId . '#cm-' . $cmId);
+                exit;
             case 'accrual_status':
                 \Glue\Partner\Partners::setAccrualStatus((int)($_POST['id'] ?? 0), (string)($_POST['status'] ?? ''));
                 $flash = $t('saved');
@@ -2108,7 +2173,7 @@ $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_forma
 $views = ['overview', 'leads', 'deals', 'quotes', 'customers', 'articles', 'contacts', 'appointments', 'tasks', 'tickets', 'team', 'documents',
           'installations', 'support',
           'invoices', 'payments', 'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents',
-          'partners', 'devices', 'network_areas', 'settings', 'instructions'];
+          'partners', 'commissions', 'my_commissions', 'devices', 'network_areas', 'settings', 'instructions'];
 $view = in_array($tab, $views, true) ? $tab : 'overview';
 // Agents can't reach admin views, even by typing the URL.
 if ($isAgent && !in_array($view, $agentViews, true)) {
@@ -2133,7 +2198,17 @@ if ($isTech) {
     }
 }
 
-render_head($t, $h, $lang, $tab, $flash, $flashType, $isAgent, $isTech, $agentInstalls, $uid ? TeamChat::unreadTotal((int)$uid) : 0);
+// The number on the Provvigioni entry: invoices waiting to be paid (the office),
+// statements waiting for this agent's invoice (an agent).
+$cmBadge = 0;
+try {
+    $cmBadge = $isTech ? 0 : ($isAgent
+        ? ($uid ? \Glue\Commission\Statements::countToInvoice('agent', (int)$uid) : 0)
+        : \Glue\Commission\Statements::countInvoiced());
+} catch (Throwable $e) {
+    $cmBadge = 0; // table not migrated yet
+}
+render_head($t, $h, $lang, $tab, $flash, $flashType, $isAgent, $isTech, $agentInstalls, $uid ? TeamChat::unreadTotal((int)$uid) : 0, $cmBadge);
 
 require dirname(__DIR__) . '/views/' . $view . '.php';
 
@@ -2159,7 +2234,7 @@ function render_login(callable $t, callable $h, string $lang, ?string $err): voi
 </body></html>
 <?php }
 
-function render_head(callable $t, callable $h, string $lang, string $tab, ?string $flash, string $flashType, bool $isAgent = false, bool $isTech = false, bool $agentInstalls = false, int $teamUnread = 0): void {
+function render_head(callable $t, callable $h, string $lang, string $tab, ?string $flash, string $flashType, bool $isAgent = false, bool $isTech = false, bool $agentInstalls = false, int $teamUnread = 0, int $cmBadge = 0): void {
     $brand = (string)\Glue\Config::get('app.company_name', '') ?: $t('app_title');
     $nav = [
         'overview' => 'nav_overview', 'leads' => 'nav_leads', 'deals' => 'nav_deals',
@@ -2173,15 +2248,17 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
         'campaigns' => 'nav_campaigns', 'messages' => 'nav_messages', 'outbound' => 'nav_outbound',
         'reminders' => 'nav_reminders', 'templates' => 'nav_templates',
         'devices' => 'nav_devices', 'network_areas' => 'nav_network_areas',
-        'events' => 'nav_events', 'agents' => 'nav_agents', 'partners' => 'nav_partners', 'instructions' => 'nav_instr', 'settings' => 'nav_settings',
+        'events' => 'nav_events', 'agents' => 'nav_agents', 'partners' => 'nav_partners', 'commissions' => 'nav_commissions', 'my_commissions' => 'nav_my_commissions', 'instructions' => 'nav_instr', 'settings' => 'nav_settings',
     ];
     if ($isAgent) { // agents only see their own work — plus Installations when they also install
         $nav = array_intersect_key($nav, array_flip(array_merge(
-            ['overview', 'leads', 'deals', 'quotes', 'articles', 'appointments', 'tasks', 'messages', 'team', 'documents', 'instructions'],
+            ['overview', 'leads', 'deals', 'quotes', 'articles', 'appointments', 'tasks', 'messages', 'team', 'documents', 'my_commissions', 'instructions'],
             $agentInstalls ? ['installations'] : []
         )));
     } elseif ($isTech) { // technical-area users: devices, install reports, support queue, own tickets
         $nav = array_intersect_key($nav, array_flip(['devices', 'installations', 'support', 'tickets', 'team']));
+    } else { // the office files statements; it is not paid by them
+        unset($nav['my_commissions']);
     } ?>
 <!DOCTYPE html><html lang="<?= $h($lang) ?>"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -2195,7 +2272,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
       <div><strong><?= $h($brand) ?></strong><span class="muted small"><?= $h($t('app_subtitle')) ?></span></div></div>
     <nav>
       <?php foreach ($nav as $key => $label): ?>
-        <a class="<?= $tab === $key ? 'active' : '' ?>" href="?tab=<?= $h($key) ?>"><?= svg($key) ?><span><?= $h($t($label)) ?></span><?php if ($key === 'team' && $teamUnread > 0): ?><span class="nav-n"><?= $teamUnread ?></span><?php endif; ?></a>
+        <a class="<?= $tab === $key ? 'active' : '' ?>" href="?tab=<?= $h($key) ?>"><?= svg($key) ?><span><?= $h($t($label)) ?></span><?php if ($key === 'team' && $teamUnread > 0): ?><span class="nav-n"><?= $teamUnread ?></span><?php endif; ?><?php if (($key === 'commissions' || $key === 'my_commissions') && $cmBadge > 0): ?><span class="nav-n"><?= $cmBadge ?></span><?php endif; ?></a>
       <?php endforeach; ?>
     </nav>
   </aside>

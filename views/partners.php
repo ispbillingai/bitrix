@@ -78,6 +78,18 @@ $money = fn($n) => (string)\Glue\Config::get('crm.currency', 'EUR') . ' ' . numb
         <span class="muted small" style="margin-left:8px"><?= $h($t('pt_del_hint')) ?></span>
       </form>
 
+      <?php // Commission statements (Provvigioni): upload one for this partner, or open theirs.
+            $cmT = \Glue\Commission\Statements::totals('partner', $pid);
+            $cmN = $cmT['n_sent'] + $cmT['n_invoiced'] + $cmT['n_paid'] + $cmT['n_cancelled']; ?>
+      <div class="cm-strip" style="margin-top:14px">
+        <b><?= $h($t('cm_pt_h')) ?></b>
+        <span class="muted small" style="flex:1"><?= $h(sprintf($t('cm_pt_summary'), $cmN,
+            \Glue\Commission\Statements::money($cmT['sent']), \Glue\Commission\Statements::money($cmT['invoiced']),
+            \Glue\Commission\Statements::money($cmT['paid']))) ?></span>
+        <?php if ((int)$p['active'] === 1): ?><a class="btn tiny" href="?tab=commissions&amp;new=partner:<?= $pid ?>#cm-new"><?= svg('commissions') ?> <?= $h($t('cm_pt_new')) ?></a><?php endif; ?>
+        <?php if ($cmN > 0): ?><a class="btn tiny ghost" href="?tab=commissions&amp;payee=partner:<?= $pid ?>"><?= $h($t('cm_pt_history')) ?></a><?php endif; ?>
+      </div>
+
       <div class="cols c-1-1" style="margin-top:14px">
         <div>
           <h3><?= $h($t('pt_accruals')) ?></h3>

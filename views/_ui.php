@@ -58,6 +58,8 @@ function svg(string $name): string {
         'pen'         => '<path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4z"/>',
         'articles'    => '<path d="M3 7l9-4 9 4v10l-9 4-9-4z"/><path d="M3 7l9 4 9-4"/><path d="M12 11v10"/>',
         'quotes'      => '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="8" y1="13" x2="13" y2="13"/><line x1="8" y1="17" x2="15" y2="17"/><line x1="8" y1="9" x2="10" y2="9"/>',
+        'commissions' => '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/>',
+        'my_commissions' => '<rect x="2" y="6" width="20" height="12" rx="2"/><circle cx="12" cy="12" r="2.5"/><path d="M6 12h.01M18 12h.01"/>',
     ];
     $body = $p[$name] ?? $p['overview'];
     return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' . $body . '</svg>';
@@ -427,6 +429,38 @@ a.tel:hover{text-decoration:underline;}
 .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:16px;}
 .table-wrap table{margin-bottom:0;}
 @media(max-width:560px){.table-wrap table{min-width:520px;}}
+/* commission statements (Provvigioni): the office desk, an agent's own list, the partner area */
+.cm-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;margin-bottom:10px;}
+.cm-card>summary{display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;list-style:none;flex-wrap:wrap;}
+.cm-card>summary::-webkit-details-marker{display:none;}
+.cm-card .cm-t{flex:1;min-width:180px;}
+.cm-card .cm-t b{display:block;margin-bottom:2px;}
+.cm-amt{font-weight:700;font-size:16px;white-space:nowrap;}
+.cm-body{padding:4px 16px 16px;border-top:1px solid var(--line);}
+.cm-st{display:inline-block;padding:4px 10px;border-radius:7px;font-size:12px;font-weight:600;white-space:nowrap;}
+.cm-st-sent{color:var(--amber);background:var(--amber-bg);}
+.cm-st-invoiced{color:var(--accent);background:var(--accent-soft);}
+.cm-st-paid{color:var(--green);background:var(--green-bg);}
+.cm-st-cancelled{color:var(--red);background:var(--red-bg);}
+.cm-steps{display:flex;gap:6px;flex-wrap:wrap;margin:12px 0;}
+.cm-step{flex:1;min-width:130px;padding:8px 10px;border:1px solid var(--line);border-radius:9px;font-size:12px;color:var(--muted);background:var(--surface2);}
+.cm-step b{display:block;color:var(--txt);margin-bottom:2px;}
+.cm-step.done{border-color:var(--green);}
+.cm-step.done b{color:var(--green);}
+.cm-kv{display:grid;grid-template-columns:max-content 1fr;gap:6px 14px;font-size:13px;margin:10px 0;}
+.cm-kv dt{color:var(--muted);}
+.cm-kv dd{margin:0;min-width:0;overflow-wrap:anywhere;}
+.cm-note{background:var(--surface2);border-radius:9px;padding:10px 12px;font-size:13px;margin:8px 0;white-space:pre-wrap;}
+.cm-warn{background:var(--red-bg);color:var(--red);border-radius:9px;padding:10px 12px;font-size:13px;margin:8px 0;}
+.cm-form{border:1px dashed var(--line2);border-radius:10px;padding:12px;margin-top:12px;}
+.cm-form .fld{margin-bottom:10px;}
+.cm-chips{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 14px;}
+.cm-chip{padding:6px 12px;border:1px solid var(--line);border-radius:999px;font-size:13px;color:var(--txt);text-decoration:none;background:var(--surface);}
+.cm-chip.on{border-color:var(--accent);color:var(--accent);}
+.cm-acc{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:14px;}
+.cm-acc-row{display:flex;gap:8px;align-items:flex-start;margin-top:6px;font-size:13px;}
+.cm-strip{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
+@media (max-width:560px){.cm-kv{grid-template-columns:1fr;gap:2px;}.cm-kv dt{margin-top:6px;}}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <?php }
@@ -490,4 +524,104 @@ function team_action_card(array $a, int $mid, callable $t, callable $h): string 
                . (!empty($a['at']) ? ' <span class="muted">· ' . $h(short_time($a['at'])) . '</span>' : '') . '</div>';
     }
     return $html . '</div>';
+}
+
+/**
+ * One commission statement as a card: amount and status on the summary line;
+ * inside, the calculation, the invoice and the payment, each step with its
+ * date, then whatever form the viewer may use at this point ($actions).
+ * Shared by the office desk (Provvigioni), an agent's own list and the partner
+ * area, so all three show a statement the same way. Its files download through
+ * ?cmf=<id>&w=calc|invoice on the page that draws it — each page checks the
+ * viewer may see them. $who names the payee (the office list only).
+ */
+function commission_card(array $s, callable $t, callable $h, string $actions = '', bool $open = false, string $who = ''): string {
+    $id = (int)$s['id'];
+    $st = (string)$s['status'];
+    $m  = fn($n): string => \Glue\Commission\Statements::money((float)$n);
+    $d  = fn($v): string => $v ? date('d/m/Y', strtotime((string)$v)) : '';
+    $dt = fn($v): string => $v ? date('d/m/Y H:i', strtotime((string)$v)) : '';
+    $shown = $st === 'paid' ? ($s['paid_amount'] ?? $s['amount'])
+           : ($st === 'invoiced' ? ($s['invoice_amount'] ?? $s['amount']) : $s['amount']);
+    ob_start(); ?>
+<details class="cm-card" id="cm-<?= $id ?>"<?= $open ? ' open' : '' ?>>
+  <summary>
+    <span class="cm-t"><b><?= $h($s['title']) ?></b>
+      <span class="muted small"><?= $who !== '' ? $h($who) . ' · ' : '' ?><?= $h($t('cm_no')) ?> <?= $id ?> · <?= $h($d($s['created_at'])) ?><?= !empty($s['period']) ? ' · ' . $h($s['period']) : '' ?></span></span>
+    <span class="cm-amt"><?= $h($m($shown)) ?></span>
+    <span class="cm-st cm-st-<?= $h($st) ?>"><?= $h($t('cm_st_' . $st)) ?></span>
+  </summary>
+  <div class="cm-body">
+    <div class="cm-steps">
+      <div class="cm-step done"><b>1 · <?= $h($t('cm_step_calc')) ?></b><?= $h($dt($s['created_at'])) ?></div>
+      <div class="cm-step<?= in_array($st, ['invoiced', 'paid'], true) ? ' done' : '' ?>"><b>2 · <?= $h($t('cm_step_invoice')) ?></b><?= $h(in_array($st, ['invoiced', 'paid'], true) ? $dt($s['invoiced_at']) : ($st === 'cancelled' ? '—' : $t('cm_step_waiting'))) ?></div>
+      <div class="cm-step<?= $st === 'paid' ? ' done' : '' ?>"><b>3 · <?= $h($t('cm_step_paid')) ?></b><?= $h($st === 'paid' ? $d($s['paid_on']) : ($st === 'cancelled' ? '—' : $t('cm_step_waiting'))) ?></div>
+    </div>
+    <?php if ($st === 'cancelled'): ?>
+      <div class="cm-warn">⛔ <?= $h($t('cm_cancelled_on')) ?> <?= $h($dt($s['cancelled_at'])) ?><?= !empty($s['cancel_note']) ? ' — ' . $h($s['cancel_note']) : '' ?></div>
+    <?php endif; ?>
+    <?php if ($st === 'sent' && !empty($s['rejected_note'])): ?>
+      <div class="cm-warn">↩ <?= $h($t('cm_rejected_h')) ?> (<?= $h($dt($s['rejected_at'])) ?>): <?= $h($s['rejected_note']) ?></div>
+    <?php endif; ?>
+    <dl class="cm-kv">
+      <dt><?= $h($t('cm_amount')) ?></dt><dd><b><?= $h($m($s['amount'])) ?></b></dd>
+      <?php if (!empty($s['calc_path'])): ?>
+        <dt><?= $h($t('cm_calc')) ?></dt><dd><a href="?cmf=<?= $id ?>&amp;w=calc" target="_blank">📎 <?= $h($s['calc_name'] ?: $t('cm_download')) ?></a></dd>
+      <?php endif; ?>
+      <?php if (!empty($s['invoice_number'])): ?>
+        <dt><?= $h($t('cm_invoice_h')) ?></dt><dd><?= $h($t('cm_inv_no_short')) ?> <b><?= $h($s['invoice_number']) ?></b> <?= $h($t('cm_of')) ?> <?= $h($d($s['invoice_date'])) ?> · <?= $h($m($s['invoice_amount'] ?? $s['amount'])) ?><?= ($s['invoice_by'] ?? '') === 'office' ? ' <span class="muted small">(' . $h($t('cm_by_office')) . ')</span>' : '' ?>
+          <?php if (!empty($s['invoice_path'])): ?><br><a href="?cmf=<?= $id ?>&amp;w=invoice" target="_blank">📄 <?= $h($s['invoice_name'] ?: $t('cm_download')) ?></a><?php endif; ?></dd>
+        <?php if (!empty($s['invoice_note'])): ?><dt><?= $h($t('cm_inv_note')) ?></dt><dd><?= $h($s['invoice_note']) ?></dd><?php endif; ?>
+      <?php endif; ?>
+      <?php if ($st === 'paid'): ?>
+        <dt><?= $h($t('cm_paid_h')) ?></dt><dd><b style="color:var(--green)"><?= $h($m($s['paid_amount'] ?? $s['amount'])) ?></b> <?= $h($t('cm_on')) ?> <?= $h($d($s['paid_on'])) ?><?= !empty($s['payment_ref']) ? ' · ' . $h($s['payment_ref']) : '' ?></dd>
+      <?php endif; ?>
+    </dl>
+    <?php if (!empty($s['notes'])): ?><div class="cm-note"><?= $h($s['notes']) ?></div><?php endif; ?>
+    <?php if (!empty($s['accruals'])): ?>
+      <div class="muted small" style="margin-top:8px"><?= $h($t('cm_covers')) ?></div>
+      <ul class="small" style="margin:4px 0 0 18px;padding:0">
+        <?php foreach ($s['accruals'] as $a): ?><li><?= $h($a['customer_name'] ?: ($a['deal_title'] ?: ('#' . (int)$a['id']))) ?> — <?= $h($m($a['amount'])) ?></li><?php endforeach; ?>
+      </ul>
+    <?php endif; ?>
+    <?= $actions ?>
+  </div>
+</details>
+<?php return (string)ob_get_clean();
+}
+
+/**
+ * The invoice form for a statement. For the payee ($office false): while the
+ * statement waits for it, and folded away to replace it until it is paid. For
+ * the office ($office true): to record an invoice that arrived by email. After
+ * a rejection the fields come back filled in and the file already sent may be
+ * kept. $do is the POST action of the page it sits on.
+ */
+function commission_invoice_form(array $s, callable $t, callable $h, string $do, bool $office = false): string {
+    $st = (string)$s['status'];
+    if (!in_array($st, ['sent', 'invoiced'], true)) {
+        return '';
+    }
+    $id      = (int)$s['id'];
+    $hasFile = !empty($s['invoice_path']);
+    $amount  = number_format((float)($s['invoice_amount'] ?? $s['amount']), 2, ',', '');
+    $form = '<form method="post" enctype="multipart/form-data" class="cm-form">'
+        . '<input type="hidden" name="do" value="' . $h($do) . '"><input type="hidden" name="id" value="' . $id . '">'
+        . '<b class="small">' . $h($t($office ? 'cm_inv_office_h' : ($st === 'invoiced' ? 'cm_inv_replace' : 'cm_inv_send_h'))) . '</b>'
+        . '<p class="muted small" style="margin:4px 0 10px">' . $h($t($office ? 'cm_inv_office_hint' : 'cm_inv_hint')) . '</p>'
+        . '<div class="row">'
+        . '<label class="fld"><span>' . $h($t('cm_inv_file')) . ($hasFile ? '' : ' *') . '</span><input type="file" name="invoice"'
+        . ($hasFile ? '' : ' required') . ' accept=".pdf,.xml,.p7m,image/*"></label>'
+        . '<label class="fld"><span>' . $h($t('cm_inv_number')) . ' *</span><input name="invoice_number" required maxlength="60" value="' . $h($s['invoice_number'] ?? '') . '"></label>'
+        . '</div><div class="row">'
+        . '<label class="fld"><span>' . $h($t('cm_inv_date')) . '</span><input type="date" name="invoice_date" value="' . $h($s['invoice_date'] ?? date('Y-m-d')) . '"></label>'
+        . '<label class="fld"><span>' . $h($t('cm_inv_amount')) . '</span><input name="invoice_amount" inputmode="decimal" value="' . $h($amount) . '"></label>'
+        . '</div>'
+        . '<label class="fld"><span>' . $h($t('cm_inv_note')) . '</span><input name="invoice_note" maxlength="500" value="' . $h($s['invoice_note'] ?? '') . '"></label>'
+        . '<button class="btn tiny">' . svg('send') . ' ' . $h($t($office ? 'cm_inv_office_btn' : 'cm_inv_send')) . '</button></form>';
+    // Already invoiced: replacing it is the exception, so it stays folded away.
+    if ($st === 'invoiced') {
+        return '<details style="margin-top:10px"><summary class="btn ghost tiny">' . $h($t('cm_inv_replace')) . '</summary>' . $form . '</details>';
+    }
+    return $form;
 }
