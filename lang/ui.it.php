@@ -1966,5 +1966,15 @@ return [
     'evt_statement_notify_failed' => 'Avviso provvigioni non inviato (errore)',
     'src_commission' => 'Provvigioni',
     'ent_commission' => 'Conteggio provvigioni',
+
+    // ---- staff alerts, queued (src/Notify/StaffAlert.php) ----
+    'rk_staff_quote_request' => 'Richiesta di preventivo (avviso alla sede)',
+    'rk_staff_quote_revision' => 'Modifica al preventivo richiesta (avviso alla sede)',
+    'rk_staff_assist_request' => 'Nuova richiesta di assistenza (avviso ai tecnici)',
+    'rk_staff_assist_failed' => 'Attivazione Helpdesk non riuscita (avviso alla sede)',
+    'rk_staff_restock' => 'Prodotti da riordinare (avviso alla sede)',
+    'qt_already_sent' => 'Questa richiesta era già stata inviata alla sede: non è stata inviata una seconda volta.',
+    'evt_staff_alert_failed' => 'Avviso allo staff non accodato (errore)',
+    'src_notify' => 'Avvisi',
 ];
 

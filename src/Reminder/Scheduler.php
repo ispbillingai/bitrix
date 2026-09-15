@@ -357,7 +357,8 @@ final class Scheduler
             $phone = $this->recipientPhone($r, $vars);
             if ($phone !== '') {
                 $hadRecipient = true;
-                $text = Templates::whatsapp($ruleKey, $vars, $lang);
+                // A staff alert (Notify\StaffAlert) carries its finished text; everything else is a template.
+                $text = (string)($vars['raw_wa'] ?? '') !== '' ? (string)$vars['raw_wa'] : Templates::whatsapp($ruleKey, $vars, $lang);
                 $okAny = $this->notifier->whatsapp($phone, $text, $reminderId, null, $imageUrl ?: null) || $okAny;
             }
         }
@@ -365,7 +366,9 @@ final class Scheduler
             $to = $this->recipientEmail($r, $vars);
             if ($to !== '') {
                 $hadRecipient = true;
-                $mail = Templates::email($ruleKey, $vars, $lang);
+                $mail = (string)($vars['raw_html'] ?? '') !== ''
+                    ? ['subject' => (string)($vars['raw_subject'] ?? ''), 'html' => (string)$vars['raw_html']]
+                    : Templates::email($ruleKey, $vars, $lang);
                 $html = $imageUrl !== ''
                     ? '<p><img src="' . htmlspecialchars($imageUrl, ENT_QUOTES) . '" alt="" style="max-width:100%;border-radius:8px"></p>' . $mail['html']
                     : $mail['html'];

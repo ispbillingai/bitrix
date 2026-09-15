@@ -67,7 +67,7 @@ $focus = $openLeadId > 0;
   <?php if ($partnerFilter): ?><input type="hidden" name="partner" value="<?= (int)$partnerFilter ?>"><?php endif; ?>
   <?php if ($srcFilter !== ''): ?><input type="hidden" name="src" value="<?= $h($srcFilter) ?>"><?php endif; ?>
   <?php if ($zoneFilter !== ''): ?><input type="hidden" name="zone" value="<?= $h($zoneFilter) ?>"><?php endif; ?>
-  <input type="search" name="q" value="<?= $h($leadQ) ?>" placeholder="<?= $h($t('lead_search_ph')) ?>" style="width:min(420px,100%)">
+  <input type="search" name="q" value="<?= $h($leadQ) ?>" placeholder="<?= $h($t('lead_search_ph')) ?>" style="flex:1 1 220px;min-width:0;max-width:420px">
   <button class="btn ghost tiny"><?= $h($t('search')) ?></button>
   <?php if ($leadQ !== ''): ?>
     <a class="btn ghost tiny" href="?<?= $h(http_build_query(array_filter(['tab' => 'leads', 'agent' => $filterAgentId ?? null,

@@ -549,17 +549,9 @@ final class Articles
               . (count($rows) > 25 ? '<p>…e altri ' . (count($rows) - 25) . '.</p>' : '')
               . '<p><a href="' . htmlspecialchars($link, ENT_QUOTES) . '">Apri il magazzino</a></p>';
 
-        $stmt = $pdo->prepare("SELECT phone, email FROM users WHERE role = 'admin' AND active = 1");
-        $stmt->execute();
-        $n = new \Glue\Notify\Notifier();
-        foreach ($stmt->fetchAll() as $u) {
-            if (trim((string)($u['phone'] ?? '')) !== '') {
-                $n->whatsapp((string)$u['phone'], $text);
-            }
-            if (trim((string)($u['email'] ?? '')) !== '') {
-                $n->email((string)$u['email'], "Da riordinare — " . count($rows) . ' prodotti', $body);
-            }
-        }
+        // Queued, like every staff alert (Notify\StaffAlert): the save that
+        // crossed the threshold does not wait for one WhatsApp per admin.
+        \Glue\Notify\StaffAlert::toRole('admin', 'staff_restock', $text, "Da riordinare — " . count($rows) . ' prodotti', $body);
 
         $ids = array_map(static fn($r) => (int)$r['id'], $rows);
         $pdo->exec('UPDATE articles SET low_alert_at = NOW() WHERE id IN (' . implode(',', $ids) . ')');

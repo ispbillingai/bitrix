@@ -1039,12 +1039,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // prefix already carries the ownership guard above, so a seller can
             // only ask for a quote on a lead that is actually theirs.
             case 'lead_quote': {
-                $qr = \Glue\Crm\QuoteRequests::open(
-                    (int)$_POST['id'], $uid, (string)($_POST['notes'] ?? ''));
+                $qrLead = (int)$_POST['id'];
+                $qr = \Glue\Crm\QuoteRequests::open($qrLead, $uid, (string)($_POST['notes'] ?? ''));
                 $_SESSION['dash_flash'] = empty($qr['ok'])
                     ? [$t('qt_err_' . ($qr['error'] ?? 'no_lead')), 'err']
-                    : [$t('qt_requested'), 'ok'];
-                header('Location: ?tab=leads');
+                    : [$t(!empty($qr['duplicate']) ? 'qt_already_sent' : 'qt_requested'), 'ok'];
+                // Back on the same lead, opened, where the request now shows under
+                // Preventivo. Landing on the closed board read as "nothing happened".
+                header('Location: ?tab=leads&lead=' . $qrLead . '#lead-' . $qrLead);
                 exit;
             }
             case 'quote_scratch': {
@@ -2312,7 +2314,13 @@ document.addEventListener('keydown',e=>{if(e.key==='Escape')closeNav();});
 // usable. setTimeout keeps the button in the POST body for this submission.
 document.addEventListener('submit',function(e){
   var b=e.target.querySelector('button[type=submit],button:not([type]),input[type=submit]');
-  if(b){setTimeout(function(){b.disabled=true;b.style.opacity='0.6';},0);}
+  if(b){setTimeout(function(){b.disabled=true;b.style.opacity='0.6';b.dataset.guarded='1';},0);}
+});
+// Safari and Chrome keep a page in the back-forward cache with that button still
+// disabled, so going back to it showed a button that would not press. Give it back.
+window.addEventListener('pageshow',function(e){
+  if(!e.persisted) return;
+  document.querySelectorAll('[data-guarded]').forEach(function(b){b.disabled=false;b.style.opacity='';delete b.dataset.guarded;});
 });
 // Reveal a masked secret (API keys, passwords) while it is being checked or
 // typed. Deliberately momentary: it flips back on blur, so a revealed key can't

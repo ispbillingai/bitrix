@@ -1968,5 +1968,15 @@ return [
     'evt_statement_notify_failed' => 'Commission notice not sent (error)',
     'src_commission' => 'Commissions',
     'ent_commission' => 'Commission statement',
+
+    // ---- staff alerts, queued (src/Notify/StaffAlert.php) ----
+    'rk_staff_quote_request' => 'Quote request (alert to the office)',
+    'rk_staff_quote_revision' => 'Quote change requested (alert to the office)',
+    'rk_staff_assist_request' => 'New assistance request (alert to the technicians)',
+    'rk_staff_assist_failed' => 'Helpdesk activation failed (alert to the office)',
+    'rk_staff_restock' => 'Products to reorder (alert to the office)',
+    'qt_already_sent' => 'This request had already been sent to the office: it was not sent a second time.',
+    'evt_staff_alert_failed' => 'Staff alert not queued (error)',
+    'src_notify' => 'Notifications',
 ];
 

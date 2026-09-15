@@ -347,8 +347,8 @@ final class AssistRequests
             . ($phone !== '' ? ' (' . htmlspecialchars($phone, ENT_QUOTES) . ')' : '')
             . ': «' . htmlspecialchars((string)$r['subject'], ENT_QUOTES) . '»</p>'
             . '<p><a href="' . htmlspecialchars($link, ENT_QUOTES) . '">Prendila in carico nel CRM</a></p>';
-        self::sendToStaff('tech', $text, 'Nuova richiesta di assistenza — ' . $customer, $html)
-            || self::sendToStaff('admin', $text, 'Nuova richiesta di assistenza — ' . $customer, $html);
+        self::sendToStaff('tech', $text, 'Nuova richiesta di assistenza — ' . $customer, $html, 'staff_assist_request', (int)($r['id'] ?? 0))
+            || self::sendToStaff('admin', $text, 'Nuova richiesta di assistenza — ' . $customer, $html, 'staff_assist_request', (int)($r['id'] ?? 0));
     }
 
     /** SmallPay would not open the Helpdesk contract — the admins should know. */
@@ -360,25 +360,18 @@ final class AssistRequests
             . "l'apertura della posizione. La richiesta #{$requestId} («{$subject}») è passata comunque "
             . 'in orario lavorativo. Contattarlo per il contratto.';
         self::sendToStaff('admin', $text, 'Attivazione Helpdesk non riuscita — ' . $customer,
-            '<p>' . htmlspecialchars($text, ENT_QUOTES) . '</p>');
+            '<p>' . htmlspecialchars($text, ENT_QUOTES) . '</p>', 'staff_assist_failed', (int)$requestId);
     }
 
     /** Message every active user of a role. True if at least one channel went out. */
-    private static function sendToStaff(string $role, string $text, string $subject, string $html): bool
+    private static function sendToStaff(string $role, string $text, string $subject, string $html,
+                                        string $ruleKey = 'staff_assist_request', int $requestId = 0): bool
     {
-        $stmt = Db::pdo()->prepare('SELECT phone, email FROM users WHERE role = ? AND active = 1');
-        $stmt->execute([$role]);
-        $n = new Notifier();
-        $any = false;
-        foreach ($stmt->fetchAll() as $u) {
-            if (trim((string)($u['phone'] ?? '')) !== '') {
-                $any = $n->whatsapp((string)$u['phone'], $text) || $any;
-            }
-            if (trim((string)($u['email'] ?? '')) !== '') {
-                $any = $n->email((string)$u['email'], $subject, $html) || $any;
-            }
-        }
-        return $any;
+        // Queued (Notify\StaffAlert): the customer's page does not wait for one
+        // WhatsApp per technician. True when at least one person was queued, so
+        // the fall-back to the admins still happens when there are no technicians.
+        return \Glue\Notify\StaffAlert::toRole($role, $ruleKey, $text, $subject, $html,
+            $requestId > 0 ? 'assist_request' : '', $requestId) > 0;
     }
 
     private static function staffName(int $userId): string

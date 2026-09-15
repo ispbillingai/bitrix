@@ -68,6 +68,21 @@ final class QuoteRequests
         if ($notes === '') {
             return ['ok' => false, 'error' => 'no_notes'];
         }
+        // The same request twice is one request. A seller who sees nothing happen
+        // sends it again — that is how #29 doubled #28 on 2026-09-15 and the office
+        // got every alert twice. Same lead, same seller, same text, still open,
+        // within 30 minutes: answer with the one already filed.
+        $dup = Db::pdo()->prepare(
+            'SELECT id FROM quote_requests
+              WHERE lead_id = ? AND requested_by <=> ? AND status = ? AND notes = ?
+                AND created_at >= NOW() - INTERVAL 30 MINUTE
+              ORDER BY id DESC LIMIT 1'
+        );
+        $dup->execute([$leadId, $userId ?: null, self::OPEN, $notes]);
+        $dupId = (int)($dup->fetchColumn() ?: 0);
+        if ($dupId > 0) {
+            return ['ok' => true, 'id' => $dupId, 'duplicate' => true];
+        }
 
         Db::pdo()->prepare(
             'INSERT INTO quote_requests (lead_id, requested_by, notes, status)
@@ -401,7 +416,7 @@ final class QuoteRequests
                    . htmlspecialchars($number, ENT_QUOTES) . '</b> per ' . htmlspecialchars($who, ENT_QUOTES) . ':</p>'
                    . '<p>' . nl2br(htmlspecialchars($note, ENT_QUOTES)) . '</p>'
                    . '<p><a href="' . htmlspecialchars($link, ENT_QUOTES) . '">Apri il preventivo nel CRM</a></p>';
-            self::sendToStaff('admin', $text, "Modifica richiesta — preventivo $number", $html);
+            self::sendToStaff('admin', $text, "Modifica richiesta — preventivo $number", $html, 'staff_quote_revision', $id);
         } catch (Throwable $e) {
             // The request is recorded either way; a failed message must not lose it.
             Log::write('crm', 'quote_revision_notify_failed', 'lead', (int)$r['lead_id'],
@@ -850,7 +865,7 @@ final class QuoteRequests
                 . '</p><p><b>Richiesta:</b><br>' . nl2br(htmlspecialchars($notes, ENT_QUOTES)) . '</p>'
                 . '<p><a href="' . htmlspecialchars($link, ENT_QUOTES) . '">Carica il preventivo nel CRM</a></p>';
 
-            self::sendToStaff('admin', $text, "Richiesta preventivo #$id — $who", $html);
+            self::sendToStaff('admin', $text, "Richiesta preventivo #$id — $who", $html, 'staff_quote_request', $id);
         } catch (Throwable $e) {
             // Notifying the office must never lose the request itself.
             Log::write('crm', 'quote_notify_failed', 'lead', (int)($lead['id'] ?? 0),
@@ -892,21 +907,14 @@ final class QuoteRequests
     }
 
     /** Message every active user of a role. True if at least one channel went out. */
-    private static function sendToStaff(string $role, string $text, string $subject, string $html): bool
+    private static function sendToStaff(string $role, string $text, string $subject, string $html,
+                                        string $ruleKey = 'staff_quote_request', int $requestId = 0): bool
     {
-        $stmt = Db::pdo()->prepare('SELECT phone, email FROM users WHERE role = ? AND active = 1');
-        $stmt->execute([$role]);
-        $n = new Notifier();
-        $any = false;
-        foreach ($stmt->fetchAll() as $u) {
-            if (trim((string)($u['phone'] ?? '')) !== '') {
-                $any = $n->whatsapp((string)$u['phone'], $text) || $any;
-            }
-            if (trim((string)($u['email'] ?? '')) !== '') {
-                $any = $n->email((string)$u['email'], $subject, $html) || $any;
-            }
-        }
-        return $any;
+        // Queued (Notify\StaffAlert): the seller who pressed the button no longer
+        // waits while one WhatsApp per admin goes out behind TextMeBot's gap.
+        // True when at least one person was queued.
+        return \Glue\Notify\StaffAlert::toRole($role, $ruleKey, $text, $subject, $html,
+            $requestId > 0 ? 'quote_request' : '', $requestId) > 0;
     }
 
     private static function staffName(?int $userId): string

@@ -261,6 +261,11 @@ h2{font-size:21px;margin-bottom:18px;letter-spacing:-.01em;} h3{font-size:15px;m
 .cols{display:grid;gap:16px;margin-bottom:16px;}
 .cols.c-2-1{grid-template-columns:2fr 1fr;} .cols.c-1-1{grid-template-columns:1fr 1fr;}
 @media(max-width:1100px){.cols.c-2-1,.cols.c-1-1{grid-template-columns:1fr;}}
+/* A grid column may shrink below its content. Without this one wide thing inside
+   (a row of inputs, a table) widened the whole page on a phone: Safari zoomed
+   out to fit it, and the page read as empty space around a shrunken layout. */
+.cols>*{min-width:0;}
+.inline{flex-wrap:wrap;max-width:100%;}
 .panel{background:var(--surface);border:1px solid var(--line);border-radius:var(--radius);padding:18px 20px;}
 .panel-h{display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;}
 .panel-h h3{margin:0;display:flex;align-items:center;gap:9px;} .panel-h h3 svg{width:17px;height:17px;color:var(--muted);}
