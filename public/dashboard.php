@@ -35,6 +35,8 @@ use Glue\Notify\TextMeBot;
 use Glue\Pay\Contracts as PayContracts;
 use Glue\Reminder\Scheduler;
 use Glue\Settings;
+use Glue\Team\Chat as TeamChat;
+use Glue\Ai\Assistant;
 use Glue\Sibill\Client as SibillClient;
 use Glue\Sibill\Customers as SibillCustomers;
 use Glue\Sibill\Invoices as SibillInvoices;
@@ -122,14 +124,16 @@ if ($filterAgentId !== null) {
 // Admin-only too: ?partner=<id> narrows the Leads board to the leads one partner
 // brought in — entered in their own area or through their referral link.
 $filterPartnerId = (!$isAgent && !empty($_GET['partner'])) ? (int)$_GET['partner'] : null;
-$agentViews   = ['overview', 'leads', 'deals', 'quotes', 'articles', 'appointments', 'tasks', 'messages', 'tickets', 'documents', 'instructions'];
-$techViews    = ['devices', 'network_areas', 'installations', 'support', 'tickets'];
+$agentViews   = ['overview', 'leads', 'deals', 'quotes', 'articles', 'appointments', 'tasks', 'messages', 'tickets', 'team', 'documents', 'instructions'];
+$techViews    = ['devices', 'network_areas', 'installations', 'support', 'tickets', 'team'];
 // The installation-report flow: open a draft, fill it in, attach the photos,
 // send it for signature. Deleting a report stays admin-only.
 $installActions = ['install_create', 'install_save', 'install_photos', 'install_photo_del', 'install_send'];
 // Technicians' POST whitelist: the installation-report flow, taking charge of
 // assistance requests, and replying on the tickets they claimed.
-$techActions  = array_merge($installActions, ['assist_claim', 'ticket_reply', 'ticket_status']);
+// The team chat and the assistant: every role has them; membership is checked per chat.
+$teamActions  = ['team_new', 'team_send', 'team_add', 'team_leave', 'team_rename', 'ai_ask', 'ai_confirm', 'ai_cancel'];
+$techActions  = array_merge($installActions, ['assist_claim', 'ticket_reply', 'ticket_status'], $teamActions);
 $agentActions = [
     'lead_create', 'lead_move', 'lead_convert', 'lead_note', 'lead_edit', 'lead_quote',
     'lead_appointment',
@@ -141,6 +145,7 @@ $agentActions = [
     // job; uploading the quote and cancelling a request are the office's.
     'quote_scratch', 'quote_send', 'quote_revise',
 ];
+$agentActions = array_merge($agentActions, $teamActions);
 // An agent who also installs — the tick box on their account — gets the
 // Installations tab and the report flow on top, with a technician's scope:
 // only the reports they opened. Read from the users row on every request, not
@@ -155,6 +160,41 @@ if ($isAgent && $uid) {
 if ($agentInstalls) {
     $agentViews[] = 'installations';
     $agentActions = array_merge($agentActions, $installActions);
+}
+
+// ---- team chat attachment (?tdl=<message_id>) ----
+// Files in the team chat live outside the web root; this is the only way out,
+// and only for a member of the chat the message is in.
+if (isset($_GET['tdl'])) {
+    $tm = TeamChat::message((int)$_GET['tdl']);
+    if ($tm && !empty($tm['attachment_path']) && $uid && TeamChat::isMember((int)$tm['chat_id'], (int)$uid)) {
+        TeamChat::streamAttachment($tm);
+    }
+    http_response_code(404);
+    exit('Not found');
+}
+
+// ---- team chat live poll (?poll=team&c=<chat>&after=<msgId>) ----
+// New messages as ready-to-append bubbles; reading them marks them read.
+if (($_GET['poll'] ?? '') === 'team') {
+    header('Content-Type: application/json');
+    $tcId = (int)($_GET['c'] ?? 0);
+    if (!$uid || !TeamChat::isMember($tcId, (int)$uid)) {
+        http_response_code(404);
+        echo json_encode(['ok' => false]);
+        exit;
+    }
+    $tcOut = [];
+    $tcLast = (int)($_GET['after'] ?? 0);
+    foreach (TeamChat::thread($tcId, $tcLast) as $m) {
+        $tcOut[] = ['id' => (int)$m['id'], 'html' => team_bubble($m, $t, $h, (int)$uid)];
+        $tcLast = max($tcLast, (int)$m['id']);
+    }
+    if ($tcOut) {
+        TeamChat::markRead($tcId, (int)$uid, $tcLast);
+    }
+    echo json_encode(['ok' => true, 'messages' => $tcOut]);
+    exit;
 }
 
 // ---- ticket attachment download (?dl=<message_id>) ----
@@ -420,6 +460,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'logistics.email', 'logistics.phone',
                     'bitrix.sync_enabled', 'bitrix.base_url', 'bitrix.outbound_secret',
                     'sibill.enabled', 'sibill.api_key', 'sibill.company_id',
+                    'ai.api_key', 'ai.model',
                     'sibill.sync_minutes', 'sibill.sync_months',
                     'sibill.chase_enabled', 'sibill.chase_from_date',
                     'sibill.chase_every_days', 'sibill.chase_min_days_late',
@@ -1548,6 +1589,139 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: ?tab=' . $tab . '&tk=' . (int)$_POST['id']);
                 exit;
 
+            // ---------- team chat + AI assistant ----------
+            // Every case needs a real account — the master login has no user row
+            // to be a member with — and membership of the chat, checked here:
+            // the prefix→owner guard above knows nothing about team_ ids.
+            case 'team_new': {
+                if (!$uid) { $_SESSION['dash_flash'] = [$t('tm_need_account'), 'err']; header('Location: ?tab=team'); exit; }
+                $tmUsers = array_values(array_filter(array_map('intval', (array)($_POST['users'] ?? [])), fn($i) => $i > 0 && $i !== (int)$uid));
+                $tmName  = trim((string)($_POST['name'] ?? ''));
+                $tmId = 0;
+                if ($tmName !== '' || count($tmUsers) > 1) {
+                    $tmId = TeamChat::group($tmName !== '' ? $tmName : $t('tm_group_default'), $tmUsers, (int)$uid);
+                } elseif (count($tmUsers) === 1) {
+                    $tmId = TeamChat::direct((int)$uid, $tmUsers[0], (int)$uid);
+                }
+                if ($tmId <= 0) {
+                    $_SESSION['dash_flash'] = [$t('tm_pick_people'), 'err'];
+                    header('Location: ?tab=team');
+                    exit;
+                }
+                header('Location: ?tab=team&c=' . $tmId);
+                exit;
+            }
+            case 'team_send': {
+                $tmId = (int)($_POST['id'] ?? 0);
+                if (!$uid || !TeamChat::isMember($tmId, (int)$uid)) {
+                    $_SESSION['dash_flash'] = [$t('not_allowed'), 'err'];
+                    header('Location: ?tab=team');
+                    exit;
+                }
+                $tmWho = trim((string)($_SESSION['glue_user']['full_name'] ?? '')) ?: (string)($_SESSION['glue_user']['username'] ?? 'Staff');
+                $tmAtt = TeamChat::storeUpload($_FILES['attachment'] ?? null, $tmErr);
+                if ($tmErr !== null) {
+                    $_SESSION['dash_flash'] = [$t('tm_upload_' . $tmErr), 'err'];
+                } elseif (TeamChat::post($tmId, (int)$uid, $tmWho, (string)($_POST['body'] ?? ''), $tmAtt) <= 0) {
+                    $_SESSION['dash_flash'] = [$t('tm_empty'), 'warn'];
+                }
+                header('Location: ?tab=team&c=' . $tmId);
+                exit;
+            }
+            case 'team_add': {
+                $tmId = (int)($_POST['id'] ?? 0);
+                if ($uid && TeamChat::isMember($tmId, (int)$uid)) {
+                    $tmWho = trim((string)($_SESSION['glue_user']['full_name'] ?? '')) ?: (string)($_SESSION['glue_user']['username'] ?? 'Staff');
+                    TeamChat::addMembers($tmId, (array)($_POST['users'] ?? []), (int)$uid, $tmWho);
+                }
+                header('Location: ?tab=team&c=' . $tmId);
+                exit;
+            }
+            case 'team_leave': {
+                $tmId = (int)($_POST['id'] ?? 0);
+                if ($uid) {
+                    $tmWho = trim((string)($_SESSION['glue_user']['full_name'] ?? '')) ?: (string)($_SESSION['glue_user']['username'] ?? 'Staff');
+                    TeamChat::leave($tmId, (int)$uid, $tmWho);
+                }
+                header('Location: ?tab=team');
+                exit;
+            }
+            case 'team_rename': {
+                $tmId = (int)($_POST['id'] ?? 0);
+                if ($uid && TeamChat::isMember($tmId, (int)$uid)) {
+                    TeamChat::rename($tmId, (string)($_POST['name'] ?? ''));
+                }
+                header('Location: ?tab=team&c=' . $tmId);
+                exit;
+            }
+            case 'ai_ask': {
+                // The assistant answers inside the request (10–60 s with tools);
+                // the page asked over fetch and shows a typing bubble meanwhile.
+                $tmId = (int)($_POST['id'] ?? 0);
+                $tmChat = $uid ? TeamChat::find($tmId) : null;
+                if (!$tmChat || $tmChat['kind'] !== 'ai' || !TeamChat::isMember($tmId, (int)$uid)) {
+                    if ($ajax) { http_response_code(403); echo json_encode(['ok' => false]); exit; }
+                    header('Location: ?tab=team');
+                    exit;
+                }
+                set_time_limit(180);
+                $aiCtx = [
+                    'uid'   => (int)$uid,
+                    'role'  => $isAgent ? 'agent' : ($isTech ? 'tech' : 'admin'),
+                    'name'  => trim((string)($_SESSION['glue_user']['full_name'] ?? '')) ?: (string)($_SESSION['glue_user']['username'] ?? 'Staff'),
+                    'lang'  => $lang,
+                    'today' => \Glue\Reminder\Templates::when(time(), $lang),
+                ];
+                $aiRes = Assistant::ask($tmId, $aiCtx, (string)($_POST['body'] ?? ''));
+                if ($ajax) {
+                    header('Content-Type: application/json');
+                    $aiOut = [];
+                    foreach ($aiRes['ids'] as $mid) {
+                        $m = TeamChat::message((int)$mid);
+                        if ($m) { $aiOut[] = ['id' => (int)$m['id'], 'html' => team_bubble($m, $t, $h, (int)$uid)]; }
+                    }
+                    echo json_encode(['ok' => $aiRes['ok'], 'error' => $aiRes['error'], 'messages' => $aiOut]);
+                    exit;
+                }
+                header('Location: ?tab=team&c=' . $tmId);
+                exit;
+            }
+            case 'ai_confirm':
+            case 'ai_cancel': {
+                $tmMid = (int)($_POST['mid'] ?? 0);
+                $tmAid = (string)($_POST['aid'] ?? '');
+                $aiCtx = [
+                    'uid'   => (int)$uid,
+                    'role'  => $isAgent ? 'agent' : ($isTech ? 'tech' : 'admin'),
+                    'name'  => trim((string)($_SESSION['glue_user']['full_name'] ?? '')) ?: (string)($_SESSION['glue_user']['username'] ?? 'Staff'),
+                    'lang'  => $lang,
+                    'today' => \Glue\Reminder\Templates::when(time(), $lang),
+                ];
+                $aiRes = $uid ? ($do === 'ai_confirm' ? Assistant::confirm($tmMid, $tmAid, $aiCtx) : Assistant::cancel($tmMid, $tmAid, $aiCtx))
+                              : ['ok' => false, 'text' => $t('tm_need_account'), 'note_id' => 0];
+                $tmMsg = TeamChat::message($tmMid);
+                $tmCard = '';
+                foreach ((array)($tmMsg['meta']['actions'] ?? []) as $a) {
+                    if (($a['id'] ?? '') === $tmAid) { $tmCard = team_action_card($a, $tmMid, $t, $h); }
+                }
+                $tmNote = $aiRes['note_id'] ? TeamChat::message((int)$aiRes['note_id']) : null;
+                if ($ajax) {
+                    header('Content-Type: application/json');
+                    echo json_encode(['ok' => $aiRes['ok'], 'text' => $aiRes['text'], 'card' => $tmCard,
+                        'note' => $tmNote ? ['id' => (int)$tmNote['id'], 'html' => team_bubble($tmNote, $t, $h, (int)$uid)] : null]);
+                    exit;
+                }
+                header('Location: ?tab=team&c=' . (int)($tmMsg['chat_id'] ?? 0));
+                exit;
+            }
+            case 'test_ai': { // admin only: not in the agent/tech whitelists
+                $aiT = Assistant::test();
+                $flash = ($aiT['ok'] ? $t('test_ok') : $t('test_fail')) . ': ' . $aiT['text'];
+                $flashType = $aiT['ok'] ? 'ok' : 'err';
+                $tab = 'settings';
+                break;
+            }
+
             // ---------- reminders / scheduler / campaigns ----------
             case 'cancel_reminder':
                 $pdo->prepare("UPDATE reminders SET status='cancelled' WHERE id=? AND status='pending'")
@@ -1931,7 +2105,7 @@ $cfg = fn(string $k, $d = '') => Config::get($k, $d);
 $agents = Auth::agents();
 $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_format((float)$n, 0);
 
-$views = ['overview', 'leads', 'deals', 'quotes', 'customers', 'articles', 'contacts', 'appointments', 'tasks', 'tickets', 'documents',
+$views = ['overview', 'leads', 'deals', 'quotes', 'customers', 'articles', 'contacts', 'appointments', 'tasks', 'tickets', 'team', 'documents',
           'installations', 'support',
           'invoices', 'payments', 'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents',
           'partners', 'devices', 'network_areas', 'settings', 'instructions'];
@@ -1959,7 +2133,7 @@ if ($isTech) {
     }
 }
 
-render_head($t, $h, $lang, $tab, $flash, $flashType, $isAgent, $isTech, $agentInstalls);
+render_head($t, $h, $lang, $tab, $flash, $flashType, $isAgent, $isTech, $agentInstalls, $uid ? TeamChat::unreadTotal((int)$uid) : 0);
 
 require dirname(__DIR__) . '/views/' . $view . '.php';
 
@@ -1985,14 +2159,14 @@ function render_login(callable $t, callable $h, string $lang, ?string $err): voi
 </body></html>
 <?php }
 
-function render_head(callable $t, callable $h, string $lang, string $tab, ?string $flash, string $flashType, bool $isAgent = false, bool $isTech = false, bool $agentInstalls = false): void {
+function render_head(callable $t, callable $h, string $lang, string $tab, ?string $flash, string $flashType, bool $isAgent = false, bool $isTech = false, bool $agentInstalls = false, int $teamUnread = 0): void {
     $brand = (string)\Glue\Config::get('app.company_name', '') ?: $t('app_title');
     $nav = [
         'overview' => 'nav_overview', 'leads' => 'nav_leads', 'deals' => 'nav_deals',
         'quotes' => 'nav_quotes',
         'customers' => 'nav_customers', 'articles' => 'nav_articles',
         'contacts' => 'nav_contacts', 'appointments' => 'nav_appointments', 'tasks' => 'nav_tasks',
-        'tickets' => 'nav_tickets', 'documents' => 'nav_documents', 'installations' => 'nav_installations',
+        'tickets' => 'nav_tickets', 'team' => 'nav_team', 'documents' => 'nav_documents', 'installations' => 'nav_installations',
         'support' => 'nav_support',
         'invoices' => 'nav_invoices',
         'payments' => 'nav_payments',
@@ -2003,11 +2177,11 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
     ];
     if ($isAgent) { // agents only see their own work — plus Installations when they also install
         $nav = array_intersect_key($nav, array_flip(array_merge(
-            ['overview', 'leads', 'deals', 'quotes', 'articles', 'appointments', 'tasks', 'messages', 'documents', 'instructions'],
+            ['overview', 'leads', 'deals', 'quotes', 'articles', 'appointments', 'tasks', 'messages', 'team', 'documents', 'instructions'],
             $agentInstalls ? ['installations'] : []
         )));
     } elseif ($isTech) { // technical-area users: devices, install reports, support queue, own tickets
-        $nav = array_intersect_key($nav, array_flip(['devices', 'installations', 'support', 'tickets']));
+        $nav = array_intersect_key($nav, array_flip(['devices', 'installations', 'support', 'tickets', 'team']));
     } ?>
 <!DOCTYPE html><html lang="<?= $h($lang) ?>"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -2021,7 +2195,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
       <div><strong><?= $h($brand) ?></strong><span class="muted small"><?= $h($t('app_subtitle')) ?></span></div></div>
     <nav>
       <?php foreach ($nav as $key => $label): ?>
-        <a class="<?= $tab === $key ? 'active' : '' ?>" href="?tab=<?= $h($key) ?>"><?= svg($key) ?><span><?= $h($t($label)) ?></span></a>
+        <a class="<?= $tab === $key ? 'active' : '' ?>" href="?tab=<?= $h($key) ?>"><?= svg($key) ?><span><?= $h($t($label)) ?></span><?php if ($key === 'team' && $teamUnread > 0): ?><span class="nav-n"><?= $teamUnread ?></span><?php endif; ?></a>
       <?php endforeach; ?>
     </nav>
   </aside>

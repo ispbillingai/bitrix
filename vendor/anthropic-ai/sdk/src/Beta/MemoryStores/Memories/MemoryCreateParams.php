@@ -1,0 +1,165 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Anthropic\Beta\MemoryStores\Memories;
+
+use Anthropic\Beta\AnthropicBeta;
+use Anthropic\Core\Attributes\Optional;
+use Anthropic\Core\Attributes\Required;
+use Anthropic\Core\Concerns\SdkModel;
+use Anthropic\Core\Concerns\SdkParams;
+use Anthropic\Core\Contracts\BaseModel;
+
+/**
+ * Create a memory.
+ *
+ * @see Anthropic\Services\Beta\MemoryStores\MemoriesService::create()
+ *
+ * @phpstan-type MemoryCreateParamsShape = array{
+ *   content: string|null,
+ *   path: string,
+ *   view?: null|ManagedAgentsMemoryView|value-of<ManagedAgentsMemoryView>,
+ *   betas?: list<string|AnthropicBeta|value-of<AnthropicBeta>>|null,
+ *   workspaceID?: string|null,
+ * }
+ */
+final class MemoryCreateParams implements BaseModel
+{
+    /** @use SdkModel<MemoryCreateParamsShape> */
+    use SdkModel;
+    use SdkParams;
+
+    /**
+     * UTF-8 text content for the new memory. Maximum 100 kB (102,400 bytes). Required; pass `""` explicitly to create an empty memory.
+     */
+    #[Required]
+    public ?string $content;
+
+    /**
+     * Hierarchical path for the new memory, e.g. `/projects/foo/notes.md`. Must start with `/`, contain at least one non-empty segment, and be at most 1,024 bytes. Must not contain empty segments, `.` or `..` segments, control or format characters, or the Unicode line and paragraph separators (U+2028, U+2029), and must be NFC-normalized. Paths are case-sensitive.
+     */
+    #[Required]
+    public string $path;
+
+    /**
+     * Query parameter for view.
+     *
+     * @var value-of<ManagedAgentsMemoryView>|null $view
+     */
+    #[Optional(enum: ManagedAgentsMemoryView::class)]
+    public ?string $view;
+
+    /**
+     * Optional header to specify the beta version(s) you want to use.
+     *
+     * @var list<string|value-of<AnthropicBeta>>|null $betas
+     */
+    #[Optional(list: AnthropicBeta::class)]
+    public ?array $betas;
+
+    #[Optional]
+    public ?string $workspaceID;
+
+    /**
+     * `new MemoryCreateParams()` is missing required properties by the API.
+     *
+     * To enforce required parameters use
+     * ```
+     * MemoryCreateParams::with(content: ..., path: ...)
+     * ```
+     *
+     * Otherwise ensure the following setters are called
+     *
+     * ```
+     * (new MemoryCreateParams)->withContent(...)->withPath(...)
+     * ```
+     */
+    public function __construct()
+    {
+        $this->initialize();
+    }
+
+    /**
+     * Construct an instance from the required parameters.
+     *
+     * You must use named parameters to construct any parameters with a default value.
+     *
+     * @param ManagedAgentsMemoryView|value-of<ManagedAgentsMemoryView>|null $view
+     * @param list<string|AnthropicBeta|value-of<AnthropicBeta>>|null $betas
+     */
+    public static function with(
+        ?string $content,
+        string $path,
+        ManagedAgentsMemoryView|string|null $view = null,
+        ?array $betas = null,
+        ?string $workspaceID = null,
+    ): self {
+        $self = new self;
+
+        $self['content'] = $content;
+        $self['path'] = $path;
+
+        null !== $view && $self['view'] = $view;
+        null !== $betas && $self['betas'] = $betas;
+        null !== $workspaceID && $self['workspaceID'] = $workspaceID;
+
+        return $self;
+    }
+
+    /**
+     * UTF-8 text content for the new memory. Maximum 100 kB (102,400 bytes). Required; pass `""` explicitly to create an empty memory.
+     */
+    public function withContent(?string $content): self
+    {
+        $self = clone $this;
+        $self['content'] = $content;
+
+        return $self;
+    }
+
+    /**
+     * Hierarchical path for the new memory, e.g. `/projects/foo/notes.md`. Must start with `/`, contain at least one non-empty segment, and be at most 1,024 bytes. Must not contain empty segments, `.` or `..` segments, control or format characters, or the Unicode line and paragraph separators (U+2028, U+2029), and must be NFC-normalized. Paths are case-sensitive.
+     */
+    public function withPath(string $path): self
+    {
+        $self = clone $this;
+        $self['path'] = $path;
+
+        return $self;
+    }
+
+    /**
+     * Query parameter for view.
+     *
+     * @param ManagedAgentsMemoryView|value-of<ManagedAgentsMemoryView> $view
+     */
+    public function withView(ManagedAgentsMemoryView|string $view): self
+    {
+        $self = clone $this;
+        $self['view'] = $view;
+
+        return $self;
+    }
+
+    /**
+     * Optional header to specify the beta version(s) you want to use.
+     *
+     * @param list<string|AnthropicBeta|value-of<AnthropicBeta>> $betas
+     */
+    public function withBetas(array $betas): self
+    {
+        $self = clone $this;
+        $self['betas'] = $betas;
+
+        return $self;
+    }
+
+    public function withWorkspaceID(string $workspaceID): self
+    {
+        $self = clone $this;
+        $self['workspaceID'] = $workspaceID;
+
+        return $self;
+    }
+}

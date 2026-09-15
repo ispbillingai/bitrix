@@ -1,8 +1,8 @@
 # Real config holds secrets — never commit. Copy config.sample.php to config.php.
 /config/config.php
 
-# Composer
-/vendor/
+# Composer: vendor/ IS committed. The live server deploys by git pull alone (no
+# composer there), and the AI assistant needs the Anthropic SDK + Guzzle from it.
 
 # Uploaded ticket attachments (user data, never commit)
 /storage/uploads/

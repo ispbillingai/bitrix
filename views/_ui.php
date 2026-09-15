@@ -41,6 +41,7 @@ function svg(string $name): string {
         'network_areas' => '<rect x="9" y="2" width="6" height="6" rx="1"/><rect x="3" y="16" width="6" height="6" rx="1"/><rect x="15" y="16" width="6" height="6" rx="1"/><path d="M12 8v4M12 12H6v4M12 12h6v4"/>',
         'installations' => '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>',
         'support'     => '<circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="4.93" y1="4.93" x2="9.17" y2="9.17"/><line x1="14.83" y1="14.83" x2="19.07" y2="19.07"/><line x1="14.83" y1="9.17" x2="19.07" y2="4.93"/><line x1="4.93" y1="19.07" x2="9.17" y2="14.83"/>',
+        'team'        => '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><circle cx="9" cy="10" r="1"/><circle cx="13" cy="10" r="1"/><circle cx="17" cy="10" r="1"/>',
         'tickets'     => '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/><line x1="8" y1="9" x2="16" y2="9"/><line x1="8" y1="13" x2="13" y2="13"/>',
         'link'        => '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
         'mail'        => '<rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-10 5L2 7"/>',
@@ -230,6 +231,8 @@ nav a svg{width:18px;height:18px;flex:0 0 auto;}
 h2 svg,h3 svg,summary svg{width:17px;height:17px;flex:0 0 auto;vertical-align:-3px;}
 nav a:hover{background:var(--surface2);color:var(--txt);}
 nav a.active{background:var(--accent);color:#fff;}
+nav a .nav-n{margin-left:auto;min-width:19px;height:19px;padding:0 6px;border-radius:10px;background:var(--accent);color:#fff;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;}
+nav a.active .nav-n{background:#fff;color:var(--accent);}
 main{flex:1;display:flex;flex-direction:column;min-width:0;}
 .topbar{display:flex;justify-content:space-between;align-items:center;padding:13px 28px;
   border-bottom:1px solid var(--line);background:var(--surface);position:sticky;top:0;z-index:5;}
@@ -427,3 +430,64 @@ a.tel:hover{text-decoration:underline;}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <?php }
+
+/**
+ * One team-chat bubble, as HTML — shared by the page render, the live poll and
+ * the assistant's in-place answer, so a message drawn any of the three ways
+ * looks the same. Mine on the right, everyone else on the left with their
+ * name; the assistant's Markdown becomes HTML, with its proposed actions as
+ * cards; a CRM note sits centred. $me is the viewer's user id.
+ */
+function team_bubble(array $m, callable $t, callable $h, int $me): string {
+    $role = (string)$m['role'];
+    $mid  = (int)$m['id'];
+    if ($role === 'system') {
+        return '<div class="tm-sys" data-mid="' . $mid . '">' . $h($m['body']) . ' <span class="muted">· ' . $h(short_time($m['created_at'])) . '</span></div>';
+    }
+    $mine = $role === 'user' && (int)($m['sender_id'] ?? 0) === $me;
+    $cls  = $mine ? 'staff' : 'cust';
+    if ($role === 'assistant') { $cls .= ' ai'; }
+    ob_start(); ?>
+<div class="msg <?= $cls ?>" data-mid="<?= $mid ?>">
+  <?php if ($role === 'assistant'): ?>
+    <div class="msg-b"><?= \Glue\Ai\Markdown::toHtml((string)$m['body']) ?></div>
+    <?php foreach ((array)($m['meta']['actions'] ?? []) as $a) { echo team_action_card($a, $mid, $t, $h); } ?>
+    <?php if (!empty($m['meta']['tools'])): ?>
+      <div class="ai-tools">🔎 <?= $h(implode(', ', (array)$m['meta']['tools'])) ?></div>
+    <?php endif; ?>
+  <?php else: ?>
+    <?php if ((string)$m['body'] !== ''): ?><div class="msg-b"><?= nl2br($h($m['body'])) ?></div><?php endif; ?>
+    <?php if (!empty($m['attachment_path'])): $kind = (string)($m['attachment_kind'] ?? 'file'); ?>
+      <?php if ($kind === 'audio'): ?>
+        <div class="msg-b"><audio controls preload="metadata" src="?tdl=<?= $mid ?>" style="max-width:230px;height:40px"></audio></div>
+      <?php elseif ($kind === 'video'): ?>
+        <div class="msg-b"><video controls preload="metadata" src="?tdl=<?= $mid ?>" playsinline></video></div>
+      <?php elseif ($kind === 'image'): ?>
+        <div class="msg-b"><a href="?tdl=<?= $mid ?>" target="_blank"><img class="tm-img" src="?tdl=<?= $mid ?>" alt="<?= $h($m['attachment_name']) ?>"></a></div>
+      <?php else: ?>
+        <div class="msg-b"><a href="?tdl=<?= $mid ?>">📎 <?= $h($m['attachment_name'] ?: $t('tk_attachment')) ?></a></div>
+      <?php endif; ?>
+    <?php endif; ?>
+  <?php endif; ?>
+  <div class="msg-m"><?= $h($role === 'assistant' ? $t('tm_ai') : ($m['sender_name'] ?: $t('tk_staff'))) ?> · <?= $h(short_time($m['created_at'])) ?></div>
+</div>
+<?php return (string)ob_get_clean();
+}
+
+/** A proposed action on an assistant message: what it will do, and Confirm / Cancel while it is still pending. */
+function team_action_card(array $a, int $mid, callable $t, callable $h): string {
+    $st = (string)($a['status'] ?? 'pending');
+    $icon = ['create_task' => '📝', 'add_note' => '🗒', 'send_message_to_customer' => '💬', 'send_whatsapp' => '📲', 'set_ticket_status' => '🎫',
+             'move_lead_stage' => '➡️', 'move_deal_stage' => '➡️', 'update_lead' => '✏️', 'create_lead' => '➕', 'book_appointment' => '📅'][$a['tool'] ?? ''] ?? '⚙️';
+    $html = '<div class="ai-act ' . $h($st) . '" data-mid="' . $mid . '" data-aid="' . $h($a['id'] ?? '') . '">'
+          . '<div class="ai-act-l">' . $icon . ' ' . $h($a['label'] ?? $a['tool'] ?? '') . '</div>';
+    if ($st === 'pending') {
+        $html .= '<div class="ai-act-b"><button type="button" class="btn tiny" data-act="ok">✓ ' . $h($t('tm_confirm')) . '</button>'
+               . '<button type="button" class="btn tiny ghost" data-act="no">' . $h($t('tm_cancel')) . '</button></div>';
+    } else {
+        $label = ['done' => '✅ ' . $t('tm_done'), 'failed' => '❌ ' . $t('tm_failed'), 'cancelled' => '⛔ ' . $t('tm_cancelled')][$st] ?? $st;
+        $html .= '<div class="ai-act-s">' . $h($label) . (!empty($a['result']) ? ' — ' . $h($a['result']) : '')
+               . (!empty($a['at']) ? ' <span class="muted">· ' . $h(short_time($a['at'])) . '</span>' : '') . '</div>';
+    }
+    return $html . '</div>';
+}

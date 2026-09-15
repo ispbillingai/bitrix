@@ -7,7 +7,9 @@
         "ext-pdo": "*",
         "ext-pdo_mysql": "*",
         "ext-curl": "*",
-        "ext-json": "*"
+        "ext-json": "*",
+        "anthropic-ai/sdk": "^0.48",
+        "guzzlehttp/guzzle": "^7"
     },
     "autoload": {
         "psr-4": {

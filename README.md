@@ -226,6 +226,28 @@ curl -X POST "https://<host>/webhooks/lead.php" -H 'Authorization: Bearer INTAKE
 php bin/scheduler.php
 ```
 
+## Team chat + AI assistant
+
+**Chat team** (sidebar, every role): staff talk to each other inside the CRM —
+one-to-one or in named groups — with the same bubbles as the customer chat:
+text, a file, a voice note (🎤) or a video (🎥, the phone's camera). Files live
+in `storage/uploads/team` and are served only through `?tdl=` to members of the
+chat. Unread counts sit on the sidebar entry. Tables: migration 055
+(`team_chats`, `team_chat_members`, `team_messages`); code in `src/Team/Chat.php`
+and `views/team.php`.
+
+**Assistente AI** is pinned at the top of that list. It runs on Claude through
+the official PHP SDK (`anthropic-ai/sdk`, `vendor/` is committed so a plain
+`git pull` deploys it) and answers from the CRM through `src/Ai/Tools.php`:
+customers, leads, deals, tickets, tasks, appointments, pipeline and invoice
+reports — always inside the asker's own scope (an agent's assistant sees the
+agent's records, a technician's its customers and tickets, an admin's all).
+Anything that changes the CRM or reaches a customer (task, note, message,
+WhatsApp, ticket status, stage move, lead edit/create, appointment) is only
+*proposed*: it shows as a card with **Conferma / Annulla** and runs when the
+person confirms. Set the Anthropic API key in Settings → Assistente AI and use
+"Prova assistente" to check it. Usage is billed to that key.
+
 ## Optional: Bitrix24 sync
 
 The CRM is fully standalone. To **also** mirror new leads/deals into a Bitrix24

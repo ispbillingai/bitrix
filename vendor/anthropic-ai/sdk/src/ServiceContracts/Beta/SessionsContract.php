@@ -1,0 +1,193 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Anthropic\ServiceContracts\Beta;
+
+use Anthropic\Beta\AnthropicBeta;
+use Anthropic\Beta\Sessions\BetaManagedAgentsAgentParams;
+use Anthropic\Beta\Sessions\BetaManagedAgentsAgentWithOverridesParams;
+use Anthropic\Beta\Sessions\BetaManagedAgentsBudgetLimit;
+use Anthropic\Beta\Sessions\BetaManagedAgentsDeletedSession;
+use Anthropic\Beta\Sessions\BetaManagedAgentsSession;
+use Anthropic\Beta\Sessions\BetaManagedAgentsSessionAgentUpdate;
+use Anthropic\Beta\Sessions\SessionListParams\Order;
+use Anthropic\Beta\Sessions\SessionListParams\Status;
+use Anthropic\BidirectionalPageCursor;
+use Anthropic\Core\Exceptions\APIException;
+use Anthropic\RequestOptions;
+
+/**
+ * @phpstan-import-type AgentShape from \Anthropic\Beta\Sessions\SessionCreateParams\Agent
+ * @phpstan-import-type InitialEventShape from \Anthropic\Beta\Sessions\SessionCreateParams\InitialEvent
+ * @phpstan-import-type ResourceShape from \Anthropic\Beta\Sessions\SessionCreateParams\Resource
+ * @phpstan-import-type BetaManagedAgentsSessionAgentUpdateShape from \Anthropic\Beta\Sessions\BetaManagedAgentsSessionAgentUpdate
+ * @phpstan-import-type BetaManagedAgentsBudgetLimitShape from \Anthropic\Beta\Sessions\BetaManagedAgentsBudgetLimit
+ * @phpstan-import-type RequestOpts from \Anthropic\RequestOptions
+ */
+interface SessionsContract
+{
+    /**
+     * @api
+     *
+     * @param AgentShape $agent Body param: Agent identifier. Accepts the `agent` ID string, which pins the latest version for the session, or an `agent` object with both id and version specified.
+     * @param string $environmentID body param: ID of the `environment` defining the container configuration for this session
+     * @param BetaManagedAgentsBudgetLimit|BetaManagedAgentsBudgetLimitShape $budget Body param: A hard spend ceiling. The session stops issuing new model requests once the tracked list cost reaches `max_list_cost`.
+     * @param list<InitialEventShape> $initialEvents Body param: Initial events to send to the `session` at creation, processed in order. Supports `user.message` and `user.define_outcome` events. Maximum 50 events.
+     * @param array<string,string> $metadata Body param: Arbitrary key-value metadata attached to the session. Maximum 16 pairs, keys up to 64 chars, values up to 512 chars.
+     * @param list<ResourceShape> $resources Body param: Resources (e.g. repositories, files) to mount into the session's container.
+     * @param string|null $title body param: Human-readable session title
+     * @param list<string> $vaultIDs body param: Vault IDs for stored credentials the agent can use during the session
+     * @param list<string|AnthropicBeta|value-of<AnthropicBeta>> $betas header param: Optional header to specify the beta version(s) you want to use
+     * @param string $workspaceID Header param: Optional header to select the Workspace for this request. The value is a Workspace ID (for example, `wrkspc_011CZkZaBF1tNoB5wlCeusgy`).
+     *
+     * Only needed for credentials that can act on more than one Workspace. A credential that belongs to a specific Workspace may omit it; if sent, it must match that Workspace.
+     * @param RequestOpts|null $requestOptions
+     *
+     * @throws APIException
+     */
+    public function create(
+        string|BetaManagedAgentsAgentParams|array|BetaManagedAgentsAgentWithOverridesParams $agent,
+        string $environmentID,
+        BetaManagedAgentsBudgetLimit|array|null $budget = null,
+        ?array $initialEvents = null,
+        ?array $metadata = null,
+        ?array $resources = null,
+        ?string $title = null,
+        ?array $vaultIDs = null,
+        ?array $betas = null,
+        ?string $workspaceID = null,
+        RequestOptions|array|null $requestOptions = null,
+    ): BetaManagedAgentsSession;
+
+    /**
+     * @api
+     *
+     * @param string $sessionID Path parameter session_id
+     * @param list<string|AnthropicBeta|value-of<AnthropicBeta>> $betas optional header to specify the beta version(s) you want to use
+     * @param string $workspaceID Optional header to select the Workspace for this request. The value is a Workspace ID (for example, `wrkspc_011CZkZaBF1tNoB5wlCeusgy`).
+     *
+     * Only needed for credentials that can act on more than one Workspace. A credential that belongs to a specific Workspace may omit it; if sent, it must match that Workspace.
+     * @param RequestOpts|null $requestOptions
+     *
+     * @throws APIException
+     */
+    public function retrieve(
+        string $sessionID,
+        ?array $betas = null,
+        ?string $workspaceID = null,
+        RequestOptions|array|null $requestOptions = null,
+    ): BetaManagedAgentsSession;
+
+    /**
+     * @api
+     *
+     * @param string $sessionID Path param: Path parameter session_id
+     * @param BetaManagedAgentsSessionAgentUpdate|BetaManagedAgentsSessionAgentUpdateShape $agent Body param: Mid-session agent configuration update. Only `tools` and `mcp_servers` are updatable. Full replacement: the provided array becomes the new value. To preserve existing entries, GET the session, modify the array, and POST it back.
+     * @param BetaManagedAgentsBudgetLimit|BetaManagedAgentsBudgetLimitShape|null $budget Body param: A hard spend ceiling. The session stops issuing new model requests once the tracked list cost reaches `max_list_cost`.
+     * @param array<string,string|null>|null $metadata Body param: Metadata patch. Set a key to a string to upsert it, or to null to delete it. Omit the field to preserve.
+     * @param string|null $title body param: Human-readable session title
+     * @param list<string> $vaultIDs Body param: Vault IDs (`vlt_*`) to attach to the session. Not yet supported; requests setting this field are rejected. Reserved for future use.
+     * @param list<string|AnthropicBeta|value-of<AnthropicBeta>> $betas header param: Optional header to specify the beta version(s) you want to use
+     * @param string $workspaceID Header param: Optional header to select the Workspace for this request. The value is a Workspace ID (for example, `wrkspc_011CZkZaBF1tNoB5wlCeusgy`).
+     *
+     * Only needed for credentials that can act on more than one Workspace. A credential that belongs to a specific Workspace may omit it; if sent, it must match that Workspace.
+     * @param RequestOpts|null $requestOptions
+     *
+     * @throws APIException
+     */
+    public function update(
+        string $sessionID,
+        BetaManagedAgentsSessionAgentUpdate|array|null $agent = null,
+        BetaManagedAgentsBudgetLimit|array|null $budget = null,
+        ?array $metadata = null,
+        ?string $title = null,
+        ?array $vaultIDs = null,
+        ?array $betas = null,
+        ?string $workspaceID = null,
+        RequestOptions|array|null $requestOptions = null,
+    ): BetaManagedAgentsSession;
+
+    /**
+     * @api
+     *
+     * @param string $agentID query param: Filter sessions created with this agent ID
+     * @param int $agentVersion Query param: Filter by agent version. Only applies when `agent_id` is also set.
+     * @param \DateTimeInterface $createdAtGt query param: Return sessions created after this time (exclusive)
+     * @param \DateTimeInterface $createdAtGte query param: Return sessions created at or after this time (inclusive)
+     * @param \DateTimeInterface $createdAtLt query param: Return sessions created before this time (exclusive)
+     * @param \DateTimeInterface $createdAtLte query param: Return sessions created at or before this time (inclusive)
+     * @param string $deploymentID query param: Filter sessions created by this deployment ID
+     * @param bool $includeArchived Query param: When true, includes archived sessions. Default: false (exclude archived).
+     * @param int $limit query param: Maximum number of results to return
+     * @param string $memoryStoreID query param: Filter sessions whose resources contain a `memory_store` with this memory store ID
+     * @param Order|value-of<Order> $order Query param: Sort direction for results, ordered by `created_at`. Defaults to `desc` (newest first).
+     * @param string $page query param: Opaque pagination cursor from a previous response
+     * @param list<Status|value-of<Status>> $statuses Query param: Filter by session status. Repeat the parameter to match any of multiple statuses.
+     * @param list<string|AnthropicBeta|value-of<AnthropicBeta>> $betas header param: Optional header to specify the beta version(s) you want to use
+     * @param string $workspaceID Header param: Optional header to select the Workspace for this request. The value is a Workspace ID (for example, `wrkspc_011CZkZaBF1tNoB5wlCeusgy`).
+     *
+     * Only needed for credentials that can act on more than one Workspace. A credential that belongs to a specific Workspace may omit it; if sent, it must match that Workspace.
+     * @param RequestOpts|null $requestOptions
+     *
+     * @return BidirectionalPageCursor<BetaManagedAgentsSession>
+     *
+     * @throws APIException
+     */
+    public function list(
+        ?string $agentID = null,
+        ?int $agentVersion = null,
+        ?\DateTimeInterface $createdAtGt = null,
+        ?\DateTimeInterface $createdAtGte = null,
+        ?\DateTimeInterface $createdAtLt = null,
+        ?\DateTimeInterface $createdAtLte = null,
+        ?string $deploymentID = null,
+        ?bool $includeArchived = null,
+        ?int $limit = null,
+        ?string $memoryStoreID = null,
+        Order|string|null $order = null,
+        ?string $page = null,
+        ?array $statuses = null,
+        ?array $betas = null,
+        ?string $workspaceID = null,
+        RequestOptions|array|null $requestOptions = null,
+    ): BidirectionalPageCursor;
+
+    /**
+     * @api
+     *
+     * @param string $sessionID Path parameter session_id
+     * @param list<string|AnthropicBeta|value-of<AnthropicBeta>> $betas optional header to specify the beta version(s) you want to use
+     * @param string $workspaceID Optional header to select the Workspace for this request. The value is a Workspace ID (for example, `wrkspc_011CZkZaBF1tNoB5wlCeusgy`).
+     *
+     * Only needed for credentials that can act on more than one Workspace. A credential that belongs to a specific Workspace may omit it; if sent, it must match that Workspace.
+     * @param RequestOpts|null $requestOptions
+     *
+     * @throws APIException
+     */
+    public function delete(
+        string $sessionID,
+        ?array $betas = null,
+        ?string $workspaceID = null,
+        RequestOptions|array|null $requestOptions = null,
+    ): BetaManagedAgentsDeletedSession;
+
+    /**
+     * @api
+     *
+     * @param string $sessionID Path parameter session_id
+     * @param list<string|AnthropicBeta|value-of<AnthropicBeta>> $betas optional header to specify the beta version(s) you want to use
+     * @param string $workspaceID Optional header to select the Workspace for this request. The value is a Workspace ID (for example, `wrkspc_011CZkZaBF1tNoB5wlCeusgy`).
+     *
+     * Only needed for credentials that can act on more than one Workspace. A credential that belongs to a specific Workspace may omit it; if sent, it must match that Workspace.
+     * @param RequestOpts|null $requestOptions
+     *
+     * @throws APIException
+     */
+    public function archive(
+        string $sessionID,
+        ?array $betas = null,
+        ?string $workspaceID = null,
+        RequestOptions|array|null $requestOptions = null,
+    ): BetaManagedAgentsSession;
+}

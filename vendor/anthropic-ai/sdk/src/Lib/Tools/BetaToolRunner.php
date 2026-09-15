@@ -1,0 +1,548 @@
+<?php
+
+declare(strict_types=1);
+
+namespace Anthropic\Lib\Tools;
+
+use Anthropic\Beta\Messages\BetaContainerParams;
+use Anthropic\Beta\Messages\BetaMessage;
+use Anthropic\Beta\Messages\BetaMessageParam;
+use Anthropic\Beta\Messages\BetaStopReason;
+use Anthropic\Beta\Messages\BetaToolUseBlock;
+use Anthropic\Client;
+use Anthropic\Core\Contracts\BaseModel;
+use Anthropic\Lib\Helpers\StainlessHelperHeader;
+use Anthropic\Messages\Model;
+
+/**
+ * Handles the automatic conversation loop between the assistant and tools.
+ *
+ * BetaToolRunner is an iterable that yields each BetaMessage produced during
+ * the tool execution loop. The loop continues until the model stops requesting
+ * tools or max_iterations is reached.
+ *
+ * @phpstan-import-type BetaToolUnionShape from \Anthropic\Beta\Messages\BetaToolUnion
+ *
+ * @implements \IteratorAggregate<int, BetaMessage>
+ */
+final class BetaToolRunner implements \IteratorAggregate
+{
+    /** Execute the turn's client tool calls, answer with their results, and continue; with none, stop. */
+    private const STEP_RUN_TOOLS = 'run_tools';
+
+    /** The turn is unfinished: send it back unchanged, executing nothing, so the server continues it. */
+    private const STEP_RESUME = 'resume';
+
+    /** The turn is final: the loop ends on it and its tool_use blocks are not executed. */
+    private const STEP_STOP = 'stop';
+
+    private bool $consumed = false;
+
+    /**
+     * Set to true when setMessagesParams() or pushMessages() is called during
+     * iteration, signalling that the caller is managing history manually and
+     * the runner should skip auto-appending the current assistant message.
+     */
+    private bool $mutated = false;
+
+    /** @var list<BetaRunnableTool|BetaToolUnionShape> Original tools array (runnable + plain defs) */
+    private array $tools;
+
+    /** @var array<string, BetaRunnableTool> For quick lookup during tool execution */
+    private array $runnableToolsByName = [];
+
+    /** @var list<array<string, mixed>> API tool definitions extracted from $tools */
+    private array $toolDefinitions = [];
+
+    /** @var list<array<string, mixed>> Growing message history */
+    private array $messages;
+
+    private string $model;
+
+    /**
+     * @param list<BetaRunnableTool|BetaToolUnionShape> $tools Mix of runnable tools and plain tool definitions
+     * @param list<array<string, mixed>> $messages Initial messages
+     * @param array<string, mixed> $extraParams Additional params forwarded to every messages.create() call
+     */
+    public function __construct(
+        private Client $client,
+        private int $maxTokens,
+        array $messages,
+        Model|string $model,
+        array $tools = [],
+        private ?int $maxIterations = null,
+        private array $extraParams = [],
+    ) {
+        $this->model = $model instanceof Model ? $model->value : $model;
+        $this->messages = $messages;
+        $this->tools = $tools;
+        $this->processTools($tools);
+    }
+
+    /**
+     * Iterate over each BetaMessage produced during the tool loop.
+     *
+     * @throws \RuntimeException If the runner has already been consumed
+     *
+     * @return \Generator<int, BetaMessage>
+     */
+    public function getIterator(): \Generator
+    {
+        return $this->doIterate();
+    }
+
+    /**
+     * Run the full loop and return the final BetaMessage.
+     *
+     * @throws \RuntimeException If the loop produces no messages
+     */
+    public function runUntilDone(): BetaMessage
+    {
+        $last = null;
+        foreach ($this as $message) {
+            $last = $message;
+        }
+
+        if (null === $last) {
+            throw new \RuntimeException('ToolRunner concluded without a message from the server');
+        }
+
+        return $last;
+    }
+
+    /**
+     * Update the parameters used for subsequent API calls.
+     *
+     * Accepts either a full replacement array or a mutator callable that receives
+     * the current params and returns new params. Recognized keys match the named
+     * parameters of MessagesService::create() (camelCase), plus `maxIterations`.
+     *
+     * Calling this during iteration signals that the caller is managing message
+     * history manually; the runner will skip auto-appending the current assistant
+     * message for that turn.
+     *
+     * @param array<string, mixed>|callable(array<string, mixed>): array<string, mixed> $paramsOrMutator
+     */
+    public function setMessagesParams(array|callable $paramsOrMutator): void
+    {
+        $new = is_array($paramsOrMutator)
+            ? $paramsOrMutator
+            : $paramsOrMutator($this->getParams());
+
+        if (is_int($new['maxTokens'] ?? null)) {
+            $this->maxTokens = $new['maxTokens'];
+        }
+
+        if (is_string($new['model'] ?? null)) {
+            $this->model = $new['model'];
+        }
+
+        if (array_key_exists('maxIterations', $new)) {
+            $this->maxIterations = is_int($new['maxIterations']) ? $new['maxIterations'] : null;
+        }
+
+        if (is_array($new['messages'] ?? null)) {
+            /** @var list<array<string, mixed>> $messages */
+            $messages = array_map(
+                fn ($msg) => $msg instanceof BaseModel ? $msg->jsonSerialize() : $msg,
+                $new['messages'],
+            );
+            $this->messages = $messages;
+        }
+
+        if (is_array($new['tools'] ?? null)) {
+            /** @var list<BetaRunnableTool|BetaToolUnionShape> $tools */
+            $tools = $new['tools'];
+            $this->tools = $tools;
+            $this->runnableToolsByName = [];
+            $this->toolDefinitions = [];
+            $this->processTools($tools);
+        }
+
+        $knownKeys = ['maxTokens', 'model', 'maxIterations', 'messages', 'tools'];
+
+        /** @var array<string, mixed> $extra */
+        $extra = array_diff_key($new, array_flip($knownKeys));
+        if ([] !== $extra) {
+            $this->extraParams = array_merge($this->extraParams, $extra);
+        }
+
+        $this->mutated = true;
+    }
+
+    /**
+     * Append one or more messages to the current history.
+     *
+     * Like setMessagesParams(), calling this during iteration signals manual
+     * history management for that turn.
+     *
+     * @param array<string, mixed>|BetaMessageParam|BetaMessage ...$messages
+     */
+    public function pushMessages(array|BaseModel ...$messages): void
+    {
+        /** @var list<array<string, mixed>> $normalized */
+        $normalized = array_map(
+            fn ($msg) => $msg instanceof BaseModel ? $msg->jsonSerialize() : $msg,
+            $messages,
+        );
+        array_push($this->messages, ...$normalized);
+        $this->mutated = true;
+    }
+
+    /**
+     * Returns a read-only snapshot of the current params.
+     *
+     * The returned array uses the same camelCase keys accepted by setMessagesParams().
+     *
+     * @return array<string, mixed>
+     */
+    public function getParams(): array
+    {
+        return array_filter(
+            array_merge(
+                [
+                    'maxTokens' => $this->maxTokens,
+                    'messages' => $this->messages,
+                    'model' => $this->model,
+                    'tools' => $this->tools ?: null,
+                    'maxIterations' => $this->maxIterations,
+                ],
+                $this->extraParams,
+            ),
+            fn ($v) => null !== $v,
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // Internals
+    // -------------------------------------------------------------------------
+
+    /** @return \Generator<int, BetaMessage> */
+    private function doIterate(): \Generator
+    {
+        if ($this->consumed) {
+            throw new \RuntimeException('Cannot iterate over a consumed runner');
+        }
+
+        $this->consumed = true;
+
+        $iterationCount = 0;
+
+        while (true) {
+            if (null !== $this->maxIterations && $iterationCount >= $this->maxIterations) {
+                break;
+            }
+
+            $this->mutated = false;
+            ++$iterationCount;
+
+            $params = array_filter(
+                array_merge(
+                    [
+                        'maxTokens' => $this->maxTokens,
+                        'messages' => $this->messages,
+                        'model' => $this->model,
+                        'tools' => $this->toolDefinitions ?: null,
+                    ],
+                    $this->extraParams,
+                ),
+                fn ($v) => null !== $v,
+            );
+
+            $params['requestOptions'] = [
+                'extraHeaders' => [
+                    StainlessHelperHeader::HEADER => StainlessHelperHeader::BETA_TOOL_RUNNER,
+                ],
+            ];
+
+            // @phpstan-ignore argument.type
+            $message = $this->client->beta->messages->create(...$params);
+
+            yield $message;
+
+            $nextStep = self::determineNextStepFromStopReason($message->stopReason);
+
+            // If the caller mutated params during this yield, skip auto-appending
+            // the assistant message — they are managing history manually this turn.
+            // @phpstan-ignore booleanNot.alwaysTrue
+            if (!$this->mutated) {
+                $this->messages[] = ['role' => 'assistant', 'content' => $message->content];
+
+                // Container-bound server tools reject a follow-up request that omits the container the
+                // previous turn ran in, so carry its id forward unless the caller pinned one themselves.
+                $containerID = ($message->container ?? null)?->id;
+                if (null !== $containerID) {
+                    $container = $this->extraParams['container'] ?? null;
+                    if (null === $container) {
+                        $this->extraParams['container'] = $containerID;
+                    } elseif ($container instanceof BetaContainerParams && null === $container->id) {
+                        $this->extraParams['container'] = $container->withID($containerID);
+                    } elseif (is_array($container) && !isset($container['id'])) {
+                        $this->extraParams['container'] = ['id' => $containerID] + $container;
+                    }
+                }
+
+                if (self::STEP_STOP === $nextStep) {
+                    break;
+                }
+
+                if (self::STEP_RESUME === $nextStep) {
+                    continue;
+                }
+            }
+
+            $toolResults = $this->buildToolResults($this->messages[array_key_last($this->messages)]);
+
+            if (null !== $toolResults) {
+                $this->messages[] = ['role' => 'user', 'content' => $toolResults];
+            } elseif (!$this->mutated) {
+                break;
+            }
+        }
+    }
+
+    /**
+     * Decides how the loop treats a finished request from its stop reason.
+     *
+     * @return self::STEP_* one of three outcomes; unknown values from a newer API stop the loop
+     */
+    private static function determineNextStepFromStopReason(?string $stopReason): string
+    {
+        $reason = null === $stopReason ? null : BetaStopReason::tryFrom($stopReason);
+        if (null === $reason) {
+            return self::STEP_STOP;
+        }
+
+        // No default arm: PHPStan rejects a non-exhaustive match, so every new case must be classified here.
+        return match ($reason) {
+            BetaStopReason::TOOL_USE => self::STEP_RUN_TOOLS,
+            // pause_after_compaction hands the turn back before the model answers; sending it back unchanged continues it.
+            BetaStopReason::COMPACTION,
+            BetaStopReason::PAUSE_TURN => self::STEP_RESUME,
+            BetaStopReason::END_TURN,
+            BetaStopReason::STOP_SEQUENCE,
+            BetaStopReason::MAX_TOKENS,
+            BetaStopReason::MODEL_CONTEXT_WINDOW_EXCEEDED,
+            BetaStopReason::REFUSAL => self::STEP_STOP,
+        };
+    }
+
+    /**
+     * @param array<string, mixed> $lastMessage
+     *
+     * @return list<array<string, mixed>>|null Tool result blocks, or null if no tool use in the message
+     */
+    private function buildToolResults(array $lastMessage): ?array
+    {
+        if (($lastMessage['role'] ?? null) !== 'assistant') {
+            return null;
+        }
+
+        $content = $lastMessage['content'] ?? [];
+        if (!is_array($content)) {
+            return null;
+        }
+
+        $toolUseBlocks = array_values(array_filter(
+            $content,
+            fn ($block) => $block instanceof BetaToolUseBlock,
+        ));
+
+        if ([] === $toolUseBlocks) {
+            return null;
+        }
+
+        $available = $this->availableToolNames();
+
+        return array_map(
+            fn ($toolUse) => $this->executeToolUse(
+                $toolUse,
+                isset($available[$toolUse->name]) ? ($this->runnableToolsByName[$toolUse->name] ?? null) : null,
+            ),
+            $toolUseBlocks,
+        );
+    }
+
+    /**
+     * Names of the tools the model may currently call, as a set.
+     *
+     * Folds tool_removal / tool_addition blocks from role "system" messages
+     * over the runner's runnable tool names. Removal is only a hint to the
+     * model, which can still emit a tool_use for a removed tool — such a call
+     * must behave exactly like a call to a tool that was never defined.
+     *
+     * @return array<string, true>
+     */
+    private function availableToolNames(): array
+    {
+        $available = array_fill_keys(array_keys($this->runnableToolsByName), true);
+
+        foreach ($this->messages as $message) {
+            $message = self::toArray($message);
+            if (!is_array($message) || 'system' !== ($message['role'] ?? null)) {
+                continue;
+            }
+
+            $content = $message['content'] ?? null;
+            if (!is_array($content)) {
+                continue;
+            }
+
+            foreach ($content as $block) {
+                $this->applyToolChange(self::toArray($block), $available);
+            }
+        }
+
+        return $available;
+    }
+
+    /**
+     * @param array<string, true> $available
+     */
+    private function applyToolChange(mixed $block, array &$available): void
+    {
+        if (!is_array($block)) {
+            return;
+        }
+
+        switch ($block['type'] ?? null) {
+            case 'tool_removal':
+            case 'tool_addition':
+                self::applyToolReferenceChange($block, $available);
+
+                break;
+
+            case 'mid_conv_system':
+                // The API schema limits mid_conv_system content to text /
+                // tool_addition / tool_removal, so exactly one level is walked:
+                // only its tool_addition / tool_removal inner blocks fold in,
+                // and any other inner type is a no-op — no recursion.
+                foreach ((array) ($block['content'] ?? []) as $inner) {
+                    self::applyToolReferenceChange(self::toArray($inner), $available);
+                }
+
+                break;
+
+            default:
+                // Other and unknown/newer block types leave the set untouched
+                // (forward compatibility) — never raise.
+                break;
+        }
+    }
+
+    /**
+     * Folds one tool_removal / tool_addition block over the available set;
+     * any other block type leaves the set untouched.
+     *
+     * @param array<string, true> $available
+     */
+    private static function applyToolReferenceChange(mixed $block, array &$available): void
+    {
+        if (!is_array($block)) {
+            return;
+        }
+
+        switch ($block['type'] ?? null) {
+            case 'tool_removal':
+                if (null !== ($name = self::referencedToolName($block['tool'] ?? null))) {
+                    unset($available[$name]);
+                }
+
+                break;
+
+            case 'tool_addition':
+                if (null !== ($name = self::referencedToolName($block['tool'] ?? null))) {
+                    $available[$name] = true;
+                }
+
+                break;
+
+            default:
+                break;
+        }
+    }
+
+    /**
+     * Only tool_reference names a locally runnable tool; MCP references are
+     * executed server-side and unknown/newer types are ignored.
+     */
+    private static function referencedToolName(mixed $tool): ?string
+    {
+        $tool = self::toArray($tool);
+        if (!is_array($tool)) {
+            return null;
+        }
+
+        switch ($tool['type'] ?? null) {
+            case 'tool_reference':
+                return is_string($tool['name'] ?? null) ? $tool['name'] : null;
+
+            default:
+                return null;
+        }
+    }
+
+    /**
+     * History may hold typed SDK params/models as well as plain arrays; normalize to the API shape.
+     */
+    private static function toArray(mixed $value): mixed
+    {
+        return $value instanceof \JsonSerializable ? $value->jsonSerialize() : $value;
+    }
+
+    /**
+     * @param BetaRunnableTool|null $tool The currently-available tool matching the call, if any
+     *
+     * @return array<string, mixed>
+     */
+    private function executeToolUse(BetaToolUseBlock $toolUse, ?BetaRunnableTool $tool): array
+    {
+        if (null === $tool) {
+            return [
+                'type' => 'tool_result',
+                'tool_use_id' => $toolUse->id,
+                'content' => "Error: Tool '{$toolUse->name}' not found",
+                'is_error' => true,
+            ];
+        }
+
+        try {
+            return [
+                'type' => 'tool_result',
+                'tool_use_id' => $toolUse->id,
+                'content' => $tool->run($toolUse->input),
+            ];
+        } catch (\Throwable $e) {
+            return [
+                'type' => 'tool_result',
+                'tool_use_id' => $toolUse->id,
+                'content' => 'Error: '.$e->getMessage(),
+                'is_error' => true,
+            ];
+        }
+    }
+
+    /**
+     * @param list<BetaRunnableTool|BetaToolUnionShape> $tools
+     */
+    private function processTools(array $tools): void
+    {
+        foreach ($tools as $tool) {
+            if ($tool instanceof BetaRunnableTool) {
+                $this->runnableToolsByName[$tool->name()] = $tool;
+                $def = $tool->definition;
+
+                /** @var array<string, mixed> $serialized */
+                $serialized = $def instanceof \JsonSerializable ? $def->jsonSerialize() : $def;
+                $this->toolDefinitions[] = $serialized;
+            } elseif ($tool instanceof \JsonSerializable) {
+                // BaseModel instances (BetaTool, BetaToolBash*, etc.) — serialize for the API
+                /** @var array<string, mixed> $serialized */
+                $serialized = $tool->jsonSerialize();
+                $this->toolDefinitions[] = $serialized;
+            } else {
+                $this->toolDefinitions[] = $tool;
+            }
+        }
+    }
+}

@@ -303,6 +303,13 @@ $pipelines = \Glue\Crm\Pipelines::all();
     <small class="muted"><?= $h($t('f_su_features_h')) ?></small>
   </label>
 
+  <h3><?= $h($t('sec_ai')) ?> <span class="pill"><?= $h($t('optional')) ?></span></h3>
+  <p class="muted small" style="margin:-6px 0 12px"><?= $h($t('sec_ai_sub')) ?></p>
+  <div class="row">
+    <?php secret_fld($h, 'ai.api_key', $t('f_ai_key'), $cfg('ai.api_key'), $t('f_ai_key_h')); ?>
+    <?php fld($h, 'ai.model', $t('f_ai_model'), $cfg('ai.model', ''), $t('f_ai_model_h')); ?>
+  </div>
+
   <h3><?= $h($t('sec_bitrix')) ?> <span class="pill"><?= $h($t('optional')) ?></span></h3>
   <p class="muted small"><?= $h($t('sec_bitrix_h')) ?></p>
   <label class="fld" style="display:flex;flex-direction:row;align-items:center;gap:10px">
@@ -366,6 +373,10 @@ $pipelines = \Glue\Crm\Pipelines::all();
   <?php if (trim((string)$cfg('sibill.api_key', '')) !== ''): ?>
   <form method="post" class="inline"><input type="hidden" name="do" value="test_sibill">
     <button class="btn ghost"><?= $h($t('test_sibill')) ?></button></form>
+  <?php endif; ?>
+  <?php if (\Glue\Ai\Assistant::configured()): ?>
+  <form method="post" class="inline"><input type="hidden" name="do" value="test_ai">
+    <button class="btn ghost"><?= $h($t('test_ai')) ?></button></form>
   <?php endif; ?>
   <?php if (trim((string)$cfg('leads_mailbox.user', '')) !== ''): ?>
   <form method="post" class="inline"><input type="hidden" name="do" value="test_mailbox">
