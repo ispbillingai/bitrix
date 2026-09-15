@@ -146,7 +146,8 @@ final class Tools
                       'starts_at' => $str('Data e ora "YYYY-MM-DD HH:MM"'), 'agent_id' => $int('Id agente (solo admin; gli altri sono l\'agente)'),
                       'title' => $str('Titolo'), 'location' => $str('Luogo')], ['name', 'starts_at']));
         }
-        return $defs;
+        // Settings → Assistente AI → Solo lettura: the actions are not even offered.
+        return self::readOnly() ? array_values(array_filter($defs, fn($d) => !self::isAction($d['name']))) : $defs;
     }
 
     public static function isAction(string $name): bool
@@ -582,6 +583,9 @@ final class Tools
     {
         try {
             $allowed = array_column(self::definitions($ctx), 'name');
+            if (self::readOnly() && self::isAction($name)) {
+                return ['ok' => false, 'text' => 'L\'assistente è in sola lettura (Impostazioni → Assistente AI): questa azione va fatta direttamente nel CRM.'];
+            }
             if (!self::isAction($name) || !in_array($name, $allowed, true)) {
                 return ['ok' => false, 'text' => 'Azione non disponibile per questo utente.'];
             }
@@ -928,4 +932,9 @@ final class Tools
         ], fn($v) => $v !== null && $v !== ''), $rows)]);
     }
 
+    /** Settings → Assistente AI → "Solo lettura": the assistant answers and searches, and never proposes an action. */
+    public static function readOnly(): bool
+    {
+        return filter_var(\Glue\Config::get('ai.read_only', false), FILTER_VALIDATE_BOOLEAN);
+    }
 }

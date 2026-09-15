@@ -311,7 +311,11 @@ $pipelines = \Glue\Crm\Pipelines::all();
     <?php fld($h, 'ai.usd_eur', $t('f_ai_usd_eur'), $cfg('ai.usd_eur', ''), $t('f_ai_usd_eur_h')); ?>
   </div>
 
-  <?php // What the assistant has cost, from the usage saved with every answer (Ai\Pricing). ?>
+  <label class="fld" style="display:flex;flex-direction:row;align-items:flex-start;gap:10px;margin:-4px 0 14px">
+    <input type="checkbox" name="ai.read_only" value="true" style="width:auto;margin-top:3px" <?= filter_var($cfg('ai.read_only', false), FILTER_VALIDATE_BOOLEAN) ? 'checked' : '' ?>>
+    <span style="margin:0"><b style="color:var(--txt)"><?= $h($t('f_ai_read_only')) ?></b><br><?= $h($t('f_ai_read_only_h')) ?></span>
+  </label>
+<?php // What the assistant has cost, from the usage saved with every answer (Ai\Pricing). ?>
   <?php $aiSum = \Glue\Ai\Pricing::summary();
         $aiNames = [];
         foreach (\Glue\Db::pdo()->query("SELECT id, COALESCE(NULLIF(TRIM(full_name), ''), username) AS n FROM users") as $aiU) { $aiNames[(int)$aiU['id']] = (string)$aiU['n']; } ?>

@@ -1991,5 +1991,9 @@ return [
     'ai_usage_people' => 'Per persona, questo mese',
     'ai_usage_none' => 'Nessuna domanda all’assistente finora.',
     'ai_usage_note' => 'Stima calcolata dai token di ogni risposta ai prezzi Anthropic, che addebita in dollari. Il conto esatto è su console.anthropic.com, alla voce Usage. Per spendere circa il 60% in meno, scrivi claude-sonnet-5 nel campo Modello.',
+
+    // ---- assistant: read-only switch ----
+    'f_ai_read_only' => 'Solo lettura',
+    'f_ai_read_only_h' => 'L’assistente risponde e cerca nel CRM, ma non propone né esegue azioni: attività, note, messaggi, cambi di fase, appuntamenti. Le proposte già fatte non si possono più confermare.',
 ];
 

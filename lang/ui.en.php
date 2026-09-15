@@ -1993,5 +1993,9 @@ return [
     'ai_usage_people' => 'By person, this month',
     'ai_usage_none' => 'No questions to the assistant yet.',
     'ai_usage_note' => 'Estimated from each answer’s tokens at Anthropic’s prices, billed in dollars. The exact bill is on console.anthropic.com under Usage. To spend about 60% less, put claude-sonnet-5 in the Model field.',
+
+    // ---- assistant: read-only switch ----
+    'f_ai_read_only' => 'Read only',
+    'f_ai_read_only_h' => 'The assistant answers and searches the CRM, but never proposes or runs an action: tasks, notes, messages, stage changes, appointments. Earlier proposals can no longer be confirmed.',
 ];
 

@@ -510,6 +510,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pairs['sibill.enabled'] = $post('sibill.enabled') !== null ? 'true' : 'false';
                 $pairs['sibill.chase_enabled'] = $post('sibill.chase_enabled') !== null ? 'true' : 'false';
                 $pairs['sibill.chase_pay_link'] = $post('sibill.chase_pay_link') !== null ? 'true' : 'false';
+                $pairs['ai.read_only'] = $post('ai.read_only') !== null ? 'true' : 'false';
                 $pairs['leads_mailbox.enabled'] = $post('leads_mailbox.enabled') !== null ? 'true' : 'false';
                 $pairs['smallpay.enabled'] = $post('smallpay.enabled') !== null ? 'true' : 'false';
                 $pairs['smallpay.modify_installments'] = $post('smallpay.modify_installments') !== null ? 'true' : 'false';
