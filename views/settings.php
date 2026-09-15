@@ -308,6 +308,35 @@ $pipelines = \Glue\Crm\Pipelines::all();
   <div class="row">
     <?php secret_fld($h, 'ai.api_key', $t('f_ai_key'), $cfg('ai.api_key'), $t('f_ai_key_h')); ?>
     <?php fld($h, 'ai.model', $t('f_ai_model'), $cfg('ai.model', ''), $t('f_ai_model_h')); ?>
+    <?php fld($h, 'ai.usd_eur', $t('f_ai_usd_eur'), $cfg('ai.usd_eur', ''), $t('f_ai_usd_eur_h')); ?>
+  </div>
+
+  <?php // What the assistant has cost, from the usage saved with every answer (Ai\Pricing). ?>
+  <?php $aiSum = \Glue\Ai\Pricing::summary();
+        $aiNames = [];
+        foreach (\Glue\Db::pdo()->query("SELECT id, COALESCE(NULLIF(TRIM(full_name), ''), username) AS n FROM users") as $aiU) { $aiNames[(int)$aiU['id']] = (string)$aiU['n']; } ?>
+  <div class="card" style="background:var(--surface2);margin:-4px 0 18px">
+    <b class="small"><?= $h($t('ai_usage_h')) ?></b>
+    <?php if ($aiSum['this']['answers'] === 0 && $aiSum['prev']['answers'] === 0): ?>
+      <p class="muted small" style="margin:6px 0 0"><?= $h($t('ai_usage_none')) ?></p>
+    <?php else: ?>
+      <dl class="cm-kv">
+        <?php foreach (['this' => 'ai_usage_this', 'prev' => 'ai_usage_prev'] as $aiK => $aiLbl): $aiS = $aiSum[$aiK]; ?>
+          <dt><?= $h($t($aiLbl)) ?></dt>
+          <dd><b><?= $h(\Glue\Ai\Pricing::money($aiS['usd'], $lang)) ?></b> · <?= (int)$aiS['answers'] ?> <?= $h($t('ai_usage_answers')) ?><?php
+            if ($aiS['answers'] > 0): ?> · <?= $h($t('ai_usage_avg')) ?> <?= $h(\Glue\Ai\Pricing::money($aiS['usd'] / $aiS['answers'], $lang)) ?><?php endif; ?></dd>
+        <?php endforeach; ?>
+        <?php if ($aiSum['people']): ?>
+          <dt><?= $h($t('ai_usage_people')) ?></dt>
+          <dd><?php $aiBits = [];
+            foreach ($aiSum['people'] as $aiUid => $aiP) {
+                $aiBits[] = $h($aiNames[$aiUid] ?? ('#' . $aiUid)) . ' ' . $h(\Glue\Ai\Pricing::money($aiP['usd'], $lang)) . ' (' . (int)$aiP['answers'] . ')';
+            }
+            echo implode(' · ', $aiBits); ?></dd>
+        <?php endif; ?>
+      </dl>
+    <?php endif; ?>
+    <p class="muted small" style="margin:8px 0 0"><?= $h($t('ai_usage_note')) ?></p>
   </div>
 
   <h3><?= $h($t('sec_bitrix')) ?> <span class="pill"><?= $h($t('optional')) ?></span></h3>

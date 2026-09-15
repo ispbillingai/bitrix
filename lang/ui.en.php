@@ -1978,5 +1978,20 @@ return [
     'qt_already_sent' => 'This request had already been sent to the office: it was not sent a second time.',
     'evt_staff_alert_failed' => 'Staff alert not queued (error)',
     'src_notify' => 'Notifications',
+
+    // ---- assistant: cost per answer and per month (src/Ai/Pricing.php) ----
+    'tm_ai_lang' => 'en',
+    'tm_ai_cost' => 'estimated cost %s · %s tokens',
+    'tm_ai_cost_h' => 'Estimated from this answer’s tokens at Anthropic’s prices. Only administrators see it.',
+    'f_ai_usd_eur' => 'Dollar → euro rate',
+    'f_ai_usd_eur_h' => 'Optional, e.g. 0.86: costs are also shown in euros. Empty = dollars only, the currency Anthropic bills in.',
+    'ai_usage_h' => 'What the assistant costs',
+    'ai_usage_this' => 'This month',
+    'ai_usage_prev' => 'Last month',
+    'ai_usage_answers' => 'answers',
+    'ai_usage_avg' => 'average per answer',
+    'ai_usage_people' => 'By person, this month',
+    'ai_usage_none' => 'No questions to the assistant yet.',
+    'ai_usage_note' => 'Estimated from each answer’s tokens at Anthropic’s prices, billed in dollars. The exact bill is on console.anthropic.com under Usage. To spend about 60% less, put claude-sonnet-5 in the Model field.',
 ];
 

@@ -79,6 +79,7 @@ final class Assistant
         $actions = [];
         $used = [];
         $usage = ['in' => 0, 'out' => 0, 'cache_read' => 0, 'cache_write' => 0];
+        $respModel = ''; // the model that actually answered: a server-side fallback may differ from the setting
         $finalText = '';
         $stop = '';
 
@@ -91,6 +92,7 @@ final class Assistant
                 $usage['cache_read'] += (int)($resp->usage->cacheReadInputTokens ?? 0);
                 $usage['cache_write'] += (int)($resp->usage->cacheCreationInputTokens ?? 0);
                 $stop = (string)($resp->stopReason ?? '');
+                $respModel = (string)($resp->model ?? '') ?: $respModel;
 
                 $texts = [];
                 $calls = [];
@@ -153,7 +155,10 @@ final class Assistant
         if ($finalText === '') {
             $finalText = $ctx['lang'] === 'en' ? '(no answer)' : '(nessuna risposta)';
         }
-        $meta = ['actions' => $actions, 'tools' => array_values(array_unique($used)), 'usage' => $usage, 'model' => self::model()];
+        $usedModel = $respModel !== '' ? $respModel : self::model();
+        // What this answer cost, kept with it (Ai\Pricing): shown under the answer to admins, summed in Settings.
+        $meta = ['actions' => $actions, 'tools' => array_values(array_unique($used)), 'usage' => $usage, 'model' => $usedModel,
+                 'cost_usd' => Pricing::cost($usage, $usedModel)];
         $rid = Chat::post($chatId, null, 'Assistente', $finalText, null, 'assistant', $meta);
         Log::write('ai', 'assistant_reply', 'team_chat', $chatId, ['user' => $ctx['uid'], 'tools' => $meta['tools'],
             'actions' => count($actions), 'usage' => $usage, 'stop' => $stop]);
@@ -236,10 +241,12 @@ Cosa sai fare:
 - suggerire il prossimo passo di vendita;
 - compilare il CRM: creare attività, note, lead, spostare fasi, aggiornare campi;
 - scrivere ai clienti (chat del CRM o WhatsApp), aprire/aggiornare ticket, fissare appuntamenti;
-- produrre report e analisi con i dati del CRM.
+- produrre report e analisi con i dati del CRM;
+- consultare il magazzino: articoli, giacenze, sotto scorta, ordinati (search_articles, stock_report);
+- seguire le richieste di preventivo alla sede, le provvigioni, i pagamenti SmallPay, i partner e le installazioni, secondo il tuo ruolo.
 
 Regole:
-1. I fatti vengono SOLO dagli strumenti. Non inventare mai clienti, date, importi o numeri di ticket. Se non trovi qualcosa, dillo.
+1. I fatti vengono SOLO dagli strumenti. Non inventare mai clienti, date, importi o numeri di ticket. Se non trovi qualcosa, dillo. Se nessuno dei tuoi strumenti copre un argomento, di' che da qui non puoi consultarlo: non concludere mai che il dato non esiste.
 2. Prima di parlare di un cliente, trovalo con search_customers e poi leggi la scheda con get_customer. Se il nome è ambiguo (più risultati plausibili), elenca i candidati e chiedi quale.
 3. Cita sempre gli id (#) di lead, ticket, trattative e attività, così l'utente può aprirli.
 4. Le AZIONI (creare, modificare, inviare) non vengono eseguite da te: la tua chiamata diventa una proposta che l'utente conferma con un pulsante. Non dire mai che un'azione è stata fatta se non lo è; dopo aver proposto, spiega cosa succederà alla conferma. Se in cronologia un'azione risulta "annullata", non riproporla senza che l'utente lo chieda.

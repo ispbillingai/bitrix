@@ -477,7 +477,7 @@ a.tel:hover{text-decoration:underline;}
  * name; the assistant's Markdown becomes HTML, with its proposed actions as
  * cards; a CRM note sits centred. $me is the viewer's user id.
  */
-function team_bubble(array $m, callable $t, callable $h, int $me): string {
+function team_bubble(array $m, callable $t, callable $h, int $me, bool $showCost = false): string {
     $role = (string)$m['role'];
     $mid  = (int)$m['id'];
     if ($role === 'system') {
@@ -493,6 +493,10 @@ function team_bubble(array $m, callable $t, callable $h, int $me): string {
     <?php foreach ((array)($m['meta']['actions'] ?? []) as $a) { echo team_action_card($a, $mid, $t, $h); } ?>
     <?php if (!empty($m['meta']['tools'])): ?>
       <div class="ai-tools">🔎 <?= $h(implode(', ', (array)$m['meta']['tools'])) ?></div>
+    <?php endif; ?>
+    <?php if ($showCost && ($aiUsd = \Glue\Ai\Pricing::ofMeta((array)($m['meta'] ?? []))) !== null): ?>
+      <div class="ai-tools" title="<?= $h($t('tm_ai_cost_h')) ?>">💶 <?= $h(sprintf($t('tm_ai_cost'), \Glue\Ai\Pricing::money($aiUsd, $t('tm_ai_lang')),
+        number_format(\Glue\Ai\Pricing::tokens((array)($m['meta']['usage'] ?? [])), 0, ',', '.'))) ?></div>
     <?php endif; ?>
   <?php else: ?>
     <?php if ((string)$m['body'] !== ''): ?><div class="msg-b"><?= nl2br($h($m['body'])) ?></div><?php endif; ?>

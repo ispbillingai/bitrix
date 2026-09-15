@@ -201,7 +201,7 @@ if (($_GET['poll'] ?? '') === 'team') {
     $tcOut = [];
     $tcLast = (int)($_GET['after'] ?? 0);
     foreach (TeamChat::thread($tcId, $tcLast) as $m) {
-        $tcOut[] = ['id' => (int)$m['id'], 'html' => team_bubble($m, $t, $h, (int)$uid)];
+        $tcOut[] = ['id' => (int)$m['id'], 'html' => team_bubble($m, $t, $h, (int)$uid, !$isAgent && !$isTech)];
         $tcLast = max($tcLast, (int)$m['id']);
     }
     if ($tcOut) {
@@ -474,7 +474,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'logistics.email', 'logistics.phone',
                     'bitrix.sync_enabled', 'bitrix.base_url', 'bitrix.outbound_secret',
                     'sibill.enabled', 'sibill.api_key', 'sibill.company_id',
-                    'ai.api_key', 'ai.model',
+                    'ai.api_key', 'ai.model', 'ai.usd_eur',
                     'sibill.sync_minutes', 'sibill.sync_months',
                     'sibill.chase_enabled', 'sibill.chase_from_date',
                     'sibill.chase_every_days', 'sibill.chase_min_days_late',
@@ -1694,7 +1694,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $aiOut = [];
                     foreach ($aiRes['ids'] as $mid) {
                         $m = TeamChat::message((int)$mid);
-                        if ($m) { $aiOut[] = ['id' => (int)$m['id'], 'html' => team_bubble($m, $t, $h, (int)$uid)]; }
+                        if ($m) { $aiOut[] = ['id' => (int)$m['id'], 'html' => team_bubble($m, $t, $h, (int)$uid, !$isAgent && !$isTech)]; }
                     }
                     echo json_encode(['ok' => $aiRes['ok'], 'error' => $aiRes['error'], 'messages' => $aiOut]);
                     exit;

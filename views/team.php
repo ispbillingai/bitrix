@@ -145,7 +145,7 @@ $aiOn = Assistant::configured();
             </div>
           </div>
         <?php endif; ?>
-        <?php foreach ($thread as $m) { echo team_bubble($m, $t, $h, $me); } ?>
+        <?php foreach ($thread as $m) { echo team_bubble($m, $t, $h, $me, empty($isAgent) && empty($isTech)); } ?>
       </div>
 
       <form method="post" enctype="multipart/form-data" class="tk-replybar" id="tm-form" data-ai="<?= $isAi ? '1' : '0' ?>">

@@ -85,6 +85,29 @@ final class Tools
             $defs[] = $tool('invoices_report', 'Fatture (Sibill): totali aperti e scaduti, e i clienti con più scaduto.', $obj([]));
         }
 
+        // ---- the rest of the CRM (2026-09-15: asked for the stock, it answered "you have no warehouse") ----
+        if ($role !== 'tech') {
+            $defs[] = $tool('search_articles', 'Magazzino: cerca articoli per codice, descrizione, codice a barre, fornitore o ubicazione. Per ciascuno: giacenza, disponibile, ordinato al fornitore, scorta minima, ubicazione' . ($isAdmin ? ', prezzo di listino e di costo' : ' e prezzo di listino') . '. Senza testo elenca gli articoli del filtro scelto.',
+                $obj(['query' => $str('Testo da cercare (facoltativo)'),
+                      'state' => ['type' => 'string', 'enum' => ['all', 'in_stock', 'low', 'negative', 'ordered'],
+                                  'description' => 'all (default), in_stock = con giacenza, low = sotto scorta minima, negative = giacenza negativa, ordered = ordinati al fornitore'],
+                      'limit' => $int('Quanti articoli, default 20, massimo 50')]));
+            $defs[] = $tool('stock_report', 'Il magazzino in sintesi: numero di articoli, quanti con giacenza, pezzi totali, sotto scorta, negativi, ordinati' . ($isAdmin ? ', valore a costo' : '') . ', e l\'elenco di quelli da riordinare.', $obj([]));
+            $defs[] = $tool('list_quote_requests', 'Le richieste di preventivo alla sede e il loro stato: open = in attesa della sede, ready = pronto, sent = inviato al cliente, revision = modifica chiesta, accepted = firmato, cancelled = annullato' . ($isAdmin ? '' : '. Solo le tue') . '.',
+                $obj(['status' => ['type' => 'string', 'enum' => ['all', 'open', 'ready', 'sent', 'revision', 'accepted', 'cancelled'], 'description' => 'default all (senza le annullate)'],
+                      'limit' => $int('Quante, default 20, massimo 50')]));
+            $defs[] = $tool('commissions_report', $isAdmin
+                ? 'Provvigioni: i conteggi inviati a partner e agenti (da fatturare, fatturati da pagare, pagati), gli ultimi conteggi, e le provvigioni maturate non ancora messe in un conteggio.'
+                : 'Le tue provvigioni: i conteggi che ti ha inviato l\'ufficio, da fatturare, fatturati e pagati.', $obj([]));
+        }
+        if ($isAdmin) {
+            $defs[] = $tool('payments_report', 'Pagamenti SmallPay (carta e addebito SEPA): contratti attivi, insoluti, in attesa del cliente, incassato, ricorrente mensile, e gli ultimi contratti.', $obj([]));
+            $defs[] = $tool('partners_report', 'I partner (segnalatori): per ciascuno le segnalazioni portate e il loro esito, l\'aliquota, le provvigioni maturate e pagate.', $obj([]));
+        }
+        if ($role !== 'agent') {
+            $defs[] = $tool('list_installations', 'Rapporti di installazione: cliente, tecnico, macchina e matricola, stato' . ($isAdmin ? '' : '. Solo i tuoi') . '.',
+                $obj(['limit' => $int('Quanti, default 20, massimo 50')]));
+        }
         // ---- actions ----
         $defs[] = $tool('create_task', 'AZIONE (richiede conferma dell\'utente): crea un\'attività nel CRM. Se l\'utente chiede "ricordami di…" o "crea un task…", usa questa.',
             $obj(['title' => $str('Titolo breve'), 'description' => $str('Dettagli (opzionale)'),
@@ -154,6 +177,13 @@ final class Tools
                 'pipeline_report'   => self::pipelineReport($ctx),
                 'leads_by_source'   => self::leadsBySource((string)($in['month'] ?? '')),
                 'invoices_report'   => self::invoicesReport(),
+                'search_articles'     => self::searchArticles((string)($in['query'] ?? ''), (string)($in['state'] ?? 'all'), (int)($in['limit'] ?? 20), $ctx),
+                'stock_report'        => self::stockReport($ctx),
+                'list_quote_requests' => self::listQuoteRequests((string)($in['status'] ?? 'all'), (int)($in['limit'] ?? 20), $ctx),
+                'commissions_report'  => self::commissionsReport($ctx),
+                'payments_report'     => self::paymentsReport(),
+                'partners_report'     => self::partnersReport(),
+                'list_installations'  => self::listInstallations((int)($in['limit'] ?? 20), $ctx),
                 default             => 'Strumento sconosciuto.',
             };
         } catch (Throwable $e) {
@@ -760,4 +790,142 @@ final class Tools
         Appointments::schedule($id, $agentId, date('Y-m-d H:i:s', $ts), ['title' => $in['title'] ?? '', 'location' => $in['location'] ?? ''], (int)$ctx['uid']);
         return ['ok' => true, 'text' => "Appuntamento #$id fissato per " . date('d/m/Y H:i', $ts) . '; conferma e promemoria in partenza.'];
     }
+    // ---- the rest of the CRM --------------------------------------------------------
+    // Warehouse, quote requests, commissions, payments, partners, installations.
+    // Same rule as above: what the dashboard would show this person, and no more
+    // (cost prices and stock value are the office's; an agent sees their own
+    // quote requests and commission statements).
+
+    private static function searchArticles(string $q, string $state, int $limit, array $ctx): string
+    {
+        $limit = max(1, min(50, $limit ?: 20));
+        $state = in_array($state, ['all', 'in_stock', 'low', 'negative', 'ordered'], true) ? $state : 'all';
+        $res   = \Glue\Crm\Articles::search(['q' => trim($q), 'state' => $state], 1, $limit);
+        $admin = $ctx['role'] === 'admin';
+        $num   = fn($v) => $v === null || $v === '' ? null : (float)$v;
+        return self::j(['found' => $res['total'], 'shown' => count($res['rows']), 'articles' => array_map(fn($a) => array_filter([
+            'code' => $a['code'], 'description' => $a['description'], 'barcode' => $a['barcode'] ?: null,
+            'stock' => (float)$a['stock'], 'available' => $num($a['stock_available']),
+            'ordered' => (float)$a['stock_ordered'] ?: null, 'reorder_threshold' => $num($a['reorder_threshold']),
+            'location' => $a['location'] ?: null, 'category' => $a['category'] ?: null, 'supplier' => $a['supplier'] ?: null,
+            'list_price_eur' => $num($a['list_price']),
+            'cost_price_eur' => $admin ? $num($a['cost_price']) : null,
+            'serial_numbers' => (int)$a['has_serials'] === 1 ? true : null,
+        ], fn($v) => $v !== null), $res['rows'])]);
+    }
+
+    private static function stockReport(array $ctx): string
+    {
+        $c   = \Glue\Crm\Articles::counters();
+        $v   = \Glue\Crm\Articles::stockValue();
+        $row = fn($a) => array_filter(['code' => $a['code'], 'description' => $a['description'], 'stock' => (float)$a['stock'],
+            'reorder_threshold' => $a['reorder_threshold'] === null ? null : (float)$a['reorder_threshold'],
+            'ordered' => (float)$a['stock_ordered'] ?: null, 'supplier' => $a['supplier'] ?: null], fn($x) => $x !== null);
+        $out = [
+            'articles' => $c['total'], 'with_stock' => $c['in_stock'], 'pieces_in_stock' => $v['pieces'],
+            'below_reorder_threshold' => $c['low'], 'negative_stock' => $c['negative'], 'on_order' => $c['ordered'],
+            'with_serial_numbers' => $c['serials'], 'archived' => $c['archived'],
+            'to_reorder' => array_map($row, \Glue\Crm\Articles::search(['state' => 'low'], 1, 25)['rows']),
+            'negative'   => array_map($row, \Glue\Crm\Articles::search(['state' => 'negative'], 1, 10)['rows']),
+        ];
+        if ($ctx['role'] === 'admin') {
+            $out['value_at_cost_eur'] = round($v['on_hand'], 2);
+            $out['negative_value_at_cost_eur'] = round($v['owed'], 2);
+        }
+        return self::j($out);
+    }
+
+    private static function listQuoteRequests(string $status, int $limit, array $ctx): string
+    {
+        $limit  = max(1, min(50, $limit ?: 20));
+        $agent  = self::scope($ctx); // an agent: only the requests they filed
+        $all    = \Glue\Crm\QuoteRequests::all($agent, 1000);
+        $counts = [];
+        foreach ($all as $q) { $counts[$q['status']] = ($counts[$q['status']] ?? 0) + 1; }
+        $rows = array_values(array_filter($all, fn($q) => $status === 'all' ? $q['status'] !== 'cancelled' : $q['status'] === $status));
+        return self::j(['counts_by_status' => $counts, 'shown' => min($limit, count($rows)), 'requests' => array_map(fn($q) => array_filter([
+            'request_id' => (int)$q['id'], 'lead_id' => (int)$q['lead_id'], 'customer' => $q['customer_name'], 'company' => $q['company'] ?? null,
+            'status' => $q['status'], 'requested_by' => trim((string)($q['requester_name'] ?? '')) ?: ($q['requester_username'] ?? null),
+            'created' => date('d/m/Y H:i', strtotime((string)$q['created_at'])), 'notes' => mb_substr((string)$q['notes'], 0, 200),
+            'quote_document' => $q['doc_title'] ?? null, 'signed_at' => $q['signed_at'] ?? null,
+        ], fn($v) => $v !== null && $v !== ''), array_slice($rows, 0, $limit))]);
+    }
+
+    private static function commissionsReport(array $ctx): string
+    {
+        $S   = \Glue\Commission\Statements::class;
+        $row = fn($s) => array_filter([
+            'statement_id' => (int)$s['id'], 'payee' => isset($s['payee_name']) ? ($s['payee_type'] === 'partner' ? 'partner ' : 'agente ') . $s['payee_name'] : null,
+            'title' => $s['title'], 'amount_eur' => (float)$s['amount'], 'status' => $s['status'],
+            'invoice' => $s['invoice_number'] ? $s['invoice_number'] . ' (' . (float)($s['invoice_amount'] ?? $s['amount']) . ' EUR)' : null,
+            'paid_on' => $s['paid_on'] ?: null, 'created' => substr((string)$s['created_at'], 0, 10),
+        ], fn($v) => $v !== null && $v !== '');
+        $legend = 'sent = in attesa della fattura, invoiced = fatturato e da pagare, paid = pagato, cancelled = annullato';
+        if ($ctx['role'] === 'admin') {
+            $open = \Glue\Db::pdo()->query(
+                "SELECT p.name, COUNT(*) n, SUM(a.amount) amt FROM partner_accruals a JOIN partners p ON p.id = a.partner_id
+                  WHERE a.statement_id IS NULL AND a.status IN ('pending','approved') GROUP BY p.id, p.name ORDER BY amt DESC"
+            )->fetchAll() ?: [];
+            return self::j(['status_legend' => $legend, 'totals_eur' => $S::totals(), 'latest' => array_map($row, array_slice($S::all(), 0, 25)),
+                'accrued_not_yet_in_a_statement' => array_map(fn($r) => ['partner' => $r['name'], 'count' => (int)$r['n'],
+                                                                         'amount_eur' => round((float)$r['amt'], 2)], $open)]);
+        }
+        $uid = (int)$ctx['uid'];
+        return self::j(['status_legend' => $legend, 'totals_eur' => $S::totals('agent', $uid), 'statements' => array_map($row, $S::forPayee('agent', $uid))]);
+    }
+
+    private static function paymentsReport(): string
+    {
+        $s = \Glue\Pay\Contracts::summary();
+        return self::j([
+            'contracts' => $s['total'] ?? 0, 'active' => $s['active'] ?? 0, 'past_due' => $s['past_due'] ?? 0,
+            'awaiting_customer' => $s['awaiting'] ?? 0,
+            'monthly_recurring_eur' => round(($s['mrr_cents'] ?? 0) / 100, 2), 'collected_eur' => round(($s['collected_cents'] ?? 0) / 100, 2),
+            'latest' => array_map(fn($c) => array_filter([
+                'contract_id' => (int)$c['id'], 'customer' => $c['customer_name'], 'description' => $c['description'],
+                'kind' => $c['kind'], 'method' => $c['gateway'], 'amount_eur' => round((int)$c['amount_cents'] / 100, 2), 'status' => $c['status'],
+                'paid_eur' => round((int)$c['paid_cents'] / 100, 2),
+                'cycles' => $c['total_cycles'] ? $c['cycles_paid'] . '/' . $c['total_cycles'] : null,
+                'next_charge' => $c['next_charge_date'] ?: null, 'last_error' => $c['last_error'] ?: null,
+                'created' => substr((string)$c['created_at'], 0, 10),
+            ], fn($v) => $v !== null && $v !== ''), \Glue\Pay\Contracts::all(null, 25)),
+        ]);
+    }
+
+    private static function partnersReport(): string
+    {
+        $pdo = \Glue\Db::pdo();
+        $out = [];
+        foreach (\Glue\Partner\Partners::all() as $p) {
+            $pid = (int)$p['id'];
+            $by  = array_map('intval', $pdo->query("SELECT status, COUNT(*) FROM leads WHERE referred_by_partner_id = $pid GROUP BY status")->fetchAll(\PDO::FETCH_KEY_PAIR) ?: []);
+            $acc = \Glue\Partner\Partners::totals($pid);
+            $cm  = \Glue\Commission\Statements::totals('partner', $pid);
+            $out[] = ['partner_id' => $pid, 'name' => $p['name'], 'active' => (int)$p['active'] === 1,
+                'commission_pct' => (float)$p['commission_pct'], 'referrals' => array_sum($by), 'referrals_by_status' => $by,
+                'accrued_eur' => ['pending' => $acc['pending'], 'approved' => $acc['approved'], 'paid' => $acc['paid']],
+                'statements_eur' => ['to_invoice' => $cm['sent'], 'to_pay' => $cm['invoiced'], 'paid' => $cm['paid']]];
+        }
+        return self::j(['partners' => $out]);
+    }
+
+    private static function listInstallations(int $limit, array $ctx): string
+    {
+        $limit = max(1, min(50, $limit ?: 20));
+        $uid   = (int)$ctx['uid'];
+        $where = $ctx['role'] === 'admin' ? '' : " WHERE (r.created_by = $uid OR r.technician_id = $uid)";
+        $rows  = \Glue\Db::pdo()->query(
+            "SELECT r.id, r.contact_id, c.name AS customer, c.company, r.technician_name, r.report_type, r.machine_model,
+                    r.serial_number, r.status, r.sent_at, r.created_at
+               FROM install_reports r LEFT JOIN contacts c ON c.id = r.contact_id$where
+              ORDER BY r.id DESC LIMIT $limit"
+        )->fetchAll() ?: [];
+        return self::j(['reports' => array_map(fn($r) => array_filter([
+            'report_id' => (int)$r['id'], 'contact_id' => (int)$r['contact_id'], 'customer' => $r['customer'], 'company' => $r['company'] ?: null,
+            'technician' => $r['technician_name'] ?: null, 'type' => $r['report_type'] ?: null, 'machine' => $r['machine_model'] ?: null,
+            'serial' => $r['serial_number'] ?: null, 'status' => $r['status'], 'sent_for_signature' => $r['sent_at'] ?: null,
+            'created' => substr((string)$r['created_at'], 0, 10),
+        ], fn($v) => $v !== null && $v !== ''), $rows)]);
+    }
+
 }
