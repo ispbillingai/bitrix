@@ -4,13 +4,14 @@ RewriteEngine On
 RewriteRule ^support$ support.php [L]
 </IfModule>
 
-# Raise upload limits when PHP runs as an Apache module
+# Raise upload limits when PHP runs as an Apache module: the team chat takes
+# phone videos (25 MB cap in TeamChat), the customer chat files up to 10 MB.
 # (FPM/CGI hosts use .user.ini instead).
 <IfModule mod_php.c>
-php_value upload_max_filesize 12M
-php_value post_max_size 14M
+php_value upload_max_filesize 25M
+php_value post_max_size 30M
 </IfModule>
 <IfModule mod_php7.c>
-php_value upload_max_filesize 12M
-php_value post_max_size 14M
+php_value upload_max_filesize 25M
+php_value post_max_size 30M
 </IfModule>
