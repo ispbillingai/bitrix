@@ -563,7 +563,10 @@ function commission_card(array $s, callable $t, callable $h, string $actions = '
   <div class="cm-body">
     <div class="cm-steps">
       <div class="cm-step done"><b>1 · <?= $h($t('cm_step_calc')) ?></b><?= $h($dt($s['created_at'])) ?></div>
-      <div class="cm-step<?= in_array($st, ['invoiced', 'paid'], true) ? ' done' : '' ?>"><b>2 · <?= $h($t('cm_step_invoice')) ?></b><?= $h(in_array($st, ['invoiced', 'paid'], true) ? $dt($s['invoiced_at']) : ($st === 'cancelled' ? '—' : $t('cm_step_waiting'))) ?></div>
+      <?php $cmInv = (string)($s['invoice_number'] ?? '') !== '' ? $dt($s['invoiced_at'])
+                  : ((int)($s['invoice_required'] ?? 1) === 0 ? $t('cm_inv_not_required')
+                  : ($st === 'paid' ? $t('cm_inv_none') : ($st === 'cancelled' ? '—' : $t('cm_step_waiting')))); ?>
+      <div class="cm-step<?= in_array($st, ['invoiced', 'paid'], true) ? ' done' : '' ?>"><b>2 · <?= $h($t('cm_step_invoice')) ?></b><?= $h($cmInv) ?></div>
       <div class="cm-step<?= $st === 'paid' ? ' done' : '' ?>"><b>3 · <?= $h($t('cm_step_paid')) ?></b><?= $h($st === 'paid' ? $d($s['paid_on']) : ($st === 'cancelled' ? '—' : $t('cm_step_waiting'))) ?></div>
     </div>
     <?php if ($st === 'cancelled'): ?>
@@ -583,7 +586,7 @@ function commission_card(array $s, callable $t, callable $h, string $actions = '
         <?php if (!empty($s['invoice_note'])): ?><dt><?= $h($t('cm_inv_note')) ?></dt><dd><?= $h($s['invoice_note']) ?></dd><?php endif; ?>
       <?php endif; ?>
       <?php if ($st === 'paid'): ?>
-        <dt><?= $h($t('cm_paid_h')) ?></dt><dd><b style="color:var(--green)"><?= $h($m($s['paid_amount'] ?? $s['amount'])) ?></b> <?= $h($t('cm_on')) ?> <?= $h($d($s['paid_on'])) ?><?= !empty($s['payment_ref']) ? ' · ' . $h($s['payment_ref']) : '' ?></dd>
+        <dt><?= $h($t('cm_paid_h')) ?></dt><dd><b style="color:var(--green)"><?= $h($m($s['paid_amount'] ?? $s['amount'])) ?></b> <?= $h($t('cm_on')) ?> <?= $h($d($s['paid_on'])) ?><?= !empty($s['payment_method']) ? ' · ' . $h($t('cm_pm_' . $s['payment_method'])) : '' ?><?= !empty($s['payment_ref']) ? ' · ' . $h($s['payment_ref']) : '' ?></dd>
       <?php endif; ?>
     </dl>
     <?php if (!empty($s['notes'])): ?><div class="cm-note"><?= $h($s['notes']) ?></div><?php endif; ?>
@@ -608,8 +611,8 @@ function commission_card(array $s, callable $t, callable $h, string $actions = '
  */
 function commission_invoice_form(array $s, callable $t, callable $h, string $do, bool $office = false): string {
     $st = (string)$s['status'];
-    if (!in_array($st, ['sent', 'invoiced'], true)) {
-        return '';
+    if (!in_array($st, ['sent', 'invoiced'], true) || (int)($s['invoice_required'] ?? 1) === 0) {
+        return ''; // paid, cancelled, or a statement that needs no invoice
     }
     $id      = (int)$s['id'];
     $hasFile = !empty($s['invoice_path']);

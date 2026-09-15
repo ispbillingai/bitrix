@@ -239,7 +239,7 @@ return [
         // Al partner/agente: pagata.
         'commission_paid' =>
             "Ciao {payee_name}, abbiamo pagato le tue provvigioni *{title}*: *{paid_amount}* il {paid_on}."
-            . "{?payment_ref}\nRiferimento: {payment_ref}{/payment_ref}\n\n"
+            . "{?payment_method}\nModalità: {payment_method}{/payment_method}{?payment_ref}\nRiferimento: {payment_ref}{/payment_ref}\n\n"
             . "Il tuo storico: {link}\n— {company}",
 
         // All'UFFICIO (ogni amministratore attivo): un partner/agente ha caricato la fattura.
@@ -248,6 +248,12 @@ return [
             . "Conteggio: *{title}* ({amount})\n"
             . "Fattura n. {invoice_number} — {invoice_amount}\n\n"
             . "Da pagare: {link}",
+
+        // Al partner/agente che non emette fattura: il conteggio è pronto e sarà pagato così com'è.
+        'commission_statement_noinv' =>
+            "Ciao {payee_name}, l'ufficio ha preparato il tuo conteggio provvigioni:\n"
+            . "*{title}* — *{amount}*\n\n"
+            . "Non serve la fattura: te lo paghiamo noi, per esempio in contanti. Il dettaglio è qui: {link}\n— {company}",
     ],
 
     'email' => [
@@ -543,7 +549,7 @@ return [
             'subject' => 'Provvigioni pagate: {title} — {paid_amount}',
             'html'    => '<p>Ciao {payee_name},</p>'
                 . '<p>abbiamo pagato le tue provvigioni <strong>{title}</strong>: <strong>{paid_amount}</strong> il {paid_on}.</p>'
-                . '{?payment_ref}<p>Riferimento: {payment_ref}</p>{/payment_ref}'
+                . '{?payment_method}<p>Modalità: {payment_method}</p>{/payment_method}{?payment_ref}<p>Riferimento: {payment_ref}</p>{/payment_ref}'
                 . '<p>Lo storico delle tue provvigioni e fatture: <a href="{link}">{link}</a></p><p>{company}</p>',
         ],
         'commission_invoice_admin' => [
@@ -551,6 +557,14 @@ return [
             'html'    => '<p>🧾 <strong>{payee_name}</strong> ha caricato la fattura per il conteggio <strong>{title}</strong> ({amount}).</p>'
                 . '<p>Fattura n. <strong>{invoice_number}</strong> — {invoice_amount}</p>'
                 . '<p><a href="{link}">Apri e registra il pagamento</a></p>',
+        ],
+
+        'commission_statement_noinv' => [
+            'subject' => 'Conteggio provvigioni: {title} — {amount}',
+            'html'    => '<p>Ciao {payee_name},</p>'
+                . '<p>l’ufficio ha preparato il tuo conteggio provvigioni: <strong>{title}</strong>, per <strong>{amount}</strong>.</p>'
+                . '<p>Non serve la fattura: te lo paghiamo noi, per esempio in contanti. Il dettaglio è nella tua area: <a href="{link}">{link}</a></p>'
+                . '<p>{company}</p>',
         ],
     ],
 ];

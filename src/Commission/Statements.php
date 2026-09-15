@@ -71,6 +71,7 @@ final class Statements
             return ['ok' => false, 'id' => 0, 'error' => 'title'];
         }
         $calc = self::storeFile($file, $err);
+        $noInv = !empty($d['no_invoice']); // the payee issues no invoice: filed ready to pay
         if ($err !== null) {
             return ['ok' => false, 'id' => 0, 'error' => 'file_' . $err];
         }
@@ -80,8 +81,8 @@ final class Statements
         try {
             $pdo->prepare(
                 'INSERT INTO commission_statements
-                    (payee_type, payee_id, title, period, notes, amount, currency, calc_path, calc_name, status, created_by)
-                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, \'sent\', ?)'
+                    (payee_type, payee_id, title, period, notes, amount, currency, calc_path, calc_name, invoice_required, status, created_by)
+                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ' . ($noInv ? '0, \'invoiced\'' : '1, \'sent\'') . ', ?)'
             )->execute([
                 $type, $pid, $title,
                 mb_substr(trim((string)($d['period'] ?? '')), 0, 60) ?: null,
@@ -115,7 +116,7 @@ final class Statements
 
         Log::write('commission', 'statement_created', 'commission', $id,
             ['payee' => "$type:$pid", 'amount' => $amount, 'accruals' => $linked, 'by' => $userId]);
-        self::notifyPayee($id, 'commission_statement');
+        self::notifyPayee($id, $noInv ? 'commission_statement_noinv' : 'commission_statement');
         return ['ok' => true, 'id' => $id, 'error' => null];
     }
 
@@ -143,6 +144,9 @@ final class Statements
         }
         if (!in_array($st['status'], ['sent', 'invoiced'], true)) {
             return ['ok' => false, 'error' => 'closed'];
+        }
+        if ((int)($st['invoice_required'] ?? 1) === 0) {
+            return ['ok' => false, 'error' => 'no_invoice_needed'];
         }
         $number = mb_substr(trim((string)($d['invoice_number'] ?? '')), 0, 60);
         if ($number === '') {
@@ -187,6 +191,9 @@ final class Statements
         if (!$st || $st['status'] !== 'invoiced') {
             return ['ok' => false, 'error' => 'state'];
         }
+        if ((string)($st['invoice_number'] ?? '') === '') { // nothing to send back
+            return ['ok' => false, 'error' => 'state'];
+        }
         $reason = mb_substr(trim($reason), 0, 500);
         if ($reason === '') {
             return ['ok' => false, 'error' => 'reason'];
@@ -210,28 +217,31 @@ final class Statements
     public static function markPaid(int $id, array $d, ?int $userId): array
     {
         $st = self::find($id);
-        if (!$st || $st['status'] !== 'invoiced') {
+        // Paid with or without an invoice: an agent who issues none is paid (in
+        // cash, say) straight from "In attesa di fattura" (2026-09-15).
+        if (!$st || !in_array($st['status'], ['sent', 'invoiced'], true)) {
             return ['ok' => false, 'error' => 'state'];
         }
         $on     = self::date((string)($d['paid_on'] ?? '')) ?? date('Y-m-d');
         $amount = self::parseAmount((string)($d['paid_amount'] ?? '')) ?: (float)($st['invoice_amount'] ?? $st['amount']);
         $ref    = mb_substr(trim((string)($d['payment_ref'] ?? '')), 0, 190);
+        $method = in_array($d['payment_method'] ?? '', ['transfer', 'cash', 'other'], true) ? (string)$d['payment_method'] : 'transfer';
 
         $pdo = Db::pdo();
         $pdo->beginTransaction();
         try {
             $pdo->prepare(
                 'UPDATE commission_statements
-                    SET status = \'paid\', paid_on = ?, paid_amount = ?, payment_ref = ?, paid_by = ?, paid_at = NOW()
-                  WHERE id = ? AND status = \'invoiced\''
-            )->execute([$on, $amount, $ref ?: null, $userId ?: null, $id]);
+                    SET status = \'paid\', paid_on = ?, paid_amount = ?, payment_method = ?, payment_ref = ?, paid_by = ?, paid_at = NOW()
+                  WHERE id = ? AND status IN (\'sent\', \'invoiced\')'
+            )->execute([$on, $amount, $method, $ref ?: null, $userId ?: null, $id]);
             $pdo->prepare("UPDATE partner_accruals SET status = 'paid', paid_at = NOW() WHERE statement_id = ?")->execute([$id]);
             $pdo->commit();
         } catch (Throwable $e) {
             $pdo->rollBack();
             throw $e;
         }
-        Log::write('commission', 'statement_paid', 'commission', $id, ['amount' => $amount, 'on' => $on, 'ref' => $ref, 'by' => $userId]);
+        Log::write('commission', 'statement_paid', 'commission', $id, ['amount' => $amount, 'on' => $on, 'method' => $method, 'ref' => $ref, 'by' => $userId]);
         self::notifyPayee($id, 'commission_paid');
         return ['ok' => true, 'error' => null];
     }
@@ -555,6 +565,7 @@ final class Statements
                 'paid_amount'    => self::money((float)($st['paid_amount'] ?? 0)),
                 'paid_on'        => !empty($st['paid_on']) ? date('d/m/Y', strtotime((string)$st['paid_on'])) : '',
                 'payment_ref'    => (string)($st['payment_ref'] ?? ''),
+                'payment_method' => ['cash' => 'contanti', 'transfer' => 'bonifico', 'other' => 'altro'][(string)($st['payment_method'] ?? '')] ?? '',
                 'link'           => Config::appBaseUrl() . ($isPartner ? '/partner.php?tab=commissions' : '/dashboard.php?tab=my_commissions'),
             ];
             $payload += $isPartner
@@ -616,5 +627,25 @@ final class Statements
         } catch (Throwable $e) {
             Log::write('commission', 'statement_notify_failed', 'commission', $id, ['rule' => 'commission_invoice_admin', 'error' => $e->getMessage()]);
         }
+    }
+    /**
+     * "type:id" of every payee whose latest statement went without an invoice —
+     * filed "senza fattura", or paid before any invoice came. The new-statement
+     * form pre-ticks "Senza fattura" for them.
+     */
+    public static function noInvoicePayees(): array
+    {
+        $out = [];
+        foreach (Db::pdo()->query(
+            "SELECT s.payee_type, s.payee_id, s.invoice_required, s.status, s.invoice_number
+               FROM commission_statements s
+               JOIN (SELECT payee_type, payee_id, MAX(id) AS mid FROM commission_statements
+                      WHERE status <> 'cancelled' GROUP BY payee_type, payee_id) x ON x.mid = s.id"
+        ) as $r) {
+            if ((int)$r['invoice_required'] === 0 || ($r['status'] === 'paid' && ($r['invoice_number'] ?? '') === '')) {
+                $out[] = $r['payee_type'] . ':' . (int)$r['payee_id'];
+            }
+        }
+        return $out;
     }
 }

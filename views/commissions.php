@@ -35,27 +35,41 @@ foreach ($payees as $type => $list) {
     foreach ($list as $p) { $payeeName[$type . ':' . (int)$p['id']] = (string)$p['name']; }
 }
 
-// What the office can do with a statement, by where it stands.
+// What the office can do with a statement, by where it stands. Paying needs no
+// invoice: an agent who issues none is paid in cash, by transfer or otherwise,
+// straight from "In attesa di fattura" (2026-09-15).
 $actions = function (array $s) use ($t, $h, $m): string {
-    $id = (int)$s['id'];
+    $id   = (int)$s['id'];
+    $st   = (string)$s['status'];
+    $needs = (int)($s['invoice_required'] ?? 1) === 1;
+    $hasInvoice = (string)($s['invoice_number'] ?? '') !== '';
+    $cash = !$hasInvoice; // no invoice in hand: most likely cash
     $html = '';
-    if ($s['status'] === 'invoiced') {
+    if (in_array($st, ['sent', 'invoiced'], true)) {
         $html .= '<form method="post" class="cm-form"><input type="hidden" name="do" value="cm_pay"><input type="hidden" name="id" value="' . $id . '">'
-            . '<b class="small">' . $h($t('cm_pay')) . '</b><div class="row">'
+            . '<b class="small">' . $h($t('cm_pay')) . '</b>'
+            . ($st === 'sent' && $needs ? '<p class="muted small" style="margin:4px 0 10px">' . $h($t('cm_pay_no_invoice_hint')) . '</p>' : '')
+            . '<div class="row">'
             . '<label class="fld"><span>' . $h($t('cm_paid_on')) . '</span><input type="date" name="paid_on" value="' . date('Y-m-d') . '"></label>'
             . '<label class="fld"><span>' . $h($t('cm_paid_amount')) . '</span><input name="paid_amount" inputmode="decimal" value="'
             . $h(number_format((float)($s['invoice_amount'] ?? $s['amount']), 2, ',', '')) . '"></label>'
+            . '<label class="fld"><span>' . $h($t('cm_pay_method')) . '</span><select name="payment_method">'
+            . '<option value="transfer"' . ($cash ? '' : ' selected') . '>' . $h($t('cm_pm_transfer')) . '</option>'
+            . '<option value="cash"' . ($cash ? ' selected' : '') . '>' . $h($t('cm_pm_cash')) . '</option>'
+            . '<option value="other">' . $h($t('cm_pm_other')) . '</option></select></label>'
             . '<label class="fld"><span>' . $h($t('cm_payment_ref')) . '</span><input name="payment_ref" maxlength="190" placeholder="' . $h($t('cm_payment_ref_ph')) . '"></label>'
             . '</div><button class="btn tiny">✓ ' . $h($t('cm_pay_btn')) . '</button></form>';
+    }
+    if ($st === 'invoiced' && $hasInvoice) {
         $html .= '<form method="post" class="cm-form"><input type="hidden" name="do" value="cm_reject"><input type="hidden" name="id" value="' . $id . '">'
             . '<b class="small">' . $h($t('cm_reject')) . '</b>'
             . '<label class="fld"><input name="reason" maxlength="500" required placeholder="' . $h($t('cm_reject_ph')) . '"></label>'
             . '<button class="btn tiny ghost">' . $h($t('cm_reject_btn')) . '</button></form>';
     }
-    if ($s['status'] === 'sent') {
+    if ($st === 'sent' && $needs) {
         $html .= commission_invoice_form($s, $t, $h, 'cm_invoice_office', true);
     }
-    if (in_array($s['status'], ['sent', 'invoiced'], true)) {
+    if (in_array($st, ['sent', 'invoiced'], true)) {
         $html .= '<form method="post" class="cm-form" onsubmit="return confirm(\'' . $h(addslashes($t('cm_cancel_confirm'))) . '\')">'
             . '<input type="hidden" name="do" value="cm_cancel"><input type="hidden" name="id" value="' . $id . '">'
             . '<b class="small">' . $h($t('cm_cancel')) . '</b>'
@@ -86,7 +100,7 @@ $actions = function (array $s) use ($t, $h, $m): string {
     <input type="hidden" name="do" value="cm_create">
     <div class="row">
       <label class="fld"><span><?= $h($t('cm_payee')) ?> *</span>
-        <select name="payee" id="cm-payee" required>
+        <select name="payee" id="cm-payee" required data-noinv="<?= $h(implode(',', Statements::noInvoicePayees())) ?>">
           <option value=""><?= $h($t('cm_payee_pick')) ?></option>
           <?php foreach (['partner' => 'cm_payee_partners', 'agent' => 'cm_payee_agents'] as $type => $lbl): ?>
             <?php if ($payees[$type]): ?>
@@ -116,6 +130,10 @@ $actions = function (array $s) use ($t, $h, $m): string {
       <label class="fld"><span><?= $h($t('cm_calc_file')) ?></span><input type="file" name="calc" accept=".pdf,.xls,.xlsx,.csv,.ods,.doc,.docx,.odt,image/*"></label>
     </div>
     <label class="fld"><span><?= $h($t('cm_notes')) ?></span><textarea name="notes" rows="3" placeholder="<?= $h($t('cm_notes_ph')) ?>"></textarea></label>
+    <label class="fld" style="display:flex;flex-direction:row;align-items:flex-start;gap:10px">
+      <input type="checkbox" name="no_invoice" value="1" id="cm-noinv" style="width:auto;margin-top:3px">
+      <span style="margin:0"><b style="color:var(--txt)"><?= $h($t('cm_no_invoice')) ?></b><br><?= $h($t('cm_no_invoice_h')) ?></span>
+    </label>
     <p class="muted small" style="margin:-6px 0 12px"><?= $h($t('cm_new_hint')) ?></p>
     <button class="btn"><?= svg('send') ?> <?= $h($t('cm_create')) ?></button>
   </form>
@@ -156,6 +174,9 @@ $actions = function (array $s) use ($t, $h, $m): string {
     document.querySelectorAll('.cm-acc:not([hidden]) input:checked').forEach(function(i){s+=parseFloat(i.dataset.amt)||0;any=true;});
     if(any) amt.value=s.toFixed(2).replace('.',',');
   });
-  sel.addEventListener('change',show); show();
+  // "Senza fattura" follows the payee: ticked for whoever was last paid without one.
+  var cb=document.getElementById('cm-noinv'), ni=(sel.dataset.noinv||'').split(',');
+  function preset(){ if(cb){ cb.checked = sel.value !== '' && ni.indexOf(sel.value) !== -1; } }
+  sel.addEventListener('change',function(){ show(); preset(); }); show(); preset();
 })();
 </script>

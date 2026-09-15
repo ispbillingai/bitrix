@@ -1862,8 +1862,8 @@ return [
     'cm_office_sub' => 'Upload the commission calculation for a partner or an agent: they receive it at once, upload their invoice, and you record the payment here. The full history, paid and unpaid.',
     'cm_my_sub' => 'The commission statements the office sends you. Download the calculation, upload your invoice and follow the payment.',
     'cm_to_invoice' => 'To invoice',
-    'cm_to_pay' => 'Invoices to pay',
-    'cm_awaiting' => 'Invoiced, awaiting payment',
+    'cm_to_pay' => 'To pay',
+    'cm_awaiting' => 'Awaiting payment',
     'cm_paid_total' => 'Paid',
     'cm_statements' => 'statements',
     'cm_new' => 'New commission statement',
@@ -1887,7 +1887,7 @@ return [
     'cm_create' => 'Send statement',
     'cm_filter_all' => 'All',
     'cm_st_sent' => 'Awaiting invoice',
-    'cm_st_invoiced' => 'Invoiced, to pay',
+    'cm_st_invoiced' => 'To pay',
     'cm_st_paid' => 'Paid',
     'cm_st_cancelled' => 'Cancelled',
     'cm_none' => 'No statements.',
@@ -1897,7 +1897,7 @@ return [
     'cm_paid_on' => 'Paid on',
     'cm_paid_amount' => 'Amount paid (€)',
     'cm_payment_ref' => 'Reference',
-    'cm_payment_ref_ph' => 'e.g. bank transfer reference',
+    'cm_payment_ref_ph' => 'e.g. transfer reference or receipt no.',
     'cm_pay_btn' => 'Mark as paid',
     'cm_reject' => 'Send the invoice back',
     'cm_reject_ph' => 'Reason (e.g. wrong amount, VAT number missing)',
@@ -1997,5 +1997,18 @@ return [
     // ---- assistant: read-only switch ----
     'f_ai_read_only' => 'Read only',
     'f_ai_read_only_h' => 'The assistant answers and searches the CRM, but never proposes or runs an action: tasks, notes, messages, stage changes, appointments. Earlier proposals can no longer be confirmed.',
+
+    // ---- commissions paid without an invoice ----
+    'cm_pay_method' => 'Method',
+    'cm_pm_transfer' => 'bank transfer',
+    'cm_pm_cash' => 'cash',
+    'cm_pm_other' => 'other',
+    'cm_pay_no_invoice_hint' => 'It can be paid without an invoice too, for example in cash to someone who does not issue one.',
+    'cm_no_invoice' => 'No invoice',
+    'cm_no_invoice_h' => 'The payee does not issue invoices: none is asked for, and the statement is ready to pay at once, for example in cash.',
+    'cm_inv_not_required' => 'not required',
+    'cm_inv_none' => 'none',
+    'cm_err_no_invoice_needed' => 'This statement needs no invoice.',
+    'rk_commission_statement_noinv' => 'New commission statement without invoice (partner/agent)',
 ];
 

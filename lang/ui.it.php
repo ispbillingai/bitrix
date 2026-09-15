@@ -1860,8 +1860,8 @@ return [
     'cm_office_sub' => 'Carica il conteggio delle provvigioni di un partner o di un agente: lo riceve subito, carica la sua fattura e qui registri il pagamento. Tutto lo storico, pagato e da pagare.',
     'cm_my_sub' => 'I conteggi delle provvigioni che ti invia l’ufficio. Scarica il conteggio, carica la tua fattura e segui il pagamento.',
     'cm_to_invoice' => 'Da fatturare',
-    'cm_to_pay' => 'Fatture da pagare',
-    'cm_awaiting' => 'Fatturate, in pagamento',
+    'cm_to_pay' => 'Da pagare',
+    'cm_awaiting' => 'In pagamento',
     'cm_paid_total' => 'Pagate',
     'cm_statements' => 'conteggi',
     'cm_new' => 'Nuovo conteggio provvigioni',
@@ -1885,7 +1885,7 @@ return [
     'cm_create' => 'Invia conteggio',
     'cm_filter_all' => 'Tutti',
     'cm_st_sent' => 'In attesa di fattura',
-    'cm_st_invoiced' => 'Fatturata, da pagare',
+    'cm_st_invoiced' => 'Da pagare',
     'cm_st_paid' => 'Pagata',
     'cm_st_cancelled' => 'Annullata',
     'cm_none' => 'Nessun conteggio.',
@@ -1895,7 +1895,7 @@ return [
     'cm_paid_on' => 'Pagata il',
     'cm_paid_amount' => 'Importo pagato (€)',
     'cm_payment_ref' => 'Riferimento',
-    'cm_payment_ref_ph' => 'es. CRO/TRN del bonifico',
+    'cm_payment_ref_ph' => 'es. CRO del bonifico o n. di ricevuta',
     'cm_pay_btn' => 'Segna come pagata',
     'cm_reject' => 'Rimanda indietro la fattura',
     'cm_reject_ph' => 'Motivo (es. importo errato, manca la P.IVA)',
@@ -1995,5 +1995,18 @@ return [
     // ---- assistant: read-only switch ----
     'f_ai_read_only' => 'Solo lettura',
     'f_ai_read_only_h' => 'L’assistente risponde e cerca nel CRM, ma non propone né esegue azioni: attività, note, messaggi, cambi di fase, appuntamenti. Le proposte già fatte non si possono più confermare.',
+
+    // ---- commissions paid without an invoice ----
+    'cm_pay_method' => 'Modalità',
+    'cm_pm_transfer' => 'bonifico',
+    'cm_pm_cash' => 'contanti',
+    'cm_pm_other' => 'altro',
+    'cm_pay_no_invoice_hint' => 'Si può pagare anche senza fattura, per esempio in contanti a chi non la emette.',
+    'cm_no_invoice' => 'Senza fattura',
+    'cm_no_invoice_h' => 'Il destinatario non emette fattura: non gli viene chiesta, e il conteggio è subito da pagare, per esempio in contanti.',
+    'cm_inv_not_required' => 'non richiesta',
+    'cm_inv_none' => 'nessuna',
+    'cm_err_no_invoice_needed' => 'Per questo conteggio non serve la fattura.',
+    'rk_commission_statement_noinv' => 'Nuovo conteggio provvigioni senza fattura (partner/agente)',
 ];
 

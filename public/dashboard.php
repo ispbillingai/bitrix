@@ -2121,6 +2121,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'title' => (string)($_POST['title'] ?? ''), 'period' => (string)($_POST['period'] ?? ''),
                     'notes' => (string)($_POST['notes'] ?? ''), 'amount' => (string)($_POST['amount'] ?? ''),
                     'accrual_ids' => (array)($_POST['accrual_ids'] ?? []),
+                    'no_invoice' => !empty($_POST['no_invoice']),
                 ], $_FILES['calc'] ?? null, $cmUser);
                 $_SESSION['dash_flash'] = $cmRes['ok'] ? [$t('cm_created_flash'), 'ok'] : [$t('cm_err_' . $cmRes['error']), 'err'];
                 header('Location: ?tab=commissions' . ($cmRes['ok']

@@ -23,7 +23,7 @@ $placeholders = ['{name}', '{first_name}', '{last_name}', '{company}',
     '{bank_details}', '{iban}', '{bank_holder}', '{bank_name}', '{pay_link}',
     // Commission statements (Provvigioni): the notices to a partner or agent and to the office.
     '{payee_name}', '{title}', '{amount}', '{reason}', '{invoice_number}', '{invoice_amount}',
-    '{paid_amount}', '{paid_on}', '{payment_ref}'];
+    '{paid_amount}', '{paid_on}', '{payment_ref}', '{payment_method}'];
 ?>
 <h2><?= $h($t('tpl_title')) ?></h2>
 <p class="muted small" style="max-width:760px"><?= $h($t('tpl_intro')) ?></p>
