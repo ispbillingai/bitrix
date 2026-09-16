@@ -2299,6 +2299,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: ' . $back);
                 exit;
             }
+            case 'fin_share_send': { // office only: send a lender's link by email or WhatsApp
+                $fApp = \Glue\Finance\Docs::app((int)($_POST['app_id'] ?? 0));
+                if ($isAgent || $isTech || !$fApp) {
+                    $_SESSION['dash_flash'] = [$t('not_allowed'), 'err'];
+                    header('Location: ?tab=finance');
+                    exit;
+                }
+                $fR = \Glue\Finance\Docs::sendShare((int)($_POST['share_id'] ?? 0), (string)($_POST['to'] ?? ''), $uid ?: null);
+                $_SESSION['dash_flash'] = !empty($fR['ok'])
+                    ? [sprintf($t('fin_ok_sent'), $fR['to']), 'ok']
+                    : [$t('fin_err_' . ($fR['error'] ?? 'recipient')), 'err'];
+                header('Location: ?tab=finance&app=' . (int)$fApp['id'] . '#app-' . (int)$fApp['id']);
+                exit;
+            }
             case 'fin_lender_save': { // admin only: the institutions and their privacy forms
                 $fR = \Glue\Finance\Docs::saveLender($_POST, $_FILES['privacy'] ?? null, $uid ?: null);
                 $_SESSION['dash_flash'] = !empty($fR['ok']) ? [$t('saved'), 'ok'] : [$t('fin_err_' . ($fR['error'] ?? 'name')), 'err'];

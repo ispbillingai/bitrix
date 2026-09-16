@@ -157,8 +157,15 @@ $stPill  = fn(string $s): string => 'cm-st-' . ['collecting' => 'sent', 'review'
                   <div class="muted small" style="overflow-wrap:anywhere"><?= $h($url) ?></div>
                   <div class="muted small"><?= $sh['revoked_at']
                       ? $h($t('fin_revoked'))
-                      : ((int)$sh['opens'] > 0 ? (int)$sh['opens'] . ' ' . $h($t('fin_opens')) . ' · ' . $h(substr((string)$sh['last_opened_at'], 0, 16)) : $h($t('fin_never_opened'))) ?></div></span>
+                      : ((int)$sh['opens'] > 0 ? (int)$sh['opens'] . ' ' . $h($t('fin_opens')) . ' · ' . $h(substr((string)$sh['last_opened_at'], 0, 16)) : $h($t('fin_never_opened'))) ?>
+                    <?= !empty($sh['sent_to']) ? ' · ' . $h(sprintf($t('fin_sent_note'), (string)$sh['sent_to'], substr((string)$sh['sent_at'], 0, 16))) : '' ?></div></span>
                 <?php if (!$sh['revoked_at']): ?>
+                  <form method="post" class="inline" style="flex-wrap:wrap">
+                    <input type="hidden" name="do" value="fin_share_send"><input type="hidden" name="share_id" value="<?= (int)$sh['id'] ?>">
+                    <input type="hidden" name="app_id" value="<?= $id ?>">
+                    <input name="to" value="<?= $h($sh['lender_email'] ?: ($sh['lender_phone'] ?? '')) ?>" placeholder="<?= $h($t('fin_send_to_ph')) ?>" style="max-width:210px">
+                    <button class="btn tiny"><?= svg('send') ?> <?= $h($t('fin_send_to_btn')) ?></button>
+                  </form>
                   <button type="button" class="btn tiny ghost" onclick="navigator.clipboard.writeText('<?= $h($url) ?>').then(()=>{this.textContent='✓';})"><?= $h($t('fin_copy')) ?></button>
                   <form method="post" class="inline" onsubmit="return confirm('<?= $h($t('fin_revoke_confirm')) ?>')">
                     <input type="hidden" name="do" value="fin_share_revoke"><input type="hidden" name="share_id" value="<?= (int)$sh['id'] ?>">

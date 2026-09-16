@@ -2111,5 +2111,16 @@ return [
     'evt_lender_deleted' => 'Finanziaria eliminata',
     'evt_share_revoked' => 'Link finanziaria disattivato',
     'evt_alert_failed' => 'Avviso alla sede non inviato (errore)',
+
+    // ---- sending a lender's link from the CRM ----
+    'fin_send_to_ph' => 'email o telefono',
+    'fin_send_to_btn' => 'Invia il link',
+    'fin_ok_sent' => 'Link inviato a %s.',
+    'fin_sent_note' => 'inviato a %s il %s',
+    'fin_err_recipient' => 'Scrivi un indirizzo email o un numero di telefono validi.',
+    'fin_err_not_found' => 'Link non trovato o disattivato.',
+    'rk_lender_share_link' => 'Link della pratica inviato alla finanziaria',
+    'evt_share_sent' => 'Link pratica inviato',
+    'evt_share_send_failed' => 'Invio del link non riuscito',
 ];
 

@@ -820,4 +820,95 @@ final class Docs
         }
         return max(1, (int)round($bytes / 1024)) . ' KB';
     }
+    /**
+     * Send a lender's link where the office types it: an email address, a phone
+     * number for WhatsApp, or several separated by commas. Queued like every
+     * other message (Notify\StaffAlert's path), so the page never waits on it;
+     * the scheduler's next tick delivers it.
+     *
+     * @return array{ok:bool, sent:int, to:string, error:?string}
+     */
+    public static function sendShare(int $shareId, string $to, ?int $userId): array
+    {
+        $s = Db::pdo()->prepare(
+            'SELECT s.*, f.name AS lender_name FROM finance_shares s
+               JOIN finance_lenders f ON f.id = s.lender_id WHERE s.id = ?'
+        );
+        $s->execute([$shareId]);
+        $sh = $s->fetch();
+        if (!$sh || $sh['revoked_at']) {
+            return ['ok' => false, 'sent' => 0, 'to' => '', 'error' => 'not_found'];
+        }
+        $app = self::app((int)$sh['app_id']);
+        if (!$app) {
+            return ['ok' => false, 'sent' => 0, 'to' => '', 'error' => 'not_found'];
+        }
+        $targets = [];
+        // Commas, semicolons and new lines separate recipients — not spaces:
+        // "347 1234567" is one number, and splitting it made two bad ones.
+        foreach (preg_split('/[,;\r\n]+/', trim($to)) ?: [] as $one) {
+            $one = trim($one);
+            if ($one === '') {
+                continue;
+            }
+            if (filter_var($one, FILTER_VALIDATE_EMAIL)) {
+                $targets[] = ['email', $one];
+                continue;
+            }
+            $p = \Glue\Notify\Notifier::normalizePhone($one);
+            if ($p !== '' && strlen(preg_replace('/\D/', '', $p) ?? '') >= 8) {
+                $targets[] = ['whatsapp', $p];
+            }
+        }
+        if (!$targets) {
+            return ['ok' => false, 'sent' => 0, 'to' => '', 'error' => 'recipient'];
+        }
+
+        $company = (string)Config::get('app.company_name', '') ?: 'CRM';
+        $who     = trim((string)$app['customer_name']) ?: ('#' . (int)$app['lead_id']);
+        $co      = trim((string)($app['company'] ?? ''));
+        $amount  = !empty($app['amount']) ? ' — € ' . number_format((float)$app['amount'], 2, ',', '.') : '';
+        $url     = self::shareUrl((string)$sh['token']);
+        $text    = "📁 $company — pratica di finanziamento: $who" . ($co !== '' ? " ($co)" : '') . $amount . "\n"
+                 . "La documentazione completa è a questo link: $url\n"
+                 . 'I documenti si scaricano singolarmente o tutti insieme in un unico file ZIP.';
+        $subject = 'Pratica di finanziamento — ' . $who . ($co !== '' ? ' (' . $co . ')' : '');
+        $html    = '<p>Pratica di finanziamento: <b>' . htmlspecialchars($who, ENT_QUOTES) . '</b>'
+                 . ($co !== '' ? ' (' . htmlspecialchars($co, ENT_QUOTES) . ')' : '')
+                 . htmlspecialchars($amount, ENT_QUOTES) . '</p>'
+                 . '<p><a href="' . htmlspecialchars($url, ENT_QUOTES) . '">Apri la documentazione</a></p>'
+                 . '<p>I documenti si scaricano singolarmente o tutti insieme in un unico file ZIP.</p>'
+                 . '<p>' . htmlspecialchars($company, ENT_QUOTES) . '</p>';
+
+        $sched = new \Glue\Reminder\Scheduler();
+        $batch = date('YmdHis') . bin2hex(random_bytes(3));
+        $sent  = 0;
+        foreach ($targets as [$chan, $addr]) {
+            try {
+                $sched->enqueue([
+                    'entity_type'    => 'finance_share',
+                    'entity_id'      => (int)$sh['id'],
+                    'rule_key'       => 'lender_share_link',
+                    'recipient_type' => 'agent', // an outside recipient, addressed by the payload below
+                    'channel'        => $chan,
+                    'due_at'         => date('Y-m-d H:i:s'),
+                    'payload'        => [
+                        'name' => (string)$sh['lender_name'], 'agent_name' => (string)$sh['lender_name'],
+                        'agent_phone' => $chan === 'whatsapp' ? $addr : '',
+                        'agent_email' => $chan === 'email' ? $addr : '',
+                        'raw_wa' => $text, 'raw_subject' => $subject, 'raw_html' => $html,
+                    ],
+                    'dedupe_key'     => mb_substr('lender_share:' . (int)$sh['id'] . ':' . $addr . ':' . $batch, 0, 128),
+                ], false); // queue only: the scheduler cron sends it within the minute
+                $sent++;
+            } catch (Throwable $e) {
+                Log::write('finance', 'share_send_failed', 'finance_share', (int)$sh['id'], ['to' => $addr, 'error' => $e->getMessage()]);
+            }
+        }
+        $list = implode(', ', array_column($targets, 1));
+        Db::pdo()->prepare('UPDATE finance_shares SET sent_to = ?, sent_at = NOW() WHERE id = ?')
+            ->execute([mb_substr($list, 0, 190), (int)$sh['id']]);
+        Log::write('finance', 'share_sent', 'finance_share', (int)$sh['id'], ['to' => $list, 'by' => $userId]);
+        return ['ok' => $sent > 0, 'sent' => $sent, 'to' => $list, 'error' => $sent > 0 ? null : 'recipient'];
+    }
 }

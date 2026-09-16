@@ -2113,5 +2113,16 @@ return [
     'evt_lender_deleted' => 'Lender deleted',
     'evt_share_revoked' => 'Lender link switched off',
     'evt_alert_failed' => 'Office alert not sent (error)',
+
+    // ---- sending a lender's link from the CRM ----
+    'fin_send_to_ph' => 'email or phone',
+    'fin_send_to_btn' => 'Send the link',
+    'fin_ok_sent' => 'Link sent to %s.',
+    'fin_sent_note' => 'sent to %s on %s',
+    'fin_err_recipient' => 'Enter a valid email address or phone number.',
+    'fin_err_not_found' => 'Link not found or switched off.',
+    'rk_lender_share_link' => 'Application link sent to the lender',
+    'evt_share_sent' => 'Application link sent',
+    'evt_share_send_failed' => 'Sending the link failed',
 ];
 
