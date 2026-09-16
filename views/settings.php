@@ -303,7 +303,14 @@ $pipelines = \Glue\Crm\Pipelines::all();
     <small class="muted"><?= $h($t('f_su_features_h')) ?></small>
   </label>
 
-  <h3><?= $h($t('sec_ai')) ?> <span class="pill"><?= $h($t('optional')) ?></span></h3>
+  <h3><?= $h($t('sec_finance')) ?> <span class="pill"><?= $h($t('optional')) ?></span></h3>
+  <p class="muted small" style="margin:-6px 0 12px"><?= $h($t('sec_finance_sub')) ?></p>
+  <label class="fld"><span><?= $h($t('f_fin_doc_types')) ?></span>
+    <textarea name="finance.doc_types" rows="9" style="width:100%;resize:vertical;font-family:ui-monospace,Menlo,monospace;font-size:12.5px"><?= $h((string)$cfg('finance.doc_types', '')) ?></textarea>
+    <small class="muted"><?= $h($t('f_fin_doc_types_h')) ?></small>
+  </label>
+
+<h3><?= $h($t('sec_ai')) ?> <span class="pill"><?= $h($t('optional')) ?></span></h3>
   <p class="muted small" style="margin:-6px 0 12px"><?= $h($t('sec_ai_sub')) ?></p>
   <div class="row">
     <?php secret_fld($h, 'ai.api_key', $t('f_ai_key'), $cfg('ai.api_key'), $t('f_ai_key_h')); ?>

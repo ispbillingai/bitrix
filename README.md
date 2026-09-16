@@ -271,6 +271,39 @@ plus `partner_accruals.statement_id`). Code: `src/Commission/Statements.php`,
 `views/commissions.php`, `views/my_commissions.php`. The four notices are
 editable under Templates (`commission_*`).
 
+## Lead documents and financing applications
+
+Inside a lead, **Documenti e finanziamento** does two things. **Carica documenti
+cliente** files the customer's general paperwork on the lead, and the office is
+told that it arrived, with a link to the customer's folder. **Apri pratica di
+finanziamento** opens the application: it gets its own link, and that link is
+the checklist. Every required document has its own row and its own upload
+button, so the seller uploads what they have, and returns to the same link when
+the rest arrives. The link works on a phone and can be forwarded to the customer.
+
+The required documents are a list in **Settings → Finanziamenti**, one per line:
+`code|Label|1 if required|per_lender`. The privacy form is marked `per_lender`,
+because it is the one document that differs between lenders: choosing the
+lenders an application is aimed at turns that single row into one row per
+lender.
+
+**Finanziamenti** (sidebar, admins) is the office side. Applications waiting to
+be checked come first, and the number on the sidebar counts them. Opening one
+shows the folder: the checklist with every file, the customer's general
+documents, the amount and purpose, and the lenders. The office marks it checked,
+then generates a link for each lender. Each lender's page shows the same
+dossier, that lender's privacy form and no other's, with a zip of everything
+where the server has ext-zip. Opens are counted, and a link can be switched off.
+
+Files live in `storage/uploads/lead-docs`, never in the web root: the dashboard
+serves them through `?ldl=` (the office all of them, a seller only their own
+leads, a technician none), the application's link through `pratica.php`, and a
+lender through `finanziaria.php`. Tables: migration 058 (`lead_files`,
+`finance_apps`, `finance_lenders`, `finance_shares`). Code:
+`src/Finance/Docs.php`, `views/finance.php`, `public/pratica.php`,
+`public/finanziaria.php`. The office alerts are queued like every other staff
+alert (`src/Notify/StaffAlert.php`).
+
 ## Optional: Bitrix24 sync
 
 The CRM is fully standalone. To **also** mirror new leads/deals into a Bitrix24

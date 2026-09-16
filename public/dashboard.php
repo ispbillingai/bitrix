@@ -145,7 +145,8 @@ $agentActions = [
     // job; uploading the quote and cancelling a request are the office's.
     'quote_scratch', 'quote_send', 'quote_revise',
 ];
-$agentActions = array_merge($agentActions, $teamActions, ['cm_invoice']); // an agent invoices their own statements
+$agentActions = array_merge($agentActions, $teamActions, ['cm_invoice', // an agent invoices their own statements
+    'lead_docs_upload', 'fin_open', 'fin_save', 'fin_upload', 'fin_file_del', 'fin_submit']); // …and fills their customers' folders
 // An agent who also installs — the tick box on their account — gets the
 // Installations tab and the report flow on top, with a technician's scope:
 // only the reports they opened. Read from the users row on every request, not
@@ -160,6 +161,32 @@ if ($isAgent && $uid) {
 if ($agentInstalls) {
     $agentViews[] = 'installations';
     $agentActions = array_merge($agentActions, $installActions);
+}
+
+// ---- lead documents (?ldl=<file id>) and a lender's blank privacy form (?lpr=<lender id>) ----
+// The customers' paperwork lives outside the web root. The office reads all of
+// it; a seller only the files on their own leads; a technician none.
+if (isset($_GET['ldl'])) {
+    $ldFile = \Glue\Finance\Docs::file((int)$_GET['ldl']);
+    $ldOk = $ldFile && !$isTech;
+    if ($ldOk && $isAgent) {
+        $ldOwn = $pdo->prepare('SELECT assigned_to FROM leads WHERE id = ?');
+        $ldOwn->execute([(int)$ldFile['lead_id']]);
+        $ldOk = (int)$ldOwn->fetchColumn() === (int)$uid && $uid;
+    }
+    if ($ldOk) {
+        \Glue\Finance\Docs::stream($ldFile);
+    }
+    http_response_code(404);
+    exit('Not found');
+}
+if (isset($_GET['lpr']) && !$isAgent && !$isTech) {
+    $lpr = \Glue\Finance\Docs::lender((int)$_GET['lpr']);
+    if ($lpr && $lpr['privacy_path']) {
+        \Glue\Finance\Docs::stream(['path' => $lpr['privacy_path'], 'name' => $lpr['privacy_name'] ?: 'privacy']);
+    }
+    http_response_code(404);
+    exit('Not found');
 }
 
 // ---- commission statement files (?cmf=<statement_id>&w=calc|invoice) ----
@@ -455,6 +482,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
         }
     }
+    // A seller may only touch the documents of their own leads; a technician none.
+    // (The 'lead_' prefix guard above already covers lead_docs_upload.)
+    $finMay = function (int $leadId) use ($pdo, $isAgent, $isTech, $uid): bool {
+        if ($isTech) { return false; }
+        if (!$isAgent) { return true; }
+        $q = $pdo->prepare('SELECT assigned_to FROM leads WHERE id = ?');
+        $q->execute([$leadId]);
+        return $uid && (int)$q->fetchColumn() === (int)$uid;
+    };
+    $finName = trim((string)($_SESSION['glue_user']['full_name'] ?? '')) ?: (string)($_SESSION['glue_user']['username'] ?? 'Staff');
     try {
         switch ($do) {
             // ---------- settings ----------
@@ -474,7 +511,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'logistics.email', 'logistics.phone',
                     'bitrix.sync_enabled', 'bitrix.base_url', 'bitrix.outbound_secret',
                     'sibill.enabled', 'sibill.api_key', 'sibill.company_id',
-                    'ai.api_key', 'ai.model', 'ai.usd_eur',
+                    'ai.api_key', 'ai.model', 'ai.usd_eur', 'finance.doc_types',
                     'sibill.sync_minutes', 'sibill.sync_months',
                     'sibill.chase_enabled', 'sibill.chase_from_date',
                     'sibill.chase_every_days', 'sibill.chase_min_days_late',
@@ -2155,6 +2192,125 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     : [$t('cm_err_' . $cmRes['error']), 'err'];
                 header('Location: ?tab=commissions&st=' . $cmId . '#cm-' . $cmId);
                 exit;
+            // ---- lead documents and financing applications (src/Finance/Docs.php) ----
+            case 'lead_docs_upload': { // the general documents of a customer, from the lead
+                $fLead = (int)($_POST['id'] ?? 0);
+                $fQ = $pdo->prepare('SELECT l.id, l.contact_id, l.customer_name, ct.company
+                                       FROM leads l LEFT JOIN contacts ct ON ct.id = l.contact_id WHERE l.id = ?');
+                $fQ->execute([$fLead]);
+                $fL = $fQ->fetch();
+                if (!$fL || !$finMay($fLead)) {
+                    $_SESSION['dash_flash'] = [$t('not_allowed'), 'err'];
+                    header('Location: ?tab=leads');
+                    exit;
+                }
+                $fRes = \Glue\Finance\Docs::storeMany(['lead_id' => $fLead, 'contact_id' => $fL['contact_id'] ?? null,
+                    'source' => $isAgent ? 'agent' : 'office', 'user_id' => $uid ?: null, 'user_name' => $finName], $_FILES['files'] ?? null);
+                if ($fRes['count'] > 0) {
+                    \Glue\Finance\Docs::alertOfficeFiles($fLead, $fRes['count'], (string)$fL['customer_name'], $fL['company'] ?? null);
+                }
+                $_SESSION['dash_flash'] = $fRes['count'] > 0
+                    ? [sprintf($t('fin_ok_uploaded'), $fRes['count']), 'ok']
+                    : [$t('fin_err_upload') . ($fRes['errors'] ? ' ' . implode('; ', array_slice($fRes['errors'], 0, 2)) : ''), 'err'];
+                header('Location: ?tab=leads&lead=' . $fLead . '#lead-' . $fLead);
+                exit;
+            }
+            case 'fin_open': { // open the financing application on a lead
+                $fLead = (int)($_POST['lead_id'] ?? 0);
+                if (!$finMay($fLead)) {
+                    $_SESSION['dash_flash'] = [$t('not_allowed'), 'err'];
+                    header('Location: ?tab=leads');
+                    exit;
+                }
+                $fRes = \Glue\Finance\Docs::openApp($fLead, $uid ?: null);
+                $_SESSION['dash_flash'] = !empty($fRes['ok']) ? [$t('fin_ok_opened'), 'ok'] : [$t('not_allowed'), 'err'];
+                header('Location: ?tab=leads&lead=' . $fLead . '#lead-' . $fLead);
+                exit;
+            }
+            case 'fin_save':
+            case 'fin_upload':
+            case 'fin_submit':
+            case 'fin_review':
+            case 'fin_reopen':
+            case 'fin_close':
+            case 'fin_share':
+            case 'fin_share_revoke':
+            case 'fin_file_del': {
+                $fFile = $do === 'fin_file_del' ? \Glue\Finance\Docs::file((int)($_POST['file_id'] ?? 0)) : null;
+                $fAppId = (int)($_POST['app_id'] ?? 0);
+                if ($do === 'fin_share_revoke' && $fAppId === 0) { $fAppId = 0; }
+                $fApp = $fAppId > 0 ? \Glue\Finance\Docs::app($fAppId) : ($fFile && $fFile['app_id'] ? \Glue\Finance\Docs::app((int)$fFile['app_id']) : null);
+                $fLead = (int)($fApp['lead_id'] ?? ($fFile['lead_id'] ?? 0));
+                $back = $fApp && !$isAgent ? '?tab=finance&app=' . (int)$fApp['id'] . '#app-' . (int)$fApp['id']
+                                           : '?tab=leads&lead=' . $fLead . '#lead-' . $fLead;
+                if ($fLead === 0 || !$finMay($fLead) || ($isAgent && in_array($do, ['fin_review', 'fin_reopen', 'fin_close', 'fin_share', 'fin_share_revoke'], true))) {
+                    $_SESSION['dash_flash'] = [$t('not_allowed'), 'err'];
+                    header('Location: ' . $back);
+                    exit;
+                }
+                $msg = [$t('saved'), 'ok'];
+                switch ($do) {
+                    case 'fin_save':
+                        \Glue\Finance\Docs::updateApp((int)$fApp['id'], $_POST, $uid ?: null);
+                        break;
+                    case 'fin_upload':
+                        $fRes = \Glue\Finance\Docs::storeMany([
+                            'lead_id' => $fLead, 'contact_id' => $fApp['contact_id'] ?? null, 'app_id' => (int)$fApp['id'],
+                            'slot_code' => preg_replace('/[^a-z0-9_]/', '', strtolower((string)($_POST['slot'] ?? 'altro'))) ?: 'altro',
+                            'lender_id' => (int)($_POST['lender_id'] ?? 0) ?: null,
+                            'source' => $isAgent ? 'agent' : 'office', 'user_id' => $uid ?: null, 'user_name' => $finName,
+                        ], $_FILES['files'] ?? null);
+                        $msg = $fRes['count'] > 0
+                            ? [sprintf($t('fin_ok_uploaded'), $fRes['count']), 'ok']
+                            : [$t('fin_err_upload') . ($fRes['errors'] ? ' ' . implode('; ', array_slice($fRes['errors'], 0, 2)) : ''), 'err'];
+                        break;
+                    case 'fin_file_del':
+                        if ($fFile) { \Glue\Finance\Docs::delete((int)$fFile['id'], $uid ?: null); }
+                        $msg = [$t('fin_ok_deleted'), 'ok'];
+                        break;
+                    case 'fin_submit':
+                        $fR = \Glue\Finance\Docs::submit((int)$fApp['id'], $uid ?: null);
+                        $msg = !empty($fR['ok'])
+                            ? [$fR['missing'] ? sprintf($t('fin_ok_submitted_partial'), implode(', ', array_slice($fR['missing'], 0, 4))) : $t('fin_ok_submitted'), 'ok']
+                            : [$t('not_allowed'), 'err'];
+                        break;
+                    case 'fin_review':
+                        \Glue\Finance\Docs::review((int)$fApp['id'], $uid ?: null);
+                        $msg = [$t('fin_ok_reviewed'), 'ok'];
+                        break;
+                    case 'fin_reopen':
+                        \Glue\Finance\Docs::reopen((int)$fApp['id'], $uid ?: null);
+                        $msg = [$t('fin_ok_reopened'), 'ok'];
+                        break;
+                    case 'fin_close':
+                        \Glue\Finance\Docs::close((int)$fApp['id'], $uid ?: null);
+                        $msg = [$t('fin_ok_closed'), 'ok'];
+                        break;
+                    case 'fin_share':
+                        $fR = \Glue\Finance\Docs::share((int)$fApp['id'], (array)($_POST['lender_ids'] ?? []), $uid ?: null);
+                        $msg = !empty($fR['ok']) ? [sprintf($t('fin_ok_shared'), count($fR['shares'])), 'ok'] : [$t('fin_err_no_lender'), 'err'];
+                        break;
+                    case 'fin_share_revoke':
+                        \Glue\Finance\Docs::revokeShare((int)($_POST['share_id'] ?? 0), $uid ?: null);
+                        $msg = [$t('fin_ok_revoked'), 'ok'];
+                        break;
+                }
+                $_SESSION['dash_flash'] = $msg;
+                header('Location: ' . $back);
+                exit;
+            }
+            case 'fin_lender_save': { // admin only: the institutions and their privacy forms
+                $fR = \Glue\Finance\Docs::saveLender($_POST, $_FILES['privacy'] ?? null, $uid ?: null);
+                $_SESSION['dash_flash'] = !empty($fR['ok']) ? [$t('saved'), 'ok'] : [$t('fin_err_' . ($fR['error'] ?? 'name')), 'err'];
+                header('Location: ?tab=finance');
+                exit;
+            }
+            case 'fin_lender_del': {
+                $fR = \Glue\Finance\Docs::deleteLender((int)($_POST['id'] ?? 0), $uid ?: null);
+                $_SESSION['dash_flash'] = !empty($fR['ok']) ? [$t('deleted'), 'ok'] : [$t('fin_err_lender_in_use'), 'err'];
+                header('Location: ?tab=finance');
+                exit;
+            }
             case 'accrual_status':
                 \Glue\Partner\Partners::setAccrualStatus((int)($_POST['id'] ?? 0), (string)($_POST['status'] ?? ''));
                 $flash = $t('saved');
@@ -2177,7 +2333,7 @@ $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_forma
 $views = ['overview', 'leads', 'deals', 'quotes', 'customers', 'articles', 'contacts', 'appointments', 'tasks', 'tickets', 'team', 'documents',
           'installations', 'support',
           'invoices', 'payments', 'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents',
-          'partners', 'commissions', 'my_commissions', 'devices', 'network_areas', 'settings', 'instructions'];
+          'partners', 'commissions', 'my_commissions', 'finance', 'devices', 'network_areas', 'settings', 'instructions'];
 $view = in_array($tab, $views, true) ? $tab : 'overview';
 // Agents can't reach admin views, even by typing the URL.
 if ($isAgent && !in_array($view, $agentViews, true)) {
@@ -2212,7 +2368,13 @@ try {
 } catch (Throwable $e) {
     $cmBadge = 0; // table not migrated yet
 }
-render_head($t, $h, $lang, $tab, $flash, $flashType, $isAgent, $isTech, $agentInstalls, $uid ? TeamChat::unreadTotal((int)$uid) : 0, $cmBadge);
+// Applications the office still has to check — the number on Finanziamenti.
+$finBadge = 0;
+try {
+    $finBadge = ($isAgent || $isTech) ? 0 : \Glue\Finance\Docs::countInReview();
+} catch (Throwable $e) {
+    $finBadge = 0; // before migration 058
+}render_head($t, $h, $lang, $tab, $flash, $flashType, $isAgent, $isTech, $agentInstalls, $uid ? TeamChat::unreadTotal((int)$uid) : 0, $cmBadge, $finBadge);
 
 require dirname(__DIR__) . '/views/' . $view . '.php';
 
@@ -2238,7 +2400,7 @@ function render_login(callable $t, callable $h, string $lang, ?string $err): voi
 </body></html>
 <?php }
 
-function render_head(callable $t, callable $h, string $lang, string $tab, ?string $flash, string $flashType, bool $isAgent = false, bool $isTech = false, bool $agentInstalls = false, int $teamUnread = 0, int $cmBadge = 0): void {
+function render_head(callable $t, callable $h, string $lang, string $tab, ?string $flash, string $flashType, bool $isAgent = false, bool $isTech = false, bool $agentInstalls = false, int $teamUnread = 0, int $cmBadge = 0, int $finBadge = 0): void {
     $brand = (string)\Glue\Config::get('app.company_name', '') ?: $t('app_title');
     $nav = [
         'overview' => 'nav_overview', 'leads' => 'nav_leads', 'deals' => 'nav_deals',
@@ -2252,7 +2414,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
         'campaigns' => 'nav_campaigns', 'messages' => 'nav_messages', 'outbound' => 'nav_outbound',
         'reminders' => 'nav_reminders', 'templates' => 'nav_templates',
         'devices' => 'nav_devices', 'network_areas' => 'nav_network_areas',
-        'events' => 'nav_events', 'agents' => 'nav_agents', 'partners' => 'nav_partners', 'commissions' => 'nav_commissions', 'my_commissions' => 'nav_my_commissions', 'instructions' => 'nav_instr', 'settings' => 'nav_settings',
+        'events' => 'nav_events', 'agents' => 'nav_agents', 'partners' => 'nav_partners', 'commissions' => 'nav_commissions', 'my_commissions' => 'nav_my_commissions', 'finance' => 'nav_finance', 'instructions' => 'nav_instr', 'settings' => 'nav_settings',
     ];
     if ($isAgent) { // agents only see their own work — plus Installations when they also install
         $nav = array_intersect_key($nav, array_flip(array_merge(
@@ -2276,7 +2438,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
       <div><strong><?= $h($brand) ?></strong><span class="muted small"><?= $h($t('app_subtitle')) ?></span></div></div>
     <nav>
       <?php foreach ($nav as $key => $label): ?>
-        <a class="<?= $tab === $key ? 'active' : '' ?>" href="?tab=<?= $h($key) ?>"><?= svg($key) ?><span><?= $h($t($label)) ?></span><?php if ($key === 'team' && $teamUnread > 0): ?><span class="nav-n"><?= $teamUnread ?></span><?php endif; ?><?php if (($key === 'commissions' || $key === 'my_commissions') && $cmBadge > 0): ?><span class="nav-n"><?= $cmBadge ?></span><?php endif; ?></a>
+        <a class="<?= $tab === $key ? 'active' : '' ?>" href="?tab=<?= $h($key) ?>"><?= svg($key) ?><span><?= $h($t($label)) ?></span><?php if ($key === 'team' && $teamUnread > 0): ?><span class="nav-n"><?= $teamUnread ?></span><?php endif; ?><?php if (($key === 'commissions' || $key === 'my_commissions') && $cmBadge > 0): ?><span class="nav-n"><?= $cmBadge ?></span><?php endif; ?><?php if ($key === 'finance' && $finBadge > 0): ?><span class="nav-n"><?= $finBadge ?></span><?php endif; ?></a>
       <?php endforeach; ?>
     </nav>
   </aside>

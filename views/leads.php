@@ -544,6 +544,45 @@ $focus = $openLeadId > 0;
           <?php endforeach; endif; ?>
         </div>
         <div>
+          <?php // The customer's documents, and the financing application built on them
+                // (2026-09-16). The checklist itself lives on the application's own link,
+                // so the seller fills it from the phone and can come back to it. ?>
+          <h3><?= $h($t('fin_docs_h')) ?></h3>
+          <?php $ldFiles = \Glue\Finance\Docs::forLead((int)$r['id']);
+                $ldApp   = \Glue\Finance\Docs::appForLead((int)$r['id']); ?>
+          <form method="post" enctype="multipart/form-data" style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin:-2px 0 10px">
+            <input type="hidden" name="do" value="lead_docs_upload"><input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
+            <input type="file" name="files[]" multiple required style="flex:1 1 180px;min-width:0">
+            <button class="btn tiny"><?= svg('documents') ?> <?= $h($t('fin_upload_general')) ?></button>
+          </form>
+          <?php if (!$ldFiles): ?><div class="muted small" style="margin-bottom:10px"><?= $h($t('fin_no_docs')) ?></div><?php endif; ?>
+          <?php foreach ($ldFiles as $ldF): ?>
+            <div class="lb">
+              <span class="nm" style="min-width:0"><a href="?ldl=<?= (int)$ldF['id'] ?>">📎 <?= $h($ldF['name']) ?></a>
+                <div class="muted small"><?= $h(\Glue\Finance\Docs::size((int)$ldF['size_bytes'])) ?> · <?= $h(short_time($ldF['created_at'])) ?><?= $ldF['uploader_name'] ? ' · ' . $h($ldF['uploader_name']) : '' ?></div></span>
+              <form method="post" class="inline" onsubmit="return confirm('<?= $h($t('fin_del_confirm')) ?>')">
+                <input type="hidden" name="do" value="fin_file_del"><input type="hidden" name="file_id" value="<?= (int)$ldF['id'] ?>">
+                <button class="btn tiny ghost" style="color:var(--red)"><?= $h($t('delete')) ?></button></form>
+            </div>
+          <?php endforeach; ?>
+          <?php if (!$ldApp): ?>
+            <form method="post" style="margin:12px 0 18px">
+              <input type="hidden" name="do" value="fin_open"><input type="hidden" name="lead_id" value="<?= (int)$r['id'] ?>">
+              <button class="btn tiny"><?= svg('invoices') ?> <?= $h($t('fin_open_app')) ?></button>
+            </form>
+          <?php else: $ldP = \Glue\Finance\Docs::progress((int)$ldApp['id']); ?>
+            <div class="cm-strip" style="margin:12px 0 18px">
+              <b><?= $h($t('fin_app')) ?></b>
+              <span class="cm-st cm-st-<?= $ldApp['status'] === 'sent' ? 'paid' : ($ldApp['status'] === 'review' ? 'invoiced' : ($ldApp['status'] === 'closed' ? 'cancelled' : 'sent')) ?>"><?= $h($t('fin_st_' . $ldApp['status'])) ?></span>
+              <span class="muted small" style="flex:1"><?= (int)$ldP['done'] ?>/<?= (int)$ldP['required'] ?> <?= $h($t('fin_docs_done')) ?></span>
+              <a class="btn tiny" href="<?= $h(\Glue\Finance\Docs::uploadUrl((string)$ldApp['token'])) ?>" target="_blank"><?= $h($t('fin_open_link')) ?></a>
+              <?php if (empty($isAgent)): ?><a class="btn tiny ghost" href="?tab=finance&app=<?= (int)$ldApp['id'] ?>"><?= $h($t('fin_office_open')) ?></a><?php endif; ?>
+              <?php if ($ldApp['status'] === 'collecting'): ?>
+                <form method="post" class="inline"><input type="hidden" name="do" value="fin_submit"><input type="hidden" name="app_id" value="<?= (int)$ldApp['id'] ?>">
+                  <button class="btn tiny"><?= $h($t('fin_submit_btn')) ?></button></form>
+              <?php endif; ?>
+            </div>
+          <?php endif; ?>
           <?php $acc = \Glue\Portal\Account::accessStats((int)$r['contact_id']); ?>
           <h3><?= $h($t('portal_access_h')) ?></h3>
           <div class="muted small" style="margin:-4px 0 14px">
