@@ -2122,5 +2122,10 @@ return [
     'rk_lender_share_link' => 'Link della pratica inviato alla finanziaria',
     'evt_share_sent' => 'Link pratica inviato',
     'evt_share_send_failed' => 'Invio del link non riuscito',
+
+    // ---- financing: what to do when no lender is on file yet ----
+    'fin_need_lender' => 'Non c’è ancora nessuna finanziaria in anagrafica, quindi non si può generare nessun link. Aggiungila qui sotto, poi torna su questa pratica, spuntala e premi «Genera i link».',
+    'fin_need_lender_go' => 'Vai alle finanziarie',
+    'fin_privacy_pick_lender' => 'Il modulo privacy cambia per ogni finanziaria: scegli le finanziarie qui sopra e comparirà una riga per ciascuna.',
 ];
 

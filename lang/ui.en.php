@@ -2124,5 +2124,10 @@ return [
     'rk_lender_share_link' => 'Application link sent to the lender',
     'evt_share_sent' => 'Application link sent',
     'evt_share_send_failed' => 'Sending the link failed',
+
+    // ---- financing: what to do when no lender is on file yet ----
+    'fin_need_lender' => 'There is no lender on file yet, so no link can be generated. Add one below, then come back to this application, tick it and press "Genera i link".',
+    'fin_need_lender_go' => 'Go to the lenders',
+    'fin_privacy_pick_lender' => 'The privacy form differs per lender: choose the lenders above and a row appears for each of them.',
 ];
 

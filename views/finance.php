@@ -98,6 +98,9 @@ $stPill  = fn(string $s): string => 'cm-st-' . ['collecting' => 'sent', 'review'
               <span class="cm-st <?= $row['files'] ? 'cm-st-paid' : 'cm-st-sent' ?>"><?= $h($row['files'] ? $t('fin_have') : $t('fin_missing_one')) ?></span>
             <?php else: ?><span class="muted small"><?= $h($t('fin_optional')) ?></span><?php endif; ?>
           </div>
+          <?php if (!empty($row['per_lender']) && !$row['lender']): // one row per lender, once they are chosen ?>
+            <div class="muted small" style="margin-top:4px"><?= $h($t('fin_privacy_pick_lender')) ?></div>
+          <?php endif; ?>
           <?php foreach ($row['files'] as $f): ?>
             <div class="lb">
               <span class="nm" style="min-width:0"><a href="?ldl=<?= (int)$f['id'] ?>">📎 <?= $h($f['name']) ?></a>
@@ -138,17 +141,23 @@ $stPill  = fn(string $s): string => 'cm-st-' . ['collecting' => 'sent', 'review'
           <form method="post" class="inline"><input type="hidden" name="do" value="fin_reopen"><input type="hidden" name="app_id" value="<?= $id ?>">
             <button class="btn tiny ghost"><?= $h($t('fin_reopen_btn')) ?></button></form>
         <?php endif; ?>
-        <form method="post" style="margin-top:10px">
-          <input type="hidden" name="do" value="fin_share"><input type="hidden" name="app_id" value="<?= $id ?>">
-          <span style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">
-            <?php foreach ($lenders as $l): if (!(int)$l['active']) { continue; } ?>
-              <label style="display:inline-flex;gap:6px;align-items:center">
-                <input type="checkbox" name="lender_ids[]" value="<?= (int)$l['id'] ?>" style="width:auto"<?= in_array((int)$l['id'], $appLenders, true) ? ' checked' : '' ?>>
-                <?= $h($l['name']) ?></label>
-            <?php endforeach; ?>
-          </span>
-          <button class="btn tiny"<?= $lenders ? '' : ' disabled' ?>><?= svg('send') ?> <?= $h($t('fin_send_btn')) ?></button>
-        </form>
+        <?php $activeLenders = array_values(array_filter($lenders, fn($fl) => (int)$fl['active'] === 1)); ?>
+        <?php if (!$activeLenders): // nothing to send to yet: say so instead of a dead button ?>
+          <div class="cm-warn" style="margin:0">⚠ <?= $h($t('fin_need_lender')) ?>
+            <a href="#finanziarie"><?= $h($t('fin_need_lender_go')) ?></a></div>
+        <?php else: ?>
+          <form method="post" style="margin-top:10px">
+            <input type="hidden" name="do" value="fin_share"><input type="hidden" name="app_id" value="<?= $id ?>">
+            <span style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:10px">
+              <?php foreach ($activeLenders as $l): ?>
+                <label style="display:inline-flex;gap:6px;align-items:center">
+                  <input type="checkbox" name="lender_ids[]" value="<?= (int)$l['id'] ?>" style="width:auto"<?= in_array((int)$l['id'], $appLenders, true) ? ' checked' : '' ?>>
+                  <?= $h($l['name']) ?></label>
+              <?php endforeach; ?>
+            </span>
+            <button class="btn tiny"><?= svg('send') ?> <?= $h($t('fin_send_btn')) ?></button>
+          </form>
+        <?php endif; ?>
         <?php if ($shares): ?>
           <div style="margin-top:12px">
             <?php foreach ($shares as $sh): $url = Docs::shareUrl((string)$sh['token']); ?>
@@ -187,7 +196,7 @@ $stPill  = fn(string $s): string => 'cm-st-' . ['collecting' => 'sent', 'review'
 <?php endforeach; ?>
 
 <?php // The institutions themselves, each with the blank privacy form the customer signs. ?>
-<h3 style="margin:22px 0 10px"><?= $h($t('fin_lenders_h')) ?></h3>
+<h3 id="finanziarie" style="margin:22px 0 10px"><?= $h($t('fin_lenders_h')) ?></h3>
 <details class="drawer">
   <summary class="btn ghost" style="margin-bottom:12px"><?= $h($t('fin_lender_add')) ?></summary>
   <form method="post" enctype="multipart/form-data" class="card" style="margin-top:10px;max-width:820px">
