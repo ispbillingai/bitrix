@@ -302,6 +302,24 @@ if ($a !== null):
         <input type="file" name="files[]" multiple required accept="<?= $h('.' . implode(',.', ArticleMedia::FILE_EXT)) ?>">
         <button class="btn tiny"><?= $h($t('pl_add_docs')) ?></button>
       </form>
+      <?php if (($plMax = ArticleMedia::postLimit()) > 0): ?>
+      <script>
+      // Past the server's post limit PHP drops the whole submission without a
+      // word, so a batch of phone photos that is too big is stopped here, when
+      // the files are picked (cancelling the submit would trip the page's
+      // double-submit guard instead).
+      document.querySelectorAll('.pl-up input[type=file]').forEach(function (inp) {
+        inp.addEventListener('change', function () {
+          var total = 0;
+          for (var i = 0; i < inp.files.length; i++) { total += inp.files[i].size; }
+          if (total > <?= (int)$plMax ?>) {
+            alert(<?= json_encode(sprintf($t('pl_err_batch'), (int)floor($plMax / 1048576)), JSON_UNESCAPED_UNICODE) ?>);
+            inp.value = '';
+          }
+        });
+      });
+      </script>
+      <?php endif; ?>
     <?php endif; ?>
 
     <h3 style="margin-top:20px"><?= svg('link') ?> <?= $h($t('pl_text_link')) ?></h3>

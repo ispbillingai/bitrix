@@ -2238,6 +2238,7 @@ return [
     'pl_err_too_big' => 'troppo grande',
     'pl_err_bad_type' => 'formato non ammesso',
     'pl_err_save_failed' => 'salvataggio non riuscito',
+    'pl_err_batch' => 'Questi file insieme superano %d MB, il massimo per un singolo invio: caricali in più volte.',
     'evt_pricelist_saved' => 'Listino salvato',
     'evt_pricelist_deleted' => 'Listino eliminato',
     'evt_pricelist_items_set' => 'Prodotti del listino aggiornati',

@@ -29,6 +29,8 @@ final class ArticleMedia
 
     private const PHOTO_MAX_PX = 1600;
     private const THUMB_PX     = 480;
+    /** 60 megapixels: ~240 MB decoded, inside the 512 MB the upload handler asks for. */
+    private const MAX_PIXELS   = 60_000_000;
 
     /** Opened in the browser rather than downloaded. */
     private const INLINE = ['jpg' => 'image/jpeg', 'jpeg' => 'image/jpeg', 'png' => 'image/png',
@@ -277,6 +279,36 @@ final class ArticleMedia
         return ['ok' => true];
     }
 
+    /** Lift the request's memory limit to $to — never lower it (the CLI runs unlimited). */
+    public static function raiseMemory(string $to): void
+    {
+        $cur = trim((string)ini_get('memory_limit'));
+        if ($cur !== '-1' && self::iniBytes($cur) < self::iniBytes($to)) {
+            @ini_set('memory_limit', $to);
+        }
+    }
+
+    /**
+     * The most one form submission can carry, in bytes. Past post_max_size PHP
+     * drops the whole body — files AND fields — so the page checks the total
+     * before sending rather than let a batch of phone photos vanish silently.
+     */
+    public static function postLimit(): int
+    {
+        $post = self::iniBytes((string)ini_get('post_max_size'));
+        return $post > 0 ? max(1048576, $post - 512 * 1024) : 0;   // room for the other fields
+    }
+
+    /** "25M" -> 26214400. */
+    private static function iniBytes(string $v): int
+    {
+        $v = trim($v);
+        $n = (int)$v;
+        return match (strtolower(substr($v, -1))) {
+            'g' => $n * 1073741824, 'm' => $n * 1048576, 'k' => $n * 1024, default => $n,
+        };
+    }
+
     public static function size(int $bytes): string
     {
         if ($bytes >= 1048576) {
@@ -372,9 +404,14 @@ final class ArticleMedia
             $err = 'bad_type';
             return null;
         }
+        if ((int)$info[0] * (int)$info[1] > self::MAX_PIXELS) {
+            $err = 'too_big';            // decoding it would not fit in the request's memory
+            return null;
+        }
 
         $dir  = self::dir();
         $base = bin2hex(random_bytes(16));
+        self::raiseMemory('512M');   // one decoded phone photo is tens of MB
         $img  = self::decode($tmp, $info);
         if ($img !== null) {
             $big   = self::jpeg($img, self::PHOTO_MAX_PX, 82);
@@ -409,9 +446,14 @@ final class ArticleMedia
     }
 
     /**
-     * Decode to a true-colour image, upright, on WHITE. Product shots are often
-     * PNGs cut out on a transparent ground; flattened naively that ground turns
-     * black, and a black box is not what a catalogue should show.
+     * Decode to a true-colour image no larger than PHOTO_MAX_PX, upright, on
+     * WHITE. Product shots are often PNGs cut out on a transparent ground;
+     * flattened naively that ground turns black, and a black box is not what a
+     * catalogue should show.
+     *
+     * Scaling and flattening happen in ONE copy onto a bounded canvas, and the
+     * rotation after it: a 12-megapixel phone photo is ~48 MB decoded, and the
+     * web request's memory would not hold it twice.
      *
      * @return \GdImage|null
      */
@@ -426,10 +468,13 @@ final class ArticleMedia
         }
         $w   = imagesx($src);
         $h   = imagesy($src);
-        $img = imagecreatetruecolor($w, $h);
+        $k   = min(1.0, self::PHOTO_MAX_PX / max($w, $h));
+        $nw  = max(1, (int)round($w * $k));
+        $nh  = max(1, (int)round($h * $k));
+        $img = imagecreatetruecolor($nw, $nh);
         imagefill($img, 0, 0, imagecolorallocate($img, 255, 255, 255));
         imagealphablending($img, true);
-        imagecopy($img, $src, 0, 0, 0, 0, $w, $h);
+        imagecopyresampled($img, $src, 0, 0, 0, 0, $nw, $nh, $w, $h);
         imagedestroy($src);
 
         // GD drops the EXIF tag, so a portrait phone photo would lie on its side.

@@ -229,7 +229,7 @@ if (isset($_GET['plpdf'])) {
     }
     session_write_close();
     @set_time_limit(300);
-    @ini_set('memory_limit', '512M');   // photos are embedded; a long list is tens of MB
+    \Glue\Crm\ArticleMedia::raiseMemory('512M');   // photos are embedded; a long list is tens of MB
     $plF = ['q' => trim((string)($_GET['q'] ?? '')), 'category' => trim((string)($_GET['category'] ?? ''))];
     $plRows = \Glue\Crm\PriceLists::allItems((int)$plList['id'], $plF);
     $plPdf = \Glue\Crm\PriceListPdf::build(

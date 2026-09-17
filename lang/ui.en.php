@@ -2240,6 +2240,7 @@ return [
     'pl_err_too_big' => 'too large',
     'pl_err_bad_type' => 'format not allowed',
     'pl_err_save_failed' => 'could not be saved',
+    'pl_err_batch' => 'Together these files exceed %d MB, the most a single upload can carry: upload them in several goes.',
     'evt_pricelist_saved' => 'Price list saved',
     'evt_pricelist_deleted' => 'Price list deleted',
     'evt_pricelist_items_set' => 'Price list products updated',
