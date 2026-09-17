@@ -18,7 +18,9 @@
  * In scope: $t, $h, $isAgent.
  */
 
+use Glue\Crm\ArticleMedia;
 use Glue\Crm\Articles;
+use Glue\Crm\PriceLists;
 
 /** The add/edit form. $ed is the article being edited, or null for a new one. */
 function article_form(array $cats, array $sups, callable $h, callable $t, ?array $ed = null): void { ?>
@@ -191,6 +193,138 @@ if ($a !== null):
         </td></tr>
       <?php endif; ?>
     </tbody></table>
+  </div>
+
+  <?php
+    // ---- price lists: the per-list flag, and the product sheet the catalogue shows ----
+    $plLists  = PriceLists::forArticle((int)$a['id'], !$isAdminHere);
+    $amPhotos = ArticleMedia::photos((int)$a['id']);
+    $amFiles  = ArticleMedia::files((int)$a['id']);
+    $amLink   = trim((string)($a['info_url'] ?? ''));
+    $euro     = fn(float $n): string => '€ ' . number_format($n, 2, ',', '.');
+  ?>
+  <div class="card" id="pl-lists">
+    <h3><?= svg('pricelists') ?> <?= $h($t('pl_on_record')) ?></h3>
+    <?php if (!$plLists): ?>
+      <p class="muted small" style="margin:0"><?= $h($t($isAdminHere ? 'pl_record_none_admin' : 'pl_record_none')) ?>
+        <?php if ($isAdminHere): ?><a href="?tab=pricelists" style="color:var(--accent)"><?= $h($t('nav_pricelists')) ?> &rarr;</a><?php endif; ?></p>
+    <?php elseif ($isAdminHere): ?>
+      <form method="post">
+        <input type="hidden" name="do" value="article_lists">
+        <input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
+        <?php foreach ($plLists as $l): $lid = (int)$l['id']; $auto = PriceLists::netPrice($a + ['pl_price' => null], $l); ?>
+          <div class="pl-flag">
+            <label>
+              <input type="checkbox" name="on[]" value="<?= $lid ?>"<?= (int)$l['in_list'] === 1 ? ' checked' : '' ?>>
+              <span><strong><?= $h($l['name']) ?></strong>
+                <?php if ((int)$l['visible'] !== 1): ?><span class="muted small">· <?= $h($t('pl_hidden')) ?></span><?php endif; ?></span>
+            </label>
+            <input name="price[<?= $lid ?>]" inputmode="decimal" aria-label="<?= $h($t('pl_own_price')) ?>"
+                   value="<?= $l['pl_price'] !== null ? $h(number_format((float)$l['pl_price'], 2, ',', '')) : '' ?>"
+                   placeholder="<?= $h($auto > 0 ? $euro($auto) : $t('pl_on_request')) ?>">
+            <span class="pl-flag-go"><?php if ((int)$l['in_list'] === 1): ?>
+              <a class="btn ghost tiny" href="?tab=pricelists&list=<?= $lid ?>&item=<?= (int)$a['id'] ?>" title="<?= $h($t('pl_open_sheet')) ?>"><?= svg('eye') ?></a>
+            <?php endif; ?></span>
+          </div>
+        <?php endforeach; ?>
+        <p class="muted small" style="margin:10px 0 12px"><?= $h($t('pl_flag_h')) ?></p>
+        <button class="btn tiny"><?= $h($t('save')) ?></button>
+      </form>
+    <?php else:
+        $plIn = array_values(array_filter($plLists, fn($l) => (int)$l['in_list'] === 1)); ?>
+      <?php if (!$plIn): ?>
+        <p class="muted small" style="margin:0"><?= $h($t('pl_record_not_in')) ?></p>
+      <?php else: foreach ($plIn as $l): $p = PriceLists::shownPrice($a + ['pl_price' => $l['pl_price']], $l); ?>
+        <div class="lb">
+          <a class="nm" href="?tab=pricelists&list=<?= (int)$l['id'] ?>&item=<?= (int)$a['id'] ?>"><?= $h($l['name']) ?></a>
+          <span><?= $p > 0 ? $h($euro($p)) . ' <span class="muted small">' . $h($t((int)$l['vat_included'] === 1 ? 'pl_vat_incl' : 'pl_plus_vat')) . '</span>'
+                          : '<span class="muted small">' . $h($t('pl_on_request')) . '</span>' ?></span>
+        </div>
+      <?php endforeach; endif; ?>
+    <?php endif; ?>
+  </div>
+
+  <div class="card" id="pl-sheet">
+    <h3><?= svg('image') ?> <?= $h($t('pl_sheet')) ?></h3>
+    <?php if ($isAdminHere): ?><p class="muted small" style="margin:-4px 0 12px"><?= $h($t('pl_sheet_h')) ?></p><?php endif; ?>
+
+    <?php if ($amPhotos): ?>
+      <div class="pl-photos">
+        <?php foreach ($amPhotos as $i => $p): ?>
+          <div class="pl-photo">
+            <a href="?amf=<?= (int)$p['id'] ?>" target="_blank" rel="noopener"><img src="?amf=<?= (int)$p['id'] ?>&s=t" alt="<?= $h($p['name']) ?>" loading="lazy"></a>
+            <?php if ($i === 0): ?><span class="pl-cover"><?= $h($t('pl_cover')) ?></span><?php endif; ?>
+            <?php if ($isAdminHere): ?>
+              <div class="pl-photo-acts">
+                <?php if ($i > 0): ?>
+                  <form method="post"><input type="hidden" name="do" value="article_media_cover">
+                    <input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="media" value="<?= (int)$p['id'] ?>">
+                    <button class="btn ghost tiny" title="<?= $h($t('pl_make_cover')) ?>">★</button></form>
+                <?php endif; ?>
+                <form method="post" onsubmit="return confirm(<?= $h(json_encode($t('pl_media_del_confirm'), JSON_UNESCAPED_UNICODE)) ?>)"><input type="hidden" name="do" value="article_media_del">
+                  <input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="media" value="<?= (int)$p['id'] ?>">
+                  <button class="btn ghost tiny" style="color:var(--red)" title="<?= $h($t('delete')) ?>">✕</button></form>
+              </div>
+            <?php endif; ?>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    <?php else: ?>
+      <p class="muted small" style="margin:0 0 10px"><?= $h($t('pl_no_photos')) ?></p>
+    <?php endif; ?>
+    <?php if ($isAdminHere): ?>
+      <form method="post" enctype="multipart/form-data" class="pl-up">
+        <input type="hidden" name="do" value="article_photos"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
+        <input type="file" name="photos[]" multiple required accept="image/jpeg,image/png,image/webp,image/gif">
+        <button class="btn tiny"><?= $h($t('pl_add_photos')) ?></button>
+      </form>
+    <?php endif; ?>
+
+    <h3 style="margin-top:20px"><?= svg('clip') ?> <?= $h($t('pl_docs')) ?></h3>
+    <?php if ($amFiles): ?>
+      <?php foreach ($amFiles as $f): ?>
+        <div class="lb">
+          <a class="nm" href="?amf=<?= (int)$f['id'] ?>" target="_blank" rel="noopener" style="overflow-wrap:anywhere">📎 <?= $h($f['name']) ?></a>
+          <span class="mini"><?= $h(ArticleMedia::size((int)$f['size_bytes'])) ?></span>
+          <?php if ($isAdminHere): ?>
+            <form method="post" onsubmit="return confirm(<?= $h(json_encode($t('pl_media_del_confirm'), JSON_UNESCAPED_UNICODE)) ?>)"><input type="hidden" name="do" value="article_media_del">
+              <input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="media" value="<?= (int)$f['id'] ?>">
+              <button class="btn ghost tiny" style="color:var(--red)" title="<?= $h($t('delete')) ?>">✕</button></form>
+          <?php endif; ?>
+        </div>
+      <?php endforeach; ?>
+    <?php else: ?>
+      <p class="muted small" style="margin:0 0 10px"><?= $h($t('pl_no_docs')) ?></p>
+    <?php endif; ?>
+    <?php if ($isAdminHere): ?>
+      <form method="post" enctype="multipart/form-data" class="pl-up">
+        <input type="hidden" name="do" value="article_files"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
+        <input type="file" name="files[]" multiple required accept="<?= $h('.' . implode(',.', ArticleMedia::FILE_EXT)) ?>">
+        <button class="btn tiny"><?= $h($t('pl_add_docs')) ?></button>
+      </form>
+    <?php endif; ?>
+
+    <h3 style="margin-top:20px"><?= svg('link') ?> <?= $h($t('pl_text_link')) ?></h3>
+    <?php if ($isAdminHere): ?>
+      <form method="post">
+        <input type="hidden" name="do" value="article_sheet"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
+        <label class="fld"><span><?= $h($t('pl_info_url')) ?></span>
+          <input name="info_url" inputmode="url" maxlength="500" value="<?= $h($amLink) ?>" placeholder="https://…">
+          <small class="muted"><?= $h($t('pl_info_url_h')) ?></small></label>
+        <label class="fld"><span><?= $h($t('pl_web_desc')) ?></span>
+          <textarea name="web_description" rows="5" maxlength="5000" placeholder="<?= $h($t('pl_web_desc_ph')) ?>"><?= $h($a['web_description'] ?? '') ?></textarea></label>
+        <button class="btn tiny"><?= $h($t('save')) ?></button>
+      </form>
+    <?php else: ?>
+      <?php if ($amLink !== ''): ?>
+        <p style="margin:0 0 10px"><a class="btn ghost tiny" href="<?= $h($amLink) ?>" target="_blank" rel="noopener"><?= svg('external') ?> <?= $h($t('pl_open_link')) ?></a></p>
+      <?php endif; ?>
+      <?php if (trim((string)($a['web_description'] ?? '')) !== ''): ?>
+        <div style="white-space:pre-line;line-height:1.6"><?= $h($a['web_description']) ?></div>
+      <?php elseif ($amLink === ''): ?>
+        <p class="muted small" style="margin:0"><?= $h($t('pl_no_text')) ?></p>
+      <?php endif; ?>
+    <?php endif; ?>
   </div>
 </div>
 
@@ -448,6 +582,7 @@ if ($a !== null):
   </div>
 <?php endif; ?>
 <?php endif; ?>
+<?php endif; ?>
 
 <style>
 .cu-top{display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap}
@@ -459,6 +594,21 @@ if ($a !== null):
 .pill-up{background:rgba(62,207,142,.15);color:#3ecf8e}
 .pill-down{background:rgba(240,82,82,.15);color:#f05252}
 .cu-acts{margin-left:auto;display:flex;gap:8px;flex-wrap:wrap;position:relative}
-@media (max-width:1000px){.cu-cols{flex-direction:column}.cu-side{width:100%}}
+.pl-flag{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);flex-wrap:wrap}
+.pl-flag label{flex:1;min-width:180px;display:flex;align-items:center;gap:10px;cursor:pointer}
+.pl-flag label input{width:auto;transform:scale(1.2)}
+.pl-flag>input{width:150px;text-align:right}
+.pl-photos{display:flex;flex-wrap:wrap;gap:10px;margin-bottom:12px}
+.pl-photo{position:relative;width:118px}
+.pl-photo img{width:118px;height:118px;object-fit:contain;background:#fff;border:1px solid var(--line);border-radius:9px;display:block}
+.pl-cover{position:absolute;top:6px;left:6px;background:var(--accent);color:#fff;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:6px}
+.pl-photo-acts{display:flex;gap:6px;margin-top:6px}
+.pl-photo-acts form{margin:0}
+.pl-up{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.pl-up input[type=file]{flex:1;min-width:200px}
+.pl-flag-go{width:40px;flex:0 0 auto;text-align:right}
+/* Stacked, the columns must STRETCH to the screen: left at flex-start they size
+   to their content, and a table's 520px phone minimum widened the whole page. */
+@media (max-width:1000px){.cu-cols{flex-direction:column;align-items:stretch}.cu-side{width:100%}}
+@media (max-width:560px){.pl-flag label{flex-basis:100%}.pl-flag>input{flex:1;width:auto;min-width:0}}
 </style>
-<?php endif; ?>

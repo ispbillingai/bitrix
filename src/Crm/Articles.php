@@ -42,12 +42,45 @@ final class Articles
     /**
      * A page of the registry.
      *
-     * @param array $f q | state | category | supplier
+     * @param array $f see filterSql()
      * @return array{rows:array, total:int, page:int, pages:int, per:int}
      */
     public static function search(array $f = [], int $page = 1, int $per = 50): array
     {
-        $pdo   = Db::pdo();
+        $pdo = Db::pdo();
+        [$w, $args] = self::filterSql($f);
+        $per = max(1, min(200, $per));
+
+        $cnt = $pdo->prepare("SELECT COUNT(*) FROM articles a WHERE $w");
+        $cnt->execute($args);
+        $total = (int)$cnt->fetchColumn();
+
+        $pages = max(1, (int)ceil($total / $per));
+        $page  = max(1, min($page, $pages));
+        $off   = ($page - 1) * $per;
+
+        // Something in stock is more useful at the top than an alphabetical
+        // accident, so the ones you can actually sell lead.
+        $stmt = $pdo->prepare(
+            "SELECT a.* FROM articles a WHERE $w
+              ORDER BY (a.stock > 0) DESC, a.description ASC, a.code ASC
+              LIMIT $per OFFSET $off"
+        );
+        $stmt->execute($args);
+
+        return ['rows' => $stmt->fetchAll() ?: [], 'total' => $total,
+                'page' => $page, 'pages' => $pages, 'per' => $per];
+    }
+
+    /**
+     * The WHERE clause behind search(), over `articles a`, for callers that act
+     * on everything a filter finds (adding a whole category to a price list).
+     *
+     * @param array $f q | state | category | supplier | pricelist + pl_mode (in|out)
+     * @return array{0:string, 1:array} the clause and its bound values
+     */
+    public static function filterSql(array $f): array
+    {
         // Archived articles are hidden everywhere except their own filter: they
         // are the gestionale rows somebody "deleted", and the import keeps
         // refreshing them underneath without putting them back on screen.
@@ -87,28 +120,16 @@ final class Articles
             default    => '1=1',
         };
 
-        $w   = implode(' AND ', $where);
-        $per = max(1, min(200, $per));
+        // Membership of a price list: the office's "what is in it / what could go in".
+        $pl = (int)($f['pricelist'] ?? 0);
+        $mode = (string)($f['pl_mode'] ?? '');
+        if ($pl > 0 && ($mode === 'in' || $mode === 'out')) {
+            $where[] = ($mode === 'out' ? 'NOT ' : '')
+                     . 'EXISTS (SELECT 1 FROM price_list_items pli WHERE pli.article_id = a.id AND pli.list_id = ?)';
+            $args[]  = $pl;
+        }
 
-        $cnt = $pdo->prepare("SELECT COUNT(*) FROM articles a WHERE $w");
-        $cnt->execute($args);
-        $total = (int)$cnt->fetchColumn();
-
-        $pages = max(1, (int)ceil($total / $per));
-        $page  = max(1, min($page, $pages));
-        $off   = ($page - 1) * $per;
-
-        // Something in stock is more useful at the top than an alphabetical
-        // accident, so the ones you can actually sell lead.
-        $stmt = $pdo->prepare(
-            "SELECT a.* FROM articles a WHERE $w
-              ORDER BY (a.stock > 0) DESC, a.description ASC, a.code ASC
-              LIMIT $per OFFSET $off"
-        );
-        $stmt->execute($args);
-
-        return ['rows' => $stmt->fetchAll() ?: [], 'total' => $total,
-                'page' => $page, 'pages' => $pages, 'per' => $per];
+        return [implode(' AND ', $where), $args];
     }
 
     /** Counts for the filter chips. */
@@ -200,7 +221,7 @@ final class Articles
     ];
 
     /** "12,50" / "12.50" / " 1.234,56 " -> 1234.56. Italian typing, mostly. */
-    private static function num(string $raw): float
+    public static function num(string $raw): float
     {
         $v = trim($raw);
         if ($v === '') {
@@ -325,6 +346,10 @@ final class Articles
         }
         if ((string)$a['origin'] === 'crm') {
             Db::pdo()->prepare('DELETE FROM articles WHERE id = ?')->execute([$id]);
+            // Its photos, documents and price-list places go with it; nothing
+            // else can reach them once the product is gone.
+            ArticleMedia::deleteAllFor($id);
+            Db::pdo()->prepare('DELETE FROM price_list_items WHERE article_id = ?')->execute([$id]);
             Log::write('crm', 'article_deleted', 'article', $id, ['code' => $a['code'], 'by' => $userId]);
             return ['ok' => true, 'archived' => false];
         }

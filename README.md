@@ -99,6 +99,15 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
   than deleted. A **minimum stock** per product sends the office one restock
   alert when it is crossed. Cost price, margin and stock value are admin-only;
   sellers see list and sale prices and availability.
+- **Price lists** (`views/pricelists.php`): sales price lists the office builds
+  from the warehouse and the agents browse as a shop-style catalogue — photo,
+  code, description, price, availability — with a **PDF** to download or print.
+  A tick box per list on each product's record (or a bulk picker per list)
+  decides what is in it; a list prices from LISTINO or price list 4, marked up
+  or down, net or VAT included, with an optional own price per product. The
+  product sheet (photos, documents, long text, and the link the photo opens) is
+  kept in the CRM, so the import never clears it. Agents see only the lists the
+  office has made visible.
 - **Documents (electronic signature)**: upload a PDF, send it for signature, the
   customer confirms with a one-time code, and the CRM seals the result itself —
   a CAdES-signed PDF holding a signature certificate plus the original document,
@@ -134,6 +143,7 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 | Sign a document with an OTP, in-house | `views/documents.php` → `Sign\Documents` → `Sign\Signer` (CAdES) → `public/sign.php` / `public/verify.php` |
 | Charge a card / monthly support contract | `views/payments.php` → `Pay\Contracts` → `Pay\SmallPay` → `webhooks/smallpay-status.php` |
 | Warehouse: the gestionale catalogue plus CRM products, editable stock, restock alerts | `bin/import-articoli.php` (cron) → `Crm\ArticleImport` → `Crm\Articles` → `views/articles.php` |
+| Sales price lists for agents: per-list flag on each product, shop-style catalogue, photo links to more information, PDF export / print | `Crm\PriceLists` + `Crm\ArticleMedia` → `views/pricelists.php` (+ the product's record in `views/articles.php`) → `Crm\PriceListPdf` (`?plpdf=`) |
 | Bitrix24 sync | **optional** `Sync\BitrixSync`, off by default |
 
 ## Layout

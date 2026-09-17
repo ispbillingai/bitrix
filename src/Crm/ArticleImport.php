@@ -182,22 +182,35 @@ final class ArticleImport
                 // article the gestionale deleted. CRM-owned products are not in
                 // the file BY DEFINITION — they were never in it — so prune must
                 // never touch them, or adding a product here would be a way of
-                // scheduling its own deletion. (When deal lines or report lines
-                // start pointing at articles, add a kept-because-linked guard
-                // here too, like CustomerImport::prune has.)
+                // scheduling its own deletion.
+                //
+                // Kept-because-linked: an article somebody put in a price list or
+                // gave photos and documents is ARCHIVED instead — deleting it would
+                // throw that work away and leave the list pointing at nothing.
+                // Archived articles drop out of every catalogue on their own.
                 $gone = array_diff_key($existing, $seenCodes);
                 $out['pruned'] = 0;
                 if ($gone) {
-                    $del = $pdo->prepare("DELETE FROM articles WHERE code = ? AND origin = 'gestionale'");
+                    $del  = $pdo->prepare("DELETE FROM articles WHERE code = ? AND origin = 'gestionale'");
+                    $arch = $pdo->prepare("UPDATE articles SET archived = 1 WHERE code = ? AND origin = 'gestionale'");
+                    $chk  = $pdo->prepare(
+                        "SELECT a.id,
+                                (EXISTS (SELECT 1 FROM price_list_items p WHERE p.article_id = a.id)
+                                 OR EXISTS (SELECT 1 FROM article_media m WHERE m.article_id = a.id)) AS linked
+                           FROM articles a WHERE a.code = ? AND a.origin = 'gestionale'"
+                    );
                     foreach (array_keys($gone) as $code) {
-                        if ($dryRun) {
-                            $chk = $pdo->prepare("SELECT 1 FROM articles WHERE code = ? AND origin = 'gestionale'");
-                            $chk->execute([$code]);
-                            $out['pruned'] += $chk->fetchColumn() ? 1 : 0;
+                        $chk->execute([$code]);
+                        $row = $chk->fetch();
+                        $chk->closeCursor();
+                        if (!$row) {
                             continue;
                         }
-                        $del->execute([$code]);
-                        $out['pruned'] += $del->rowCount();
+                        $out['pruned']++;
+                        if ($dryRun) {
+                            continue;
+                        }
+                        ((int)$row['linked'] === 1 ? $arch : $del)->execute([$code]);
                     }
                 }
             }

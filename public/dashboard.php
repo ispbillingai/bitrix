@@ -124,7 +124,7 @@ if ($filterAgentId !== null) {
 // Admin-only too: ?partner=<id> narrows the Leads board to the leads one partner
 // brought in — entered in their own area or through their referral link.
 $filterPartnerId = (!$isAgent && !empty($_GET['partner'])) ? (int)$_GET['partner'] : null;
-$agentViews   = ['overview', 'leads', 'deals', 'quotes', 'articles', 'appointments', 'tasks', 'messages', 'tickets', 'team', 'documents', 'instructions', 'my_commissions'];
+$agentViews   = ['overview', 'leads', 'deals', 'quotes', 'articles', 'pricelists', 'appointments', 'tasks', 'messages', 'tickets', 'team', 'documents', 'instructions', 'my_commissions'];
 $techViews    = ['devices', 'network_areas', 'installations', 'support', 'tickets', 'team'];
 // The installation-report flow: open a draft, fill it in, attach the photos,
 // send it for signature. Deleting a report stays admin-only.
@@ -201,6 +201,53 @@ if (isset($_GET['cmf'])) {
     }
     http_response_code(404);
     exit('Not found');
+}
+
+// ---- a product's photo or document (?amf=<media id>[&s=t for the small copy]) ----
+// Product sheets are sales material, not customer data: every signed-in user
+// may read them. The session is released first — a catalogue page asks for
+// dozens of photos at once, and PHP would otherwise serve them one at a time
+// behind the session lock.
+if (isset($_GET['amf'])) {
+    session_write_close();
+    $am = \Glue\Crm\ArticleMedia::find((int)$_GET['amf']);
+    if ($am) {
+        \Glue\Crm\ArticleMedia::stream($am, ($_GET['s'] ?? '') === 't');
+    }
+    http_response_code(404);
+    exit('Not found');
+}
+
+// ---- a price list as PDF (?plpdf=<list id>[&q=&category=][&dl=1]) ----
+// The catalogue as it is filtered on screen. Inline opens the browser's viewer
+// (the "Stampa" button); dl=1 downloads. Agents only reach published lists.
+if (isset($_GET['plpdf'])) {
+    $plList = \Glue\Crm\PriceLists::find((int)$_GET['plpdf']);
+    if (!$plList || $isTech || ($isAgent && (int)$plList['visible'] !== 1)) {
+        http_response_code(404);
+        exit('Not found');
+    }
+    session_write_close();
+    @set_time_limit(300);
+    @ini_set('memory_limit', '512M');   // photos are embedded; a long list is tens of MB
+    $plF = ['q' => trim((string)($_GET['q'] ?? '')), 'category' => trim((string)($_GET['category'] ?? ''))];
+    $plRows = \Glue\Crm\PriceLists::allItems((int)$plList['id'], $plF);
+    $plPdf = \Glue\Crm\PriceListPdf::build(
+        $plList, $plRows,
+        \Glue\Crm\ArticleMedia::byIds(array_column($plRows, 'cover_id')),
+        $lang,
+        implode(' · ', array_filter([$plF['category'], $plF['q'] !== '' ? '"' . $plF['q'] . '"' : '']))
+    );
+    $plSlug = trim((string)preg_replace('/[^a-z0-9]+/', '-',
+        strtolower((string)(@iconv('UTF-8', 'ASCII//TRANSLIT', (string)$plList['name']) ?: 'listino'))), '-') ?: 'listino';
+    header('Content-Type: application/pdf');
+    header('Content-Disposition: ' . (!empty($_GET['dl']) ? 'attachment' : 'inline')
+        . '; filename="listino-' . $plSlug . '-' . date('Y-m-d') . '.pdf"');
+    header('Content-Length: ' . strlen($plPdf));
+    header('Cache-Control: private, no-store');
+    header('X-Content-Type-Options: nosniff');
+    echo $plPdf;
+    exit;
 }
 
 // ---- team chat attachment (?tdl=<message_id>) ----
@@ -1020,6 +1067,104 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     (string)($_POST['reorder_threshold'] ?? ''), $uid);
                 $_SESSION['dash_flash'] = [$t('ar_threshold_ok'), 'ok'];
                 header('Location: ?tab=articles&id=' . (int)($_POST['id'] ?? 0));
+                exit;
+            }
+
+            // ---------- a product's sheet and its price lists (office only) ----------
+            case 'article_lists': { // the per-list flags on the product's record
+                $ok = \Glue\Crm\PriceLists::setForArticle((int)($_POST['id'] ?? 0),
+                    (array)($_POST['on'] ?? []), (array)($_POST['price'] ?? []), $uid);
+                $_SESSION['dash_flash'] = $ok ? [$t('pl_article_lists_ok'), 'ok'] : [$t('ar_err_not_found'), 'err'];
+                header('Location: ?tab=articles&id=' . (int)($_POST['id'] ?? 0) . '#pl-lists');
+                exit;
+            }
+            case 'article_photos':
+            case 'article_files': {
+                $amId = (int)($_POST['id'] ?? 0);
+                $amR  = $do === 'article_photos'
+                    ? \Glue\Crm\ArticleMedia::addPhotos($amId, $_FILES['photos'] ?? null, $uid)
+                    : \Glue\Crm\ArticleMedia::addFiles($amId, $_FILES['files'] ?? null, $uid);
+                $amWhy = ['too_big' => $t('pl_err_too_big'), 'bad_type' => $t('pl_err_bad_type'),
+                          'save_failed' => $t('pl_err_save_failed'), 'not_found' => $t('ar_err_not_found')];
+                $amErr = array_map(static function (string $e) use ($amWhy): string {
+                    $p = strrpos($e, ': ');
+                    return $p === false ? ($amWhy[$e] ?? $e) : substr($e, 0, $p) . ': ' . ($amWhy[substr($e, $p + 2)] ?? substr($e, $p + 2));
+                }, $amR['errors']);
+                $amMsg = $amR['count'] > 0
+                    ? sprintf($t($do === 'article_photos' ? 'pl_photos_ok' : 'pl_files_ok'), $amR['count']) : '';
+                if (!$amR['count'] && !$amErr) {
+                    $amMsg = $t('pl_err_no_file');
+                }
+                if ($amErr) {
+                    $amMsg = trim($amMsg . ' ' . $t('pl_err_upload') . ' ' . implode('; ', $amErr));
+                }
+                $_SESSION['dash_flash'] = [$amMsg, $amErr || !$amR['count'] ? ($amR['count'] ? 'warn' : 'err') : 'ok'];
+                header('Location: ?tab=articles&id=' . $amId . '#pl-sheet');
+                exit;
+            }
+            case 'article_media_del':
+            case 'article_media_cover': {
+                $amId = (int)($_POST['id'] ?? 0);
+                $am   = \Glue\Crm\ArticleMedia::find((int)($_POST['media'] ?? 0));
+                // The media row must belong to the product the form came from.
+                $ok = $am && (int)$am['article_id'] === $amId && ($do === 'article_media_del'
+                    ? \Glue\Crm\ArticleMedia::delete((int)$am['id'], $uid)
+                    : \Glue\Crm\ArticleMedia::makeCover((int)$am['id']));
+                $_SESSION['dash_flash'] = $ok
+                    ? [$t($do === 'article_media_del' ? 'pl_media_deleted' : 'pl_cover_ok'), 'ok']
+                    : [$t('not_allowed'), 'err'];
+                header('Location: ?tab=articles&id=' . $amId . '#pl-sheet');
+                exit;
+            }
+            case 'article_sheet': {
+                $amId = (int)($_POST['id'] ?? 0);
+                $amR  = \Glue\Crm\ArticleMedia::saveSheet($amId, (string)($_POST['web_description'] ?? ''),
+                    (string)($_POST['info_url'] ?? ''), $uid);
+                $_SESSION['dash_flash'] = !empty($amR['ok']) ? [$t('pl_sheet_ok'), 'ok']
+                    : [$t(($amR['error'] ?? '') === 'bad_url' ? 'pl_err_bad_url' : 'ar_err_not_found'), 'err'];
+                header('Location: ?tab=articles&id=' . $amId . '#pl-sheet');
+                exit;
+            }
+
+            // ---------- price lists (office only) ----------
+            case 'pricelist_save': {
+                $plId = (int)($_POST['id'] ?? 0);
+                $plR  = \Glue\Crm\PriceLists::save($_POST, $plId ?: null, $uid);
+                if (empty($plR['ok'])) {
+                    $_SESSION['dash_flash'] = [$t('pl_err_' . ($plR['error'] ?? 'no_name')), 'err'];
+                    header('Location: ?tab=pricelists');
+                    exit;
+                }
+                $_SESSION['dash_flash'] = [$t($plId ? 'pl_saved' : 'pl_created'), 'ok'];
+                // A new list is empty: go straight to choosing what goes in it.
+                header('Location: ?tab=pricelists' . ($plId ? '' : '&list=' . (int)$plR['id'] . '&manage=1&mode=all'));
+                exit;
+            }
+            case 'pricelist_delete': {
+                $_SESSION['dash_flash'] = \Glue\Crm\PriceLists::delete((int)($_POST['id'] ?? 0), $uid)
+                    ? [$t('pl_deleted'), 'ok'] : [$t('pl_err_not_found'), 'err'];
+                header('Location: ?tab=pricelists');
+                exit;
+            }
+            case 'pricelist_members':
+            case 'pricelist_add_all': {
+                $plId   = (int)($_POST['id'] ?? 0);
+                $plBack = (string)($_POST['back'] ?? '');
+                if (!str_starts_with($plBack, '?tab=pricelists&') || preg_match('/[\r\n]/', $plBack)) {
+                    $plBack = '?tab=pricelists&list=' . $plId . '&manage=1';
+                }
+                if ($do === 'pricelist_members') {
+                    $plR = \Glue\Crm\PriceLists::setMembers($plId, (array)($_POST['shown'] ?? []),
+                        (array)($_POST['on'] ?? []), (array)($_POST['price'] ?? []), $uid);
+                    $_SESSION['dash_flash'] = [sprintf($t('pl_members_ok'), $plR['added'], $plR['removed']), 'ok'];
+                } else {
+                    $plN = \Glue\Crm\PriceLists::addMatching($plId, [
+                        'q' => (string)($_POST['q'] ?? ''), 'category' => (string)($_POST['category'] ?? ''),
+                        'state' => !empty($_POST['stock']) ? 'in_stock' : 'all',
+                    ], $uid);
+                    $_SESSION['dash_flash'] = [sprintf($t('pl_added_all_ok'), $plN), 'ok'];
+                }
+                header('Location: ' . $plBack);
                 exit;
             }
 
@@ -2344,7 +2489,7 @@ $cfg = fn(string $k, $d = '') => Config::get($k, $d);
 $agents = Auth::agents();
 $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_format((float)$n, 0);
 
-$views = ['overview', 'leads', 'deals', 'quotes', 'customers', 'articles', 'contacts', 'appointments', 'tasks', 'tickets', 'team', 'documents',
+$views = ['overview', 'leads', 'deals', 'quotes', 'customers', 'articles', 'pricelists', 'contacts', 'appointments', 'tasks', 'tickets', 'team', 'documents',
           'installations', 'support',
           'invoices', 'payments', 'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents',
           'partners', 'commissions', 'my_commissions', 'finance', 'devices', 'network_areas', 'settings', 'instructions'];
@@ -2419,7 +2564,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
     $nav = [
         'overview' => 'nav_overview', 'leads' => 'nav_leads', 'deals' => 'nav_deals',
         'quotes' => 'nav_quotes',
-        'customers' => 'nav_customers', 'articles' => 'nav_articles',
+        'customers' => 'nav_customers', 'articles' => 'nav_articles', 'pricelists' => 'nav_pricelists',
         'contacts' => 'nav_contacts', 'appointments' => 'nav_appointments', 'tasks' => 'nav_tasks',
         'tickets' => 'nav_tickets', 'team' => 'nav_team', 'documents' => 'nav_documents', 'installations' => 'nav_installations',
         'support' => 'nav_support',
@@ -2432,7 +2577,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
     ];
     if ($isAgent) { // agents only see their own work — plus Installations when they also install
         $nav = array_intersect_key($nav, array_flip(array_merge(
-            ['overview', 'leads', 'deals', 'quotes', 'articles', 'appointments', 'tasks', 'messages', 'team', 'documents', 'my_commissions', 'instructions'],
+            ['overview', 'leads', 'deals', 'quotes', 'articles', 'pricelists', 'appointments', 'tasks', 'messages', 'team', 'documents', 'my_commissions', 'instructions'],
             $agentInstalls ? ['installations'] : []
         )));
     } elseif ($isTech) { // technical-area users: devices, install reports, support queue, own tickets

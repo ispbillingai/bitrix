@@ -40,6 +40,8 @@ final class Pdf
     /** @var array{name:string, bytes:string, mime:string, desc:string}|null */
     private ?array $attachment = null;
     private ?array $signature = null;
+    /** @var array<int,array<int,array{0:float,1:float,2:float,3:float,4:string}>> page index => web links */
+    private array $links = [];
     private array $info = [];
     private int $page = -1;
 
@@ -198,6 +200,20 @@ final class Pdf
         return true;
     }
 
+    /**
+     * Make a rectangle of the current page open a web address (the catalogue's
+     * product photos). http(s) only; anything else is ignored.
+     */
+    public function link(float $x, float $yDown, float $w, float $h, string $url): void
+    {
+        if (!preg_match('~^https?://~i', $url)) {
+            return;
+        }
+        // A PDF URI is 7-bit: percent-encode whatever is not.
+        $url = (string)preg_replace_callback('/[^\x21-\x7E]/', fn($m) => rawurlencode($m[0]), $url);
+        $this->links[$this->page][] = [$x, $yDown, $w, $h, $url];
+    }
+
     // ---- attachment + signature ---------------------------------------------------
 
     /**
@@ -267,7 +283,18 @@ final class Pdf
         $pageIds = [];
         foreach ($this->ops as $i => $stream) {
             $contentId = $this->add("<< /Length " . strlen($stream) . " >>\nstream\n" . $stream . "endstream");
-            $annots = ($fieldId && $i === $sigPage) ? sprintf(' /Annots [%d 0 R]', $fieldId) : '';
+            $annotIds = [];
+            foreach ($this->links[$i] ?? [] as [$lx, $ly, $lw, $lh, $url]) {
+                $y0 = self::A4_H - $ly - $lh;
+                $annotIds[] = $this->add(sprintf(
+                    '<< /Type /Annot /Subtype /Link /Rect [%s %s %s %s] /Border [0 0 0] /A << /S /URI /URI (%s) >> >>',
+                    $this->n($lx), $this->n($y0), $this->n($lx + $lw), $this->n($y0 + $lh), self::escape($url)
+                ));
+            }
+            if ($fieldId && $i === $sigPage) {
+                $annotIds[] = $fieldId;
+            }
+            $annots = $annotIds ? ' /Annots [' . implode(' ', array_map(fn($id) => $id . ' 0 R', $annotIds)) . ']' : '';
             $pageIds[$i] = $this->add(sprintf(
                 '<< /Type /Page /Parent %d 0 R /MediaBox [0 0 %s %s] /Resources %s /Contents %d 0 R%s >>',
                 $pagesId, $this->n(self::A4_W), $this->n(self::A4_H), $fontRes, $contentId, $annots
