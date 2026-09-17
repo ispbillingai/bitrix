@@ -104,6 +104,15 @@ final class Invoices
         // payment actually works from.
         $stats['customers'] = Customers::rebuild();
 
+        // Commissions paid as the customer pays: an instalment Sibill now shows
+        // paid releases the payee's share of it. Never lets a commission
+        // problem fail the invoice sync.
+        try {
+            $stats['commission_rates'] = \Glue\Commission\Plans::syncSibill();
+        } catch (Throwable $e) {
+            Log::write('commission', 'plan_sync_failed', null, null, ['error' => $e->getMessage()]);
+        }
+
         Log::write('sibill', 'sync', null, null, $stats);
         return $stats;
     }

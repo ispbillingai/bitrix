@@ -120,6 +120,46 @@ final class Statements
         return ['ok' => true, 'id' => $id, 'error' => null];
     }
 
+    /**
+     * The statement an instalment becomes once the customer has paid it
+     * (Commission\Plans). Filed like any other — same invoice / payment flow —
+     * but inside the caller's transaction, without the "active payee" check (a
+     * commission already earned is owed even to a partner switched off since),
+     * and without a notice: the caller sends one per plan after committing.
+     *
+     * @param array $plan commission_plans row
+     * @param array $rate commission_plan_rates row
+     * @return int the new statement id
+     */
+    public static function fileFromPlan(array $plan, array $rate, int $rateCount, string $paidOn, ?int $userId): int
+    {
+        $noInv = (int)$plan['invoice_required'] === 0;
+        $cust  = trim((string)($plan['customer_name'] ?? ''));
+        $notes = sprintf('Rata %d di %d%s: il cliente ha pagato %s il %s.',
+            (int)$rate['seq'], $rateCount, $cust !== '' ? ' — ' . $cust : '',
+            self::money((float)$rate['customer_amount']), date('d/m/Y', strtotime($paidOn)));
+        $pdo = Db::pdo();
+        $pdo->prepare(
+            'INSERT INTO commission_statements
+                (payee_type, payee_id, plan_id, rate_seq, title, period, notes, amount, currency,
+                 calc_path, calc_name, invoice_required, status, created_by)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        )->execute([
+            $plan['payee_type'], (int)$plan['payee_id'], (int)$plan['id'], (int)$rate['seq'],
+            mb_substr($plan['title'] . ' — rata ' . (int)$rate['seq'] . '/' . $rateCount, 0, 190),
+            $cust !== '' ? mb_substr($cust, 0, 60) : null, $notes,
+            (float)$rate['commission_amount'], mb_substr((string)Config::get('crm.currency', 'EUR'), 0, 3),
+            $plan['calc_path'] ?: null, $plan['calc_name'] ?: null,
+            $noInv ? 0 : 1, $noInv ? 'invoiced' : 'sent', $userId ?: null,
+        ]);
+        $id = (int)$pdo->lastInsertId();
+        Log::write('commission', 'statement_created', 'commission', $id, [
+            'payee' => $plan['payee_type'] . ':' . $plan['payee_id'], 'amount' => (float)$rate['commission_amount'],
+            'plan' => (int)$plan['id'], 'rate' => (int)$rate['seq'], 'by' => $userId,
+        ]);
+        return $id;
+    }
+
     // ---- the invoice ----------------------------------------------------------------
 
     /**
@@ -259,6 +299,12 @@ final class Statements
             $pdo->prepare('UPDATE commission_statements SET status = \'cancelled\', cancel_note = ?, cancelled_at = NOW() WHERE id = ?')
                 ->execute([mb_substr(trim($note), 0, 255) ?: null, $id]);
             $pdo->prepare('UPDATE partner_accruals SET statement_id = NULL WHERE statement_id = ?')->execute([$id]);
+            // An instalment's statement withdrawn: that share of the commission is
+            // not going to be paid, so its rate is closed as well.
+            if (!empty($st['plan_id'])) {
+                $pdo->prepare("UPDATE commission_plan_rates SET status = 'cancelled' WHERE statement_id = ? AND status = 'earned'")
+                    ->execute([$id]);
+            }
             $pdo->commit();
         } catch (Throwable $e) {
             $pdo->rollBack();
@@ -330,8 +376,22 @@ final class Statements
         ) as $a) {
             $by[(int)$a['statement_id']][] = $a;
         }
+        // The plan an instalment's statement belongs to: its title and how many
+        // rates it has, for the "rate 2 of 6" line on the card.
+        $planIds = array_unique(array_filter(array_map(fn($r) => (int)($r['plan_id'] ?? 0), $rows)));
+        $plans = [];
+        if ($planIds) {
+            foreach (Db::pdo()->query(
+                'SELECT p.id, p.title, p.customer_name, COUNT(r.id) AS rates
+                   FROM commission_plans p LEFT JOIN commission_plan_rates r ON r.plan_id = p.id
+                  WHERE p.id IN (' . implode(',', $planIds) . ') GROUP BY p.id, p.title, p.customer_name'
+            ) as $p) {
+                $plans[(int)$p['id']] = $p;
+            }
+        }
         foreach ($rows as &$r) {
             $r['accruals'] = $by[(int)$r['id']] ?? [];
+            $r['plan'] = $plans[(int)($r['plan_id'] ?? 0)] ?? null;
         }
         unset($r);
         return $rows;
@@ -429,7 +489,7 @@ final class Statements
     }
 
     /** @return array{path:string,name:string}|null; $err = too_big | bad_type | save_failed when a file was refused */
-    private static function storeFile(?array $file, ?string &$err): ?array
+    public static function storeFile(?array $file, ?string &$err): ?array
     {
         $err = null;
         $code = (int)($file['error'] ?? UPLOAD_ERR_NO_FILE);
@@ -544,8 +604,12 @@ final class Statements
 
     // ---- notifications (queued: never make the page wait on WhatsApp/SMTP) -------------
 
-    /** commission_statement | commission_rejected | commission_paid — to the partner or agent. */
-    private static function notifyPayee(int $id, string $rule): void
+    /**
+     * commission_statement | commission_rejected | commission_paid |
+     * commission_rate_earned[_noinv] — to the partner or agent. $extra adds to
+     * (and overrides) the statement's own placeholders.
+     */
+    public static function notifyPayee(int $id, string $rule, array $extra = []): void
     {
         try {
             $st = self::find($id);
@@ -571,6 +635,7 @@ final class Statements
             $payload += $isPartner
                 ? ['partner_name' => (string)$p['name'], 'partner_phone' => (string)($p['phone'] ?? ''), 'partner_email' => (string)($p['email'] ?? '')]
                 : ['agent_name' => (string)$p['name'], 'agent_phone' => (string)($p['phone'] ?? ''), 'agent_email' => (string)($p['email'] ?? '')];
+            $payload = $extra + $payload;
             (new Scheduler())->enqueue([
                 'entity_type'    => 'commission',
                 'entity_id'      => $id,

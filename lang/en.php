@@ -250,6 +250,26 @@ return [
             "Hi {payee_name}, the office has prepared your commission statement:\n"
             . "*{title}* — *{amount}*\n\n"
             . "No invoice is needed: we will pay it, for example in cash. The details are here: {link}\n— {company}",
+
+        // ---- commissions paid in instalments (src/Commission/Plans.php) ----
+        // To the partner/agent: the commission on a sale is paid in instalments,
+        // as the customer pays. {schedule} = one line per instalment.
+        'commission_plan' =>
+            "Hi {payee_name}, your commission *{title}*{?customer} ({customer}){/customer} is *{amount}* "
+            . "and will be paid in {rates} instalments, as the customer pays:\n{schedule}\n\n"
+            . "Each instalment becomes a statement as soon as the customer pays it. Details: {link}\n— {company}",
+
+        // To the partner/agent: the customer paid one (or more) instalments — that share is now due.
+        'commission_rate_earned' =>
+            "Hi {payee_name}, the customer{?customer} {customer}{/customer} has paid instalment {rate_no} of {rates}: "
+            . "your commission of *{amount}* is now due — {title}.\n\n"
+            . "Upload your invoice here: {link}\n— {company}",
+
+        // As above, for a payee who issues no invoice.
+        'commission_rate_earned_noinv' =>
+            "Hi {payee_name}, the customer{?customer} {customer}{/customer} has paid instalment {rate_no} of {rates}: "
+            . "your commission of *{amount}* is now due — {title}.\n\n"
+            . "No invoice needed: we will pay it to you. Details: {link}\n— {company}",
     ],
 
     'email' => [
@@ -559,6 +579,30 @@ return [
                 . '<p>the office has prepared your commission statement: <strong>{title}</strong>, for <strong>{amount}</strong>.</p>'
                 . '<p>No invoice is needed: we will pay it, for example in cash. The details are in your area: <a href="{link}">{link}</a></p>'
                 . '<p>{company}</p>',
+        ],
+
+        'commission_plan' => [
+            'subject' => 'Commission in instalments: {title} — {amount}',
+            'html'    => '<p>Hi {payee_name},</p>'
+                . '<p>your commission <strong>{title}</strong>{?customer} ({customer}){/customer} is <strong>{amount}</strong> '
+                . 'and will be paid in {rates} instalments, as the customer pays:</p>'
+                . '<p>{schedule_html}</p>'
+                . '<p>Each instalment becomes a statement as soon as the customer pays it. Details in your area: <a href="{link}">{link}</a></p>'
+                . '<p>{company}</p>',
+        ],
+        'commission_rate_earned' => [
+            'subject' => 'Commission now due: {amount} — {title}',
+            'html'    => '<p>Hi {payee_name},</p>'
+                . '<p>the customer{?customer} <strong>{customer}</strong>{/customer} has paid instalment {rate_no} of {rates}: '
+                . 'your commission of <strong>{amount}</strong> is now due — {title}.</p>'
+                . '<p>Upload your invoice from your area: <a href="{link}">{link}</a></p><p>{company}</p>',
+        ],
+        'commission_rate_earned_noinv' => [
+            'subject' => 'Commission now due: {amount} — {title}',
+            'html'    => '<p>Hi {payee_name},</p>'
+                . '<p>the customer{?customer} <strong>{customer}</strong>{/customer} has paid instalment {rate_no} of {rates}: '
+                . 'your commission of <strong>{amount}</strong> is now due — {title}.</p>'
+                . '<p>No invoice needed: we will pay it to you. Details in your area: <a href="{link}">{link}</a></p><p>{company}</p>',
         ],
     ],
 ];

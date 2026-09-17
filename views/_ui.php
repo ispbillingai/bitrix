@@ -472,6 +472,26 @@ a.tel:hover{text-decoration:underline;}
 .cm-acc-row{display:flex;gap:8px;align-items:flex-start;margin-top:6px;font-size:13px;}
 .cm-strip{border:1px solid var(--line);border-radius:10px;padding:10px 12px;display:flex;gap:10px;align-items:center;flex-wrap:wrap;}
 @media (max-width:560px){.cm-kv{grid-template-columns:1fr;gap:2px;}.cm-kv dt{margin-top:6px;}}
+/* commissions paid in instalments as the customer pays (Commission\Plans) */
+.cp-prog{width:90px;height:6px;border-radius:3px;background:var(--surface2);overflow:hidden;flex:0 0 auto;}
+.cp-prog span{display:block;height:100%;background:var(--green);}
+.cp-st-active{color:var(--accent);background:var(--accent-soft);}
+.cp-st-completed{color:var(--green);background:var(--green-bg);}
+.cp-st-cancelled{color:var(--red);background:var(--red-bg);}
+.cp-rates{display:flex;flex-direction:column;gap:6px;margin:12px 0 4px;}
+.cp-rate{display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:9px 12px;border:1px solid var(--line);border-radius:10px;background:var(--surface2);}
+.cp-rate.cp-r-earned{border-color:rgba(63,184,104,.45);}
+.cp-rate.cp-r-cancelled{opacity:.6;}
+.cp-seq{font-weight:700;min-width:44px;color:var(--muted);font-variant-numeric:tabular-nums;}
+.cp-main{flex:1;min-width:200px;display:flex;flex-direction:column;gap:2px;}
+.cp-state{color:var(--muted);}
+.cp-state a{color:var(--accent);}
+.cp-state .cm-st{padding:2px 8px;font-size:11px;margin-left:4px;}
+.cp-act{display:flex;gap:6px;align-items:center;flex-wrap:wrap;margin:0;}
+.cp-act input[type=date]{width:auto;padding:6px 8px;font-size:13px;}
+.cp-of{font-size:13px;margin:8px 0;color:var(--muted);}
+.cp-of a{color:var(--accent);}
+@media (max-width:560px){.cp-prog{display:none;}.cp-act{width:100%;}.cp-act button{flex:1;justify-content:center;}}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
 <?php }
@@ -595,6 +615,10 @@ function commission_card(array $s, callable $t, callable $h, string $actions = '
         <dt><?= $h($t('cm_paid_h')) ?></dt><dd><b style="color:var(--green)"><?= $h($m($s['paid_amount'] ?? $s['amount'])) ?></b> <?= $h($t('cm_on')) ?> <?= $h($d($s['paid_on'])) ?><?= !empty($s['payment_method']) ? ' · ' . $h($t('cm_pm_' . $s['payment_method'])) : '' ?><?= !empty($s['payment_ref']) ? ' · ' . $h($s['payment_ref']) : '' ?></dd>
       <?php endif; ?>
     </dl>
+    <?php if (!empty($s['plan'])): ?>
+      <div class="cp-of">↳ <?= $h(sprintf($t('cp_rate_of'), (int)$s['rate_seq'], (int)$s['plan']['rates'])) ?>
+        <a href="#cp-<?= (int)$s['plan']['id'] ?>" onclick="var d=document.getElementById('cp-<?= (int)$s['plan']['id'] ?>');if(d){d.open=true;}"><?= $h($s['plan']['title']) ?></a></div>
+    <?php endif; ?>
     <?php if (!empty($s['notes'])): ?><div class="cm-note"><?= $h($s['notes']) ?></div><?php endif; ?>
     <?php if (!empty($s['accruals'])): ?>
       <div class="muted small" style="margin-top:8px"><?= $h($t('cm_covers')) ?></div>
@@ -603,6 +627,93 @@ function commission_card(array $s, callable $t, callable $h, string $actions = '
       </ul>
     <?php endif; ?>
     <?= $actions ?>
+  </div>
+</details>
+<?php return (string)ob_get_clean();
+}
+
+/**
+ * A commission paid in instalments as the customer pays (Commission\Plans):
+ * the total, and one row per customer instalment with the payee's share and
+ * where it stands — waiting for the customer, or earned and on its way through
+ * its own statement. Shared by the office desk, an agent's page and the
+ * partner area.
+ *
+ * $stLink is the page the statements are listed on ("?tab=commissions").
+ * $rateAction(rate, plan) adds the office's buttons to a row; $planActions
+ * goes under the rows. $calcLink is the calculation download, or ''.
+ */
+function commission_plan_card(array $p, callable $t, callable $h, string $stLink, ?callable $rateAction = null,
+                              string $planActions = '', bool $open = false, bool $office = false, string $calcLink = ''): string {
+    $id = (int)$p['id'];
+    $m  = fn($n): string => \Glue\Commission\Statements::money((float)$n);
+    $d  = fn($v): string => $v ? date('d/m/Y', strtotime((string)$v)) : '—';
+    $n  = count($p['rates']);
+    $st = (string)$p['status'];
+    $pctOf = (float)$p['commission_total'] > 0 ? min(100, round(100 * (float)$p['sum_earned'] / (float)$p['commission_total'])) : 0;
+    ob_start(); ?>
+<details class="cm-card cp-card" id="cp-<?= $id ?>"<?= $open ? ' open' : '' ?>>
+  <summary>
+    <span class="cm-t"><b><?= $h($p['title']) ?></b>
+      <span class="muted small"><?php if ($office): ?><?= $h($t($p['payee_type'] === 'partner' ? 'cm_payee_partner' : 'cm_payee_agent')) ?>: <?= $h($p['payee_name'] ?? ('#' . $p['payee_id'])) ?> · <?php endif; ?><?= $h($t('cp_no')) ?> <?= $id ?><?= !empty($p['customer_name']) ? ' · ' . $h($p['customer_name']) : '' ?> · <?= $h(sprintf($t('cp_n_rates'), $n)) ?></span></span>
+    <span class="cp-prog" title="<?= $h(sprintf($t('cp_prog_title'), (int)$p['n_earned'], $n)) ?>"><span style="width:<?= $pctOf ?>%"></span></span>
+    <span class="cm-amt"><?= $h($m($p['commission_total'])) ?></span>
+    <span class="cm-st cp-st-<?= $h($st) ?>"><?= $h($t('cp_st_' . $st)) ?></span>
+  </summary>
+  <div class="cm-body">
+    <?php if ($office && !empty($p['sync_note']) && $st === 'active'): ?>
+      <div class="cm-warn">⚠ <?= $h($t('cp_sync_' . $p['sync_note'])) ?></div>
+    <?php endif; ?>
+    <?php if ($st === 'cancelled'): ?>
+      <div class="cm-warn">⛔ <?= $h($t('cp_cancelled_on')) ?> <?= $h($d($p['cancelled_at'])) ?><?= !empty($p['cancel_note']) ? ' — ' . $h($p['cancel_note']) : '' ?></div>
+    <?php endif; ?>
+    <dl class="cm-kv">
+      <?php if (!empty($p['customer_name'])): ?><dt><?= $h($t('cp_customer')) ?></dt><dd><b><?= $h($p['customer_name']) ?></b></dd><?php endif; ?>
+      <?php if (!empty($p['sibill_invoice_id'])): ?>
+        <dt><?= $h($t('cp_follows')) ?></dt><dd><?= $h(sprintf($t('cp_sibill_invoice'), (string)($p['invoice_number'] ?? '?'), $d($p['invoice_date'] ?? null))) ?>
+          <span class="muted small">· <?= $h($t('cp_sibill_auto')) ?></span></dd>
+      <?php endif; ?>
+      <dt><?= $h($t('cp_sale')) ?></dt><dd><?= $h($m($p['sale_amount'])) ?> <span class="muted small">(<?= $h(sprintf($t('cp_n_rates'), $n)) ?>)</span></dd>
+      <dt><?= $h($t('cp_total')) ?></dt><dd><b><?= $h($m($p['commission_total'])) ?></b><?php if ($p['commission_pct'] !== null): ?>
+        <span class="muted small">· <?= $h(rtrim(rtrim(number_format((float)$p['commission_pct'], 3, ',', '.'), '0'), ',')) ?>% <?= $h($p['pct_base'] === 'net'
+            ? sprintf($t('cp_on_net'), rtrim(rtrim(number_format((float)$p['vat_rate'], 2, ',', '.'), '0'), ','))
+            : $t('cp_on_gross')) ?></span><?php endif; ?></dd>
+      <dt><?= $h($t('cp_earned')) ?></dt><dd><b style="color:var(--green)"><?= $h($m($p['sum_earned'])) ?></b>
+        <span class="muted small">(<?= (int)$p['n_earned'] ?>/<?= $n ?>)<?= (float)$p['sum_paid'] > 0 ? ' · ' . $h($t('cp_paid_so_far')) . ' ' . $h($m($p['sum_paid'])) : '' ?></span></dd>
+      <?php if ((float)$p['sum_waiting'] > 0): ?>
+        <dt><?= $h($t('cp_waiting')) ?></dt><dd><?= $h($m($p['sum_waiting'])) ?> <span class="muted small">(<?= (int)$p['n_waiting'] ?>)</span></dd>
+      <?php endif; ?>
+      <?php if ($calcLink !== '' && !empty($p['calc_path'])): ?>
+        <dt><?= $h($t('cm_calc')) ?></dt><dd><a href="<?= $h($calcLink) ?>" target="_blank">📎 <?= $h($p['calc_name'] ?: $t('cm_download')) ?></a></dd>
+      <?php endif; ?>
+    </dl>
+    <?php if (!empty($p['notes'])): ?><div class="cm-note"><?= $h($p['notes']) ?></div><?php endif; ?>
+    <div class="cp-rates">
+      <?php foreach ($p['rates'] as $r): $rs = (string)$r['status']; ?>
+        <div class="cp-rate cp-r-<?= $h($rs) ?>">
+          <span class="cp-seq"><?= (int)$r['seq'] ?>/<?= $n ?></span>
+          <span class="cp-main">
+            <b><?= $h($m($r['commission_amount'])) ?></b>
+            <span class="muted small"><?= $h(sprintf($t('cp_of_customer'), $m($r['customer_amount']), $d($r['due_date']))) ?></span>
+            <span class="cp-state small">
+              <?php if ($rs === 'waiting'): ?>
+                ⏳ <?= $h($t('cp_r_waiting')) ?>
+              <?php elseif ($rs === 'earned'): ?>
+                ✅ <?= $h(sprintf($t('cp_r_earned'), $d($r['customer_paid_on']))) ?><?= $r['paid_source'] === 'sibill' ? ' <span class="muted">(Sibill)</span>' : '' ?>
+                <?php if (!empty($r['statement_id'])): ?>
+                  → <a href="<?= $h($stLink . '&st=' . (int)$r['statement_id'] . '#cm-' . (int)$r['statement_id']) ?>"><?= $h($t('cm_no')) ?> <?= (int)$r['statement_id'] ?></a>
+                  <span class="cm-st cm-st-<?= $h((string)$r['st_status']) ?>"><?= $h($t('cm_st_' . $r['st_status'])) ?></span>
+                <?php endif; ?>
+              <?php else: ?>
+                ⛔ <?= $h($t('cp_r_cancelled')) ?>
+              <?php endif; ?>
+            </span>
+          </span>
+          <?= $rateAction ? $rateAction($r, $p) : '' ?>
+        </div>
+      <?php endforeach; ?>
+    </div>
+    <?= $planActions ?>
   </div>
 </details>
 <?php return (string)ob_get_clean();

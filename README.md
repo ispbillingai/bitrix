@@ -281,6 +281,32 @@ plus `partner_accruals.statement_id`). Code: `src/Commission/Statements.php`,
 `views/commissions.php`, `views/my_commissions.php`. The four notices are
 editable under Templates (`commission_*`).
 
+### Commissions in instalments (Provvigioni a rate)
+
+When the customer pays in instalments, the commission is paid the same way:
+each share only after the customer has paid theirs. **Provvigione a rate** takes
+the payee, the total (a fixed amount, or a % of the taxable amount or of the
+total) and the customer's instalments. Those are either typed in (or generated:
+N rates, first due date, every M months) or taken from a **Sibill invoice**,
+whose instalments (flows) then say on their own when the customer has paid. An
+existing unpaid statement can be **split** the same way ("Dividi in rate"); it
+is cancelled and replaced by the instalments.
+
+Each instalment carries the payee's share of it, proportional to its amount;
+the last takes the rounding, so the shares add up to the total. When the
+customer pays one (the office clicks **Il cliente ha pagato**, or the Sibill sync
+sees the flow PAID) the share is filed as an ordinary statement and follows the
+flow above: notice, invoice (or none), payment. Several instalments earned at
+once send one notice. An instalment the office marked by mistake can be undone
+while its statement is unpaid; cancelling a plan cancels only what the customer
+has not paid yet. Sibill flows are matched by their own id, so a re-planned or
+deleted invoice shows a warning on the plan instead of a guess.
+
+Tables: migration 061 (`commission_plans`, `commission_plan_rates`,
+`commission_statements.plan_id` / `rate_seq`). Code: `src/Commission/Plans.php`
+(the Sibill check runs at the end of `Sibill\Invoices::sync`). Notices:
+`commission_plan`, `commission_rate_earned`, `commission_rate_earned_noinv`.
+
 ## Lead documents and financing applications
 
 Inside a lead, **Documenti e finanziamento** does two things. **Carica documenti

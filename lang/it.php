@@ -254,6 +254,26 @@ return [
             "Ciao {payee_name}, l'ufficio ha preparato il tuo conteggio provvigioni:\n"
             . "*{title}* — *{amount}*\n\n"
             . "Non serve la fattura: te lo paghiamo noi, per esempio in contanti. Il dettaglio è qui: {link}\n— {company}",
+
+        // ---- provvigioni a rate (src/Commission/Plans.php) ----
+        // Al partner/agente: la provvigione su una vendita sarà pagata a rate,
+        // man mano che il cliente paga. {schedule} = una riga per rata.
+        'commission_plan' =>
+            "Ciao {payee_name}, la tua provvigione *{title}*{?customer} ({customer}){/customer} è di *{amount}* "
+            . "e ti sarà pagata in {rates} rate, man mano che il cliente paga:\n{schedule}\n\n"
+            . "Ogni rata diventa un conteggio appena il cliente la salda. Il dettaglio è qui: {link}\n— {company}",
+
+        // Al partner/agente: il cliente ha pagato una (o più) rate — la quota è maturata.
+        'commission_rate_earned' =>
+            "Ciao {payee_name}, il cliente{?customer} {customer}{/customer} ha pagato ({rate}): "
+            . "è maturata la tua provvigione di *{amount}* — {title}.\n\n"
+            . "Carica la fattura qui: {link}\n— {company}",
+
+        // Come sopra, per chi non emette fattura.
+        'commission_rate_earned_noinv' =>
+            "Ciao {payee_name}, il cliente{?customer} {customer}{/customer} ha pagato ({rate}): "
+            . "è maturata la tua provvigione di *{amount}* — {title}.\n\n"
+            . "Non serve la fattura: te la paghiamo noi. Il dettaglio è qui: {link}\n— {company}",
     ],
 
     'email' => [
@@ -565,6 +585,30 @@ return [
                 . '<p>l’ufficio ha preparato il tuo conteggio provvigioni: <strong>{title}</strong>, per <strong>{amount}</strong>.</p>'
                 . '<p>Non serve la fattura: te lo paghiamo noi, per esempio in contanti. Il dettaglio è nella tua area: <a href="{link}">{link}</a></p>'
                 . '<p>{company}</p>',
+        ],
+
+        'commission_plan' => [
+            'subject' => 'Provvigione a rate: {title} — {amount}',
+            'html'    => '<p>Ciao {payee_name},</p>'
+                . '<p>la tua provvigione <strong>{title}</strong>{?customer} ({customer}){/customer} è di <strong>{amount}</strong> '
+                . 'e ti sarà pagata in {rates} rate, man mano che il cliente paga:</p>'
+                . '<p>{schedule_html}</p>'
+                . '<p>Ogni rata diventa un conteggio appena il cliente la salda. Il dettaglio è nella tua area: <a href="{link}">{link}</a></p>'
+                . '<p>{company}</p>',
+        ],
+        'commission_rate_earned' => [
+            'subject' => 'Provvigione maturata: {amount} — {title}',
+            'html'    => '<p>Ciao {payee_name},</p>'
+                . '<p>il cliente{?customer} <strong>{customer}</strong>{/customer} ha pagato ({rate}): '
+                . 'è maturata la tua provvigione di <strong>{amount}</strong> — {title}.</p>'
+                . '<p>Carica la fattura dalla tua area: <a href="{link}">{link}</a></p><p>{company}</p>',
+        ],
+        'commission_rate_earned_noinv' => [
+            'subject' => 'Provvigione maturata: {amount} — {title}',
+            'html'    => '<p>Ciao {payee_name},</p>'
+                . '<p>il cliente{?customer} <strong>{customer}</strong>{/customer} ha pagato ({rate}): '
+                . 'è maturata la tua provvigione di <strong>{amount}</strong> — {title}.</p>'
+                . '<p>Non serve la fattura: te la paghiamo noi. Il dettaglio è nella tua area: <a href="{link}">{link}</a></p><p>{company}</p>',
         ],
     ],
 ];

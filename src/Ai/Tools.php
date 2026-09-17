@@ -865,6 +865,17 @@ final class Tools
             'paid_on' => $s['paid_on'] ?: null, 'created' => substr((string)$s['created_at'], 0, 10),
         ], fn($v) => $v !== null && $v !== '');
         $legend = 'sent = in attesa della fattura, invoiced = fatturato e da pagare, paid = pagato, cancelled = annullato';
+        // Commissions paid in instalments as the customer pays: each instalment
+        // becomes a statement once the customer has paid it.
+        $plan = fn($p) => array_filter([
+            'plan_id' => (int)$p['id'], 'payee' => isset($p['payee_name']) ? ($p['payee_type'] === 'partner' ? 'partner ' : 'agente ') . $p['payee_name'] : null,
+            'title' => $p['title'], 'customer' => $p['customer_name'] ?: null, 'status' => $p['status'],
+            'commission_total_eur' => (float)$p['commission_total'], 'customer_pays_eur' => (float)$p['sale_amount'],
+            'instalments' => count($p['rates']), 'earned_eur' => round((float)$p['sum_earned'], 2),
+            'waiting_for_customer_eur' => round((float)$p['sum_waiting'], 2),
+            'sibill_invoice' => $p['invoice_number'] ?? null,
+        ], fn($v) => $v !== null && $v !== '');
+        $planLegend = 'active = rate in corso, completed = tutte le rate pagate dal cliente, cancelled = annullata';
         if ($ctx['role'] === 'admin') {
             $open = \Glue\Db::pdo()->query(
                 "SELECT p.name, COUNT(*) n, SUM(a.amount) amt FROM partner_accruals a JOIN partners p ON p.id = a.partner_id
@@ -872,10 +883,15 @@ final class Tools
             )->fetchAll() ?: [];
             return self::j(['status_legend' => $legend, 'totals_eur' => $S::totals(), 'latest' => array_map($row, array_slice($S::all(), 0, 25)),
                 'accrued_not_yet_in_a_statement' => array_map(fn($r) => ['partner' => $r['name'], 'count' => (int)$r['n'],
-                                                                         'amount_eur' => round((float)$r['amt'], 2)], $open)]);
+                                                                         'amount_eur' => round((float)$r['amt'], 2)], $open),
+                'instalment_plans_legend' => $planLegend,
+                'waiting_for_customers_eur' => \Glue\Commission\Plans::waiting()['amount'],
+                'instalment_plans' => array_map($plan, array_slice(\Glue\Commission\Plans::all(['status' => 'open']), 0, 25))]);
         }
         $uid = (int)$ctx['uid'];
-        return self::j(['status_legend' => $legend, 'totals_eur' => $S::totals('agent', $uid), 'statements' => array_map($row, $S::forPayee('agent', $uid))]);
+        return self::j(['status_legend' => $legend, 'totals_eur' => $S::totals('agent', $uid), 'statements' => array_map($row, $S::forPayee('agent', $uid)),
+            'instalment_plans_legend' => $planLegend,
+            'instalment_plans' => array_map($plan, \Glue\Commission\Plans::all(['payee' => ['agent', $uid]]))]);
     }
 
     private static function paymentsReport(): string

@@ -250,6 +250,41 @@ if (isset($_GET['plpdf'])) {
     exit;
 }
 
+// ---- an instalment commission's calculation (?cpf=<plan id>) ----
+// Same rule as a statement's files: the office any, an agent only their own.
+if (isset($_GET['cpf'])) {
+    $cpPlan = \Glue\Commission\Plans::find((int)$_GET['cpf']);
+    if ($cpPlan && !$isTech && (!$isAgent
+            || ($uid && $cpPlan['payee_type'] === 'agent' && (int)$cpPlan['payee_id'] === (int)$uid))) {
+        \Glue\Commission\Statements::stream($cpPlan, 'calc');
+    }
+    http_response_code(404);
+    exit('Not found');
+}
+
+// ---- Sibill invoices for an instalment commission (?find=sibill_invoices&q=...) ----
+// Office only: the plan form picks the customer's invoice, and its instalments
+// become the commission's.
+if (($_GET['find'] ?? '') === 'sibill_invoices') {
+    header('Content-Type: application/json');
+    if ($isAgent || $isTech) {
+        echo json_encode([]);
+        exit;
+    }
+    echo json_encode(array_map(static fn(array $i): array => [
+        'id'       => (int)$i['id'],
+        'number'   => (string)$i['number'],
+        'date'     => (string)$i['creation_date'],
+        'customer' => (string)$i['counterpart_name'],
+        'gross'    => (float)$i['gross_amount'],
+        'flows'    => array_map(static fn(array $f): array => [
+            'amount' => (float)$f['amount'], 'due' => (string)($f['due_date'] ?? ''),
+            'paid'   => $f['payment_status'] === 'PAID',
+        ], $i['flows']),
+    ], \Glue\Commission\Plans::searchSibill((string)($_GET['q'] ?? ''))), JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // ---- team chat attachment (?tdl=<message_id>) ----
 // Files in the team chat live outside the web root; this is the only way out,
 // and only for a member of the chat the message is in.
@@ -2216,7 +2251,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 // Commission statements name their agent: deleting the account would
                 // leave them pointing at nobody. Disabling it keeps the history.
-                $cmHas = (int)$pdo->query("SELECT COUNT(*) FROM commission_statements WHERE payee_type = 'agent' AND payee_id = " . (int)$_POST['id'])->fetchColumn();
+                $cmHas = (int)$pdo->query("SELECT COUNT(*) FROM commission_statements WHERE payee_type = 'agent' AND payee_id = " . (int)$_POST['id'])->fetchColumn()
+                       + \Glue\Commission\Plans::countFor('agent', (int)$_POST['id']);
                 if ($cmHas > 0) {
                     $flash = sprintf($t('cm_user_has_statements'), $cmHas);
                     $flashType = 'err';
@@ -2337,6 +2373,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     : [$t('cm_err_' . $cmRes['error']), 'err'];
                 header('Location: ?tab=commissions&st=' . $cmId . '#cm-' . $cmId);
                 exit;
+
+            // ---- commissions paid in instalments, as the customer pays (office only) ----
+            case 'cp_create': {
+                $cpRes = \Glue\Commission\Plans::create($_POST, $_FILES['calc'] ?? null, $uid ? (int)$uid : null);
+                if (!$cpRes['ok']) {
+                    $_SESSION['dash_flash'] = [$t('cp_err_' . $cpRes['error']), 'err'];
+                    $cpSrc = (int)($_POST['source_statement_id'] ?? 0);
+                    header('Location: ?tab=commissions' . ($cpSrc > 0 ? '&split=' . $cpSrc : '&cp_new=1') . '#cp-new');
+                    exit;
+                }
+                $_SESSION['dash_flash'] = [(int)($cpRes['earned'] ?? 0) > 0
+                    ? sprintf($t('cp_created_earned_flash'), (int)$cpRes['earned'])
+                    : $t('cp_created_flash'), 'ok'];
+                header('Location: ?tab=commissions&cp_open=' . $cpRes['id'] . '#cp-' . $cpRes['id']);
+                exit;
+            }
+            case 'cp_earn':
+            case 'cp_undo': {
+                $cpRate = $pdo->prepare('SELECT plan_id FROM commission_plan_rates WHERE id = ?');
+                $cpRate->execute([(int)($_POST['id'] ?? 0)]);
+                $cpPlanId = (int)$cpRate->fetchColumn();
+                $cpRes = $do === 'cp_earn'
+                    ? \Glue\Commission\Plans::earn((int)($_POST['id'] ?? 0), (string)($_POST['paid_on'] ?? ''), 'office', $uid ? (int)$uid : null)
+                    : \Glue\Commission\Plans::undo((int)($_POST['id'] ?? 0), $uid ? (int)$uid : null);
+                $_SESSION['dash_flash'] = $cpRes['ok']
+                    ? [$t($do === 'cp_earn' ? 'cp_earned_flash' : 'cp_undone_flash'), 'ok']
+                    : [$t('cp_err_' . $cpRes['error']), 'err'];
+                header('Location: ?tab=commissions&cp_open=' . $cpPlanId . '#cp-' . $cpPlanId);
+                exit;
+            }
+            case 'cp_cancel': {
+                $cpId  = (int)($_POST['id'] ?? 0);
+                $cpRes = \Glue\Commission\Plans::cancel($cpId, (string)($_POST['note'] ?? ''), $uid ? (int)$uid : null);
+                $_SESSION['dash_flash'] = $cpRes['ok'] ? [$t('cp_cancelled_flash'), 'ok'] : [$t('cp_err_' . $cpRes['error']), 'err'];
+                header('Location: ?tab=commissions&cp=all&cp_open=' . $cpId . '#cp-' . $cpId);
+                exit;
+            }
             // ---- lead documents and financing applications (src/Finance/Docs.php) ----
             case 'lead_docs_upload': { // the general documents of a customer, from the lead
                 $fLead = (int)($_POST['id'] ?? 0);

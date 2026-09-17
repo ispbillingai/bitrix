@@ -128,6 +128,15 @@ if ($partner && isset($_GET['cmf'])) {
     http_response_code(404);
     exit('Not found');
 }
+// An instalment commission's calculation — the partner's own plans only.
+if ($partner && isset($_GET['cpf'])) {
+    $cpPlan = \Glue\Commission\Plans::find((int)$_GET['cpf']);
+    if ($cpPlan && $cpPlan['payee_type'] === 'partner' && (int)$cpPlan['payee_id'] === $pid) {
+        \Glue\Commission\Statements::stream($cpPlan, 'calc');
+    }
+    http_response_code(404);
+    exit('Not found');
+}
 if ($partner && $_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['do'] ?? '') === 'cm_invoice') {
     $cmId = (int)($_POST['id'] ?? 0);
     $res = \Glue\Commission\Statements::submitInvoice($cmId, $_POST, $_FILES['invoice'] ?? null, 'payee', 'partner', $pid);
@@ -353,6 +362,19 @@ foreach ($refs as $r) {
       <?= commission_card($s, $t, $h, commission_invoice_form($s, $t, $h, 'cm_invoice'),
             $cmOpen === (int)$s['id'] || ($cmOpen === 0 && $s['status'] === 'sent')) ?>
     <?php endforeach; ?>
+  <?php endif; ?>
+
+  <?php // Commissions paid as the customer pays: each instalment becomes a
+        // statement above once the customer has paid it.
+  $cpPlans = array_values(array_filter(\Glue\Commission\Plans::all(['payee' => ['partner', $pid]]), fn($p) => $p['status'] !== 'cancelled'));
+  if ($cpPlans): $cpWait = \Glue\Commission\Plans::waiting('partner', $pid); ?>
+    <h3 style="margin:24px 0 6px"><?= $h($t('cp_section')) ?></h3>
+    <p class="muted small" style="margin:0 0 12px"><?= $h($t('cp_payee_sub')) ?>
+      <?php if ($cpWait['n'] > 0): ?><br><?= $h($t('cp_waiting_tile')) ?>: <strong><?= $h($money($cpWait['amount'])) ?></strong> (<?= (int)$cpWait['n'] ?> <?= $h($t('cp_rates_word')) ?>)<?php endif; ?></p>
+    <?php foreach ($cpPlans as $p): ?>
+      <?= commission_plan_card($p, $t, $h, '?tab=commissions', null, '', false, false, '?cpf=' . (int)$p['id']) ?>
+    <?php endforeach; ?>
+    <script>if(location.hash.indexOf('#cp-')===0){var cpd=document.querySelector(location.hash);if(cpd){cpd.open=true;}}</script>
   <?php endif; ?>
 
   <?php $accr = Partners::accruals($pid); ?>
