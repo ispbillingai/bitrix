@@ -525,11 +525,19 @@ final class QuoteRequests
                 $ins->execute([$id, $i, $l['kind'], $l['article_id'], $l['code'], $l['description'],
                                $l['qty'], $l['unit_price'], $l['discount_pct'], $l['vat_rate']]);
             }
-            $pdo->prepare('UPDATE quote_requests SET discount_pct = ?, valid_until = ?, customer_notes = ? WHERE id = ?')
+            // Which price list the office priced from. 0 = the gestionale
+            // catalogue, as before; anything else must be a list that exists.
+            $plId = (int)($head['price_list_id'] ?? 0);
+            if ($plId > 0 && !PriceLists::find($plId)) {
+                $plId = 0;
+            }
+            $pdo->prepare('UPDATE quote_requests SET discount_pct = ?, valid_until = ?, customer_notes = ?,
+                                  price_list_id = ? WHERE id = ?')
                 ->execute([
                     min(100.0, max(0.0, self::num((string)($head['discount_pct'] ?? '0')))),
                     $vu,
                     trim((string)($head['customer_notes'] ?? '')) ?: null,
+                    $plId ?: null,
                     $id,
                 ]);
             $pdo->commit();
@@ -624,6 +632,24 @@ final class QuoteRequests
         $r['number']      = $number;
         $r['valid_until'] = $valid;
 
+        // What the hard copy is stamped with: which printing this is, when it
+        // was made, and the price list version behind the figures. The version
+        // is refreshed first, so a list re-priced an hour ago prints as the
+        // version it is now, not the one it was when it was last opened.
+        $r['revision']  = (int)($r['revision'] ?? 0) + 1;
+        $r['printed_at'] = date('Y-m-d H:i:s');
+        $plId = (int)($r['price_list_id'] ?? 0);
+        $list = $plId > 0 ? PriceLists::find($plId) : null;
+        if ($list) {
+            $v = PriceLists::touchVersion($plId);
+            $r['price_list_name']       = (string)$list['name'];
+            $r['price_list_version']    = $v['version'];
+            $r['price_list_version_at'] = $v['version_at'];
+        } else {
+            $plId = 0;
+            $r['price_list_name'] = $r['price_list_version'] = $r['price_list_version_at'] = null;
+        }
+
         $totals = self::totals($lines, (float)($r['discount_pct'] ?? 0));
         $bytes  = QuotePdf::build($r, $lead, $contact, $totals);
 
@@ -643,15 +669,21 @@ final class QuoteRequests
 
         Db::pdo()->prepare(
             'UPDATE quote_requests SET document_id = ?, status = ?, ready_at = NOW(), generated_at = NOW(),
-                    number = ?, valid_until = ? WHERE id = ?'
-        )->execute([(int)$doc['id'], self::READY, $number, $valid, $id]);
+                    number = ?, valid_until = ?, revision = ?, price_list_id = ?, price_list_name = ?,
+                    price_list_version = ?, price_list_version_at = ? WHERE id = ?'
+        )->execute([(int)$doc['id'], self::READY, $number, $valid, (int)$r['revision'], $plId ?: null,
+                    $r['price_list_name'], $r['price_list_version'], $r['price_list_version_at'], $id]);
 
         Activities::add('lead', (int)$r['lead_id'], 'system',
-            "Preventivo $number composto nel CRM: " . count($lines) . ' righe, totale EUR '
-            . number_format($totals['total'], 2, ',', '.'), $userId);
+            "Preventivo $number" . ((int)$r['revision'] > 1 ? ' (rev. ' . (int)$r['revision'] . ')' : '')
+            . ' composto nel CRM: ' . count($lines) . ' righe, totale EUR '
+            . number_format($totals['total'], 2, ',', '.')
+            . ($r['price_list_name'] ? ' — listino ' . $r['price_list_name'] . ' v' . (int)$r['price_list_version'] : ''), $userId);
         Log::write('crm', 'quote_generated', 'lead', (int)$r['lead_id'],
             ['request_id' => $id, 'number' => $number, 'document_id' => (int)$doc['id'],
-             'total' => $totals['total'], 'replaced' => $old ? (int)$old['id'] : null, 'by' => $userId]);
+             'total' => $totals['total'], 'replaced' => $old ? (int)$old['id'] : null,
+             'revision' => (int)$r['revision'], 'price_list' => $r['price_list_name'],
+             'price_list_version' => $r['price_list_version'], 'by' => $userId]);
 
         self::notifyRequester($id, $lead);
         return ['ok' => true, 'document_id' => (int)$doc['id'], 'number' => $number];

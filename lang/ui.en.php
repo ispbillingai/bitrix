@@ -2362,4 +2362,14 @@ return [
     'evt_plan_sibill_changed' => 'Sibill invoice of a commission in instalments changed',
     'evt_plan_sync_failed' => 'Commission instalment check failed',
     'ent_commission_plan' => 'Commission in instalments',
+
+    // ---- the price list a quote was printed from (migration 062) ----
+    'qt_price_list' => 'Price list used',
+    'qt_price_list_gest' => 'Gestionale catalogue (LISTINO)',
+    'qt_price_list_h' => 'Products take their price from this list. The printed quote names the list and its version, so a hard copy always says which prices it was made with.',
+    'qt_in_list' => 'In the list',
+    'qt_not_in_list' => 'not in the chosen list',
+    'qt_revision' => 'Rev. %d',
+    'evt_pricelist_version' => 'New price list version',
+    'evt_pricelist_version_failed' => 'Price list version refresh failed',
 ];

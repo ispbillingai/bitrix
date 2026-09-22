@@ -328,6 +328,9 @@ final class Articles
         $detached = (string)$a['origin'] === 'gestionale';
         Log::write('crm', 'article_updated', 'article', $id,
             ['code' => $code, 'detached' => $detached, 'by' => $userId]);
+        // A price edited here moves every price list the product is in, and a
+        // printed quote names the list's version — so keep those in step.
+        PriceLists::touchAll();
         return ['ok' => true, 'detached' => $detached];
     }
 
@@ -350,6 +353,7 @@ final class Articles
             // else can reach them once the product is gone.
             ArticleMedia::deleteAllFor($id);
             Db::pdo()->prepare('DELETE FROM price_list_items WHERE article_id = ?')->execute([$id]);
+            PriceLists::touchAll();   // the lists it was in now price one product less
             Log::write('crm', 'article_deleted', 'article', $id, ['code' => $a['code'], 'by' => $userId]);
             return ['ok' => true, 'archived' => false];
         }

@@ -79,7 +79,11 @@ $row = function (array $l, string $i) use ($h, $t, $num, $pr): string {
 <div class="cu-top">
   <a class="btn ghost tiny" href="?tab=quotes">&larr; <?= $h($t('nav_quotes')) ?></a>
   <h2 style="margin:0"><?= $h($t('qt_build_h')) ?> <?= $h($q['number'] ?: ('#' . (int)$q['id'])) ?>
-    <span class="pill"><?= $h($t('qt_st_' . $q['status'])) ?></span></h2>
+    <span class="pill"><?= $h($t('qt_st_' . $q['status'])) ?></span>
+    <?php // Which printing the file on this quote is — the same number the PDF carries. ?>
+    <?php if ((int)($q['revision'] ?? 0) > 0): ?>
+      <span class="pill"><?= $h(sprintf($t('qt_revision'), (int)$q['revision'])) ?></span>
+    <?php endif; ?></h2>
 </div>
 
 <?php if ($locked): ?>
@@ -135,6 +139,18 @@ $row = function (array $l, string $i) use ($h, $t, $num, $pr): string {
       </div>
 
       <div class="row" style="margin-top:16px">
+        <?php // Which price list the products are priced from. The choice is
+              // printed on the quote with the list's version, so a hard copy
+              // says what it was made from. ?>
+        <label class="fld"><span><?= $h($t('qt_price_list')) ?></span>
+          <select name="price_list_id" id="qb-list">
+            <option value="0"><?= $h($t('qt_price_list_gest')) ?></option>
+            <?php foreach (\Glue\Crm\PriceLists::all() as $pl): ?>
+              <option value="<?= (int)$pl['id'] ?>"<?= (int)($q['price_list_id'] ?? 0) === (int)$pl['id'] ? ' selected' : '' ?>>
+                <?= $h($pl['name']) ?> · <?= $h(\Glue\Crm\PriceLists::versionLabel($pl, $lang)) ?></option>
+            <?php endforeach; ?>
+          </select>
+          <small class="muted"><?= $h($t('qt_price_list_h')) ?></small></label>
         <label class="fld"><span><?= $h($t('qt_doc_discount')) ?></span>
           <input name="discount_pct" id="qb-dd" class="qb-n" style="width:100%" inputmode="decimal"
                  value="<?= $h($num($q['discount_pct'] ?? 0)) ?>"></label>
@@ -231,6 +247,8 @@ var QB_AVAIL = <?= json_encode($t('qt_avail'), JSON_UNESCAPED_UNICODE) ?>;
 var QB_NOPRICE = <?= json_encode($t('qt_no_price_short'), JSON_UNESCAPED_UNICODE) ?>;
 var QB_LISTINO = <?= json_encode($t('qt_listino'), JSON_UNESCAPED_UNICODE) ?>;
 var QB_VENDITA = <?= json_encode($t('qt_vendita'), JSON_UNESCAPED_UNICODE) ?>;
+var QB_INLIST  = <?= json_encode($t('qt_in_list'), JSON_UNESCAPED_UNICODE) ?>;
+var QB_NOTINLIST = <?= json_encode($t('qt_not_in_list'), JSON_UNESCAPED_UNICODE) ?>;
 var QB_ZERO    = <?= json_encode($t('qt_zero_confirm'), JSON_UNESCAPED_UNICODE) ?>;
 (function () {
   var body = document.getElementById('qb-body');
@@ -303,7 +321,10 @@ var QB_ZERO    = <?= json_encode($t('qt_zero_confirm'), JSON_UNESCAPED_UNICODE) 
     if (timer) clearTimeout(timer);
     if (q.length < 2) { close(); return; }
     timer = setTimeout(function () {
-      fetch('?find=articles&q=' + encodeURIComponent(q), {credentials: 'same-origin'})
+      var listSel = document.getElementById('qb-list');
+      var listId  = listSel ? listSel.value : '0';
+      fetch('?find=articles&q=' + encodeURIComponent(q) + (listId !== '0' ? '&list=' + encodeURIComponent(listId) : ''),
+            {credentials: 'same-origin'})
         .then(function (r) { return r.json(); })
         .then(function (list) {
           hits.innerHTML = '';
@@ -317,10 +338,15 @@ var QB_ZERO    = <?= json_encode($t('qt_zero_confirm'), JSON_UNESCAPED_UNICODE) 
             b.appendChild(document.createTextNode(' — ' + a.description));
             var sp = document.createElement('span'); sp.className = 'sub';
             var prices = [];
-            if (a.listino > 0) prices.push(QB_LISTINO + ' EUR ' + eur(a.listino));
-            if (a.vendita > 0) prices.push(QB_VENDITA + ' EUR ' + eur(a.vendita));
+            if (a.source === 'list') {
+              prices.push(QB_INLIST + ' EUR ' + eur(a.price));
+            } else {
+              if (a.listino > 0) prices.push(QB_LISTINO + ' EUR ' + eur(a.listino));
+              if (a.vendita > 0) prices.push(QB_VENDITA + ' EUR ' + eur(a.vendita));
+            }
             sp.textContent = QB_AVAIL + ' ' + a.available.toLocaleString('it-IT') + ' · '
-              + (prices.length ? prices.join(' · ') : QB_NOPRICE);
+              + (prices.length ? prices.join(' · ') : QB_NOPRICE)
+              + (listId !== '0' && !a.in_list ? ' · ' + QB_NOTINLIST : '');
             if (!prices.length) sp.style.color = 'var(--amber)';
             b.appendChild(sp);
             b.addEventListener('click', function () {

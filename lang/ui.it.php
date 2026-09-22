@@ -2360,4 +2360,14 @@ return [
     'evt_plan_sibill_changed' => 'Fattura Sibill di una provvigione a rate cambiata',
     'evt_plan_sync_failed' => 'Controllo delle provvigioni a rate non riuscito',
     'ent_commission_plan' => 'Provvigione a rate',
+
+    // ---- the price list a quote was printed from (migration 062) ----
+    'qt_price_list' => 'Listino usato',
+    'qt_price_list_gest' => 'Listino gestionale (LISTINO)',
+    'qt_price_list_h' => 'I prodotti prendono il prezzo da questo listino. Il preventivo stampato riporta listino e versione, così una copia cartacea dice sempre con quali prezzi è stata fatta.',
+    'qt_in_list' => 'Nel listino',
+    'qt_not_in_list' => 'non nel listino scelto',
+    'qt_revision' => 'Rev. %d',
+    'evt_pricelist_version' => 'Nuova versione del listino',
+    'evt_pricelist_version_failed' => 'Aggiornamento versione listini non riuscito',
 ];

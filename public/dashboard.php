@@ -398,20 +398,41 @@ if (($_GET['find'] ?? '') === 'articles') {
         echo json_encode([]);
         exit;
     }
+    // With a price list chosen (?list=N) its own prices win for the products in
+    // it, and the rest still answer with the catalogue price — the office may
+    // need a product the list does not carry, and refusing to find it would be
+    // worse than saying where the price came from.
+    $fRows = \Glue\Crm\Articles::search(['q' => $fq], 1, 20)['rows'];
+    $fList = (int)($_GET['list'] ?? 0) > 0 ? \Glue\Crm\PriceLists::find((int)$_GET['list']) : null;
+    $fIn   = $fList ? \Glue\Crm\PriceLists::membership((int)$fList['id'], array_column($fRows, 'id')) : [];
     echo json_encode(array_map(
-        fn(array $a): array => [
-            'id'          => (int)$a['id'],
-            'code'        => (string)$a['code'],
-            'description' => (string)($a['description'] ?? ''),
-            'listino'     => (float)$a['list_price'],
-            'vendita'     => (float)($a['sale_price4'] ?? 0),
-            'price'       => (float)$a['list_price'] > 0 ? (float)$a['list_price'] : (float)($a['sale_price4'] ?? 0),
-            'source'      => (float)$a['list_price'] > 0 ? 'listino'
-                           : ((float)($a['sale_price4'] ?? 0) > 0 ? 'vendita' : 'none'),
-            'vat'         => $a['vat_rate'] !== null ? (float)$a['vat_rate'] : 22.0,
-            'available'   => (float)$a['stock_available'],
-        ],
-        \Glue\Crm\Articles::search(['q' => $fq], 1, 20)['rows']
+        function (array $a) use ($fList, $fIn): array {
+            $listino = (float)$a['list_price'];
+            $sale4   = (float)($a['sale_price4'] ?? 0);
+            $price   = $listino > 0 ? $listino : $sale4;
+            $source  = $listino > 0 ? 'listino' : ($sale4 > 0 ? 'vendita' : 'none');
+            $inList  = $fList !== null && array_key_exists((int)$a['id'], $fIn);
+            if ($inList) {
+                $p = \Glue\Crm\PriceLists::netPrice($a + ['pl_price' => $fIn[(int)$a['id']]], $fList);
+                if ($p > 0) {
+                    $price  = $p;
+                    $source = 'list';
+                }
+            }
+            return [
+                'id'          => (int)$a['id'],
+                'code'        => (string)$a['code'],
+                'description' => (string)($a['description'] ?? ''),
+                'listino'     => $listino,
+                'vendita'     => $sale4,
+                'price'       => $price,
+                'source'      => $price > 0 ? $source : 'none',
+                'in_list'     => $inList,
+                'vat'         => $a['vat_rate'] !== null ? (float)$a['vat_rate'] : 22.0,
+                'available'   => (float)$a['stock_available'],
+            ];
+        },
+        $fRows
     ), JSON_UNESCAPED_UNICODE);
     exit;
 }
@@ -1336,6 +1357,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'discount_pct'   => $_POST['discount_pct'] ?? '',
                     'valid_until'    => $_POST['valid_until'] ?? '',
                     'customer_notes' => $_POST['customer_notes'] ?? '',
+                    'price_list_id'  => $_POST['price_list_id'] ?? 0,
                 ], $uid);
                 if (empty($qs['ok'])) {
                     $_SESSION['dash_flash'] = [$t('qt_err_' . ($qs['error'] ?? 'not_found')), 'err'];

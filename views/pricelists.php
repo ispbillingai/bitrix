@@ -54,13 +54,16 @@ function pricelist_form(callable $h, callable $t, ?array $l = null): void { ?>
 <?php }
 
 /** The little line that says how a list is priced. */
-function pricelist_terms(callable $t, array $l): string {
+function pricelist_terms(callable $t, array $l, string $lang = 'it'): string {
     $s = $t($l['price_basis'] === 'sale4' ? 'pl_basis_sale4' : 'pl_basis_list');
     $adj = (float)$l['adjust_pct'];
     if ($adj != 0.0) {
         $s .= ' ' . ($adj > 0 ? '+' : '−') . rtrim(rtrim(number_format(abs($adj), 2, ',', '.'), '0'), ',') . '%';
     }
-    return $s . ' · ' . $t((int)$l['vat_included'] === 1 ? 'pl_vat_in' : 'pl_vat_ex');
+    // The version is part of how a list reads: it is what a printed catalogue
+    // and a printed quote name, so the office can match paper to screen.
+    return $s . ' · ' . $t((int)$l['vat_included'] === 1 ? 'pl_vat_in' : 'pl_vat_ex')
+             . ' · ' . PriceLists::versionLabel($l, $lang);
 }
 
 $isAdminHere = empty($isAgent);
@@ -339,7 +342,7 @@ if ($listId > 0 && !$list): ?>
 </form>
 <p class="muted small" style="margin:0 0 12px">
   <?= $h(sprintf($t($res['total'] === 1 ? 'pl_n_products1' : 'pl_n_products'), number_format($res['total'], 0, ',', '.'))) ?>
-  · <?= $h(pricelist_terms($t, $list)) ?>
+  · <?= $h(pricelist_terms($t, $list, $lang)) ?>
   <?php if ($q !== '' || $cat !== ''): ?> · <a href="?tab=pricelists&list=<?= $listId ?>"><?= $h($t('clear')) ?></a><?php endif; ?>
 </p>
 
@@ -420,7 +423,7 @@ if ($listId > 0 && !$list): ?>
         <div style="flex:1;min-width:0">
           <a href="?tab=pricelists&list=<?= $lid ?>"><strong style="font-size:16px"><?= $h($l['name']) ?></strong></a>
           <div class="muted small"><?= $h(sprintf($t((int)$l['items'] === 1 ? 'pl_n_products1' : 'pl_n_products'), (int)$l['items'])) ?>
-            · <?= $h(pricelist_terms($t, $l)) ?></div>
+            · <?= $h(pricelist_terms($t, $l, $lang)) ?></div>
           <?php if ($isAdminHere && (int)$l['visible'] !== 1): ?><span class="pill pl-hid"><?= $h($t('pl_hidden')) ?></span><?php endif; ?>
         </div>
       </div>

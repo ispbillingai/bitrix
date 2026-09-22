@@ -232,6 +232,15 @@ final class ArticleImport
                      imported_by = VALUES(imported_by), imported_at = NOW()'
             )->execute([basename($path), $sha, $out['total'], $out['created'], $out['updated'], $out['skipped'], $userId]);
             $pdo->commit();
+            // A snapshot that moves a price moves the price lists built on it:
+            // each one whose prices really changed gets a new version, which is
+            // what a printed quote or catalogue names. Never fatal — the import
+            // itself is already committed.
+            try {
+                $out['lists_versioned'] = PriceLists::touchAll();
+            } catch (\Throwable $e) {
+                Log::write('crm', 'pricelist_version_failed', null, null, ['error' => $e->getMessage()]);
+            }
             Log::write('crm', 'articles_imported', null, null, $out);
             // Stock just moved for up to every article in the catalogue, so this
             // is the moment something may have crossed its restock threshold.

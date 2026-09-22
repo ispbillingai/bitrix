@@ -33,6 +33,10 @@ final class QuotePdf
     private float $y = self::M;
     private int $pageNo = 1;
     private string $number;
+    /** "Listino Rivenditori 2026 — v5 del 20/09/2026", for the header and every footer. */
+    private string $priceList = '';
+    /** What the footer repeats on every page: quote, revision, printing time. */
+    private string $stamp = '';
     /** @var array<string,string> */
     private array $L;
     /** @var array<string,array<string,float>> */
@@ -49,7 +53,6 @@ final class QuotePdf
             'doc_ref'     => 'Preventivo',
             'page'        => 'Pagina %d',
             'number'      => 'N.',
-            'date'        => 'Data',
             'valid'       => 'Valido fino al',
             'to'          => 'Spett.le',
             'vat_id'      => 'P.IVA',
@@ -67,6 +70,10 @@ final class QuotePdf
             'vat_line'    => 'IVA %s%%',
             'grand'       => 'TOTALE',
             'notes'       => 'Note',
+            'rev'         => 'Rev. %d',
+            'printed'     => 'Stampato il %s',
+            'list'        => 'Listino %s — %s',
+            'list_gest'   => 'Listino gestionale',
             'accept'      => 'Firmando questo preventivo con il codice monouso (OTP) ricevuto sul proprio '
                            . 'telefono o sulla propria email, il cliente ne accetta integralmente il contenuto. '
                            . 'Il documento firmato è sigillato con un certificato digitale che ne garantisce '
@@ -77,7 +84,6 @@ final class QuotePdf
             'doc_ref'     => 'Quote',
             'page'        => 'Page %d',
             'number'      => 'No.',
-            'date'        => 'Date',
             'valid'       => 'Valid until',
             'to'          => 'To',
             'vat_id'      => 'VAT',
@@ -95,6 +101,10 @@ final class QuotePdf
             'vat_line'    => 'VAT %s%%',
             'grand'       => 'TOTAL',
             'notes'       => 'Notes',
+            'rev'         => 'Rev. %d',
+            'printed'     => 'Printed %s',
+            'list'        => 'Price list %s — %s',
+            'list_gest'   => 'Gestionale catalogue',
             'accept'      => 'By signing this quote with the one-time code received by phone or email, the '
                            . 'customer accepts its content in full. The signed document is sealed with a '
                            . 'digital certificate that guarantees its integrity and date.',
@@ -139,16 +149,35 @@ final class QuotePdf
         $b->y += 28;
         $top = $b->y;
 
-        // right: number, date, validity
-        $ry = $top;
-        $b->pdf->textRight($R, $ry + 10, $L['number'] . ' ' . $number, Pdf::FONT_BOLD, 10);
+        // Right: number, which printing this is, when it was printed, validity,
+        // and the price list version the figures come from. That last block is
+        // what tells two hard copies of the same quote apart — same number,
+        // same layout, different prices.
+        $rev = (int)($q['revision'] ?? 0);
+        $ry  = $top;
+        $b->pdf->textRight($R, $ry + 10, $L['number'] . ' ' . $number
+            . ($rev > 1 ? '  ·  ' . sprintf($L['rev'], $rev) : ''), Pdf::FONT_BOLD, 10);
         $ry += 14;
-        $b->pdf->textRight($R, $ry + 10, $L['date'] . ' ' . date('d/m/Y'), Pdf::FONT_REGULAR, 9.5, $grey);
+        $printed = (int)strtotime((string)($q['printed_at'] ?? '')) ?: time();
+        $b->pdf->textRight($R, $ry + 10, sprintf($L['printed'], date('d/m/Y H:i', $printed)), Pdf::FONT_REGULAR, 9.5, $grey);
         $ry += 13;
         if (!empty($q['valid_until'])) {
             $b->pdf->textRight($R, $ry + 10, $L['valid'] . ' ' . date('d/m/Y', (int)strtotime((string)$q['valid_until'])),
                 Pdf::FONT_REGULAR, 9.5, $grey);
             $ry += 13;
+        }
+        $b->stamp     = ($rev > 1 ? sprintf($L['rev'], $rev) . '  ·  ' : '') . date('d/m/Y H:i', $printed);
+        $b->priceList = self::priceListLine($q, $L);
+        // One line when it fits; otherwise break at the dash — the list on one
+        // line and its version under it, never a date split across two lines.
+        $plLines = Pdf::widthOf($b->priceList, Pdf::FONT_REGULAR, 9) <= 200.0
+            ? [$b->priceList]
+            : array_map('trim', explode(' — ', $b->priceList, 2));
+        foreach ($plLines as $part) {
+            foreach (Pdf::wrap($part, 200.0, Pdf::FONT_REGULAR, 9) as $line) {
+                $b->pdf->textRight($R, $ry + 10, $line, Pdf::FONT_REGULAR, 9, $navy);
+                $ry += 12;
+            }
         }
 
         // left: who it is for. The business name leads, the person follows —
@@ -384,18 +413,46 @@ final class QuotePdf
     }
 
     /**
-     * Quote number left, page number right, under a hairline — so a page that
-     * comes loose from the rest (page 2 is often nothing but the totals) still
-     * says which quote it belongs to.
+     * Quote number, revision, printing time and price list on the left, page
+     * number on the right, under a hairline — so a page that comes loose from
+     * the rest (page 2 is often nothing but the totals) still says which quote,
+     * which printing and which prices it belongs to.
      */
     private function footer(): void
     {
         $y   = Pdf::A4_H - 22.0;
         $rgb = [0.5, 0.5, 0.55];
         $this->pdf->line(self::M, $y - 10, Pdf::A4_W - self::M, $y - 10, 0.3, [0.85, 0.85, 0.88]);
-        $this->pdf->text(self::M, $y, $this->L['doc_ref'] . ' ' . $this->number, Pdf::FONT_REGULAR, 7.5, $rgb);
+        $left = trim(implode('  ·  ', array_filter([
+            $this->L['doc_ref'] . ' ' . $this->number, $this->stamp, $this->priceList,
+        ], 'strlen')));
+        // Never run into the page number on the right.
+        while ($left !== '' && Pdf::widthOf($left, Pdf::FONT_REGULAR, 7.5) > Pdf::A4_W - 2 * self::M - 60) {
+            $left = mb_substr($left, 0, -1);
+        }
+        $this->pdf->text(self::M, $y, $left, Pdf::FONT_REGULAR, 7.5, $rgb);
         $this->pdf->textRight(Pdf::A4_W - self::M, $y, sprintf($this->L['page'], $this->pageNo),
             Pdf::FONT_REGULAR, 7.5, $rgb);
+    }
+
+    /**
+     * "Listino Rivenditori 2026 — v5 del 20/09/2026", or the gestionale
+     * catalogue for a quote priced straight from the warehouse. The version and
+     * its date are the SNAPSHOT taken when the PDF was made: the list can be
+     * re-priced afterwards and this paper still says what it was printed from.
+     */
+    private static function priceListLine(array $q, array $L): string
+    {
+        $name = trim((string)($q['price_list_name'] ?? ''));
+        if ($name === '') {
+            return $L['list_gest'];
+        }
+        $v  = 'v' . (int)($q['price_list_version'] ?? 1);
+        $at = (string)($q['price_list_version_at'] ?? '');
+        if ($at !== '' && strtotime($at)) {
+            $v .= ($L['list_gest'] === 'Gestionale catalogue' ? ' of ' : ' del ') . date('d/m/Y', (int)strtotime($at));
+        }
+        return sprintf($L['list'], $name, $v);
     }
 
     private static function eur($n): string

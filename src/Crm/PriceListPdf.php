@@ -42,7 +42,7 @@ final class PriceListPdf
         $it = [
             'title'     => 'LISTINO PREZZI',
             'page'      => 'Pagina %d',
-            'updated'   => 'Aggiornato al %s',
+            'printed'   => 'Stampato il %s',
             'count'     => '%d prodotti',
             'count1'    => '1 prodotto',
             'net'       => 'Prezzi IVA esclusa',
@@ -62,7 +62,7 @@ final class PriceListPdf
         $en = [
             'title'     => 'PRICE LIST',
             'page'      => 'Page %d',
-            'updated'   => 'Updated %s',
+            'printed'   => 'Printed %s',
             'count'     => '%d products',
             'count1'    => '1 product',
             'net'       => 'Prices excluding VAT',
@@ -91,7 +91,10 @@ final class PriceListPdf
     public static function build(array $list, array $rows, array $covers, string $lang = 'it', string $filter = ''): string
     {
         $company = (string)Config::get('app.company_name', 'CRM');
-        $b = new self($company . ' - ' . $list['name'], $lang === 'en' ? 'en' : 'it', $company . ' - ' . $list['name']);
+        // The footer carries the version too: a page that comes loose still says
+        // which printing of which list it belongs to.
+        $b = new self($company . ' - ' . $list['name'], $lang === 'en' ? 'en' : 'it',
+            $company . ' - ' . $list['name'] . '  ·  ' . PriceLists::versionLabel($list, $lang === 'en' ? 'en' : 'it'));
         $L = $b->L;
         $R = Pdf::A4_W - self::M;
         $navy = [0.1, 0.13, 0.35];
@@ -111,11 +114,14 @@ final class PriceListPdf
             $b->y = $b->pdf->paragraph(self::M, $b->y + 10, $R - self::M, $desc, Pdf::FONT_REGULAR, 9.5, 0, [0.25, 0.25, 0.3]) - 10;
         }
         $n = count($rows);
-        $meta = implode('  ·  ', [
-            sprintf($L['updated'], date('d/m/Y')),
+        // The version and the printing moment, so two printed catalogues of the
+        // same list can be told apart — the same reason a quote carries them.
+        $meta = implode('  ·  ', array_filter([
+            PriceLists::versionLabel($list, $lang === 'en' ? 'en' : 'it'),
+            sprintf($L['printed'], date('d/m/Y H:i')),
             $n === 1 ? $L['count1'] : sprintf($L['count'], $n),
             (int)$list['vat_included'] === 1 ? $L['gross'] : $L['net'],
-        ]);
+        ], 'strlen'));
         $b->y += 6;
         $b->pdf->text(self::M, $b->y + 9, $meta, Pdf::FONT_REGULAR, 9, $grey);
         $b->y += 14;

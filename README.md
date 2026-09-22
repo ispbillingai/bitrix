@@ -107,7 +107,10 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
   or down, net or VAT included, with an optional own price per product. The
   product sheet (photos, documents, long text, and the link the photo opens) is
   kept in the CRM, so the import never clears it. Agents see only the lists the
-  office has made visible.
+  office has made visible. Each list carries a **version** that moves only when
+  its prices really change — its rules, what is in it, an own price, or a
+  gestionale import moving a price underneath it — and a quote built from the
+  list prints that version, so a hard copy says what it was made from.
 - **Documents (electronic signature)**: upload a PDF, send it for signature, the
   customer confirms with a one-time code, and the CRM seals the result itself —
   a CAdES-signed PDF holding a signature certificate plus the original document,
@@ -138,6 +141,7 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 | KPI / score evaluation | `Crm\Tasks` (kpi_score/weight) + leaderboard |
 | Partner enters their own leads, sees only their status, hears only about closed/lost | `partner.php` → `Partner\Partners::submitLead` / `::outcome` / `::notifyOutcome` → `partner_lead_won`/`partner_lead_lost` |
 | Seller asks the back office for a quote; office builds it from the warehouse (PDF generated); seller sends it; signing draws the stock | `views/leads.php` (in-lead button) + `views/quotes.php` (from scratch) → `Crm\QuoteRequests` → `Sign\Documents` |
+| A printed quote says when it was printed, which printing it is and which price list version it was priced from | `views/quote_builder.php` (the list to price from) → `Crm\QuoteRequests::generateDocument` (revision + snapshot) → `Crm\QuotePdf` header and footer; versions in `Crm\PriceLists::touchVersion` (migration 062) |
 | Manual interrupt / silence any automation | move the record's stage; pending reminders auto-cancel |
 | Mass WhatsApp/email marketing | `campaign.php` + `Campaign\Sender` (throttled) |
 | Sign a document with an OTP, in-house | `views/documents.php` → `Sign\Documents` → `Sign\Signer` (CAdES) → `public/sign.php` / `public/verify.php` |

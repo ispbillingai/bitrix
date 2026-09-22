@@ -89,6 +89,7 @@ final class PriceLists
             )->execute($f + ['uid' => $userId ?: null, 'id' => $id]);
         }
         Log::write('crm', 'pricelist_saved', 'price_list', $id, ['name' => $name, 'by' => $userId]);
+        self::touchVersion($id);   // a new basis or markup is a new version of its prices
         return ['ok' => true, 'id' => $id];
     }
 
@@ -279,6 +280,9 @@ final class PriceLists
             }
         }
         Log::write('crm', 'article_lists_set', 'article', $articleId, ['lists' => $changes, 'by' => $userId]);
+        foreach (array_keys($changes) as $lid) {
+            self::touchVersion((int)$lid);
+        }
         return true;
     }
 
@@ -323,6 +327,7 @@ final class PriceLists
         }
         if ($out['added'] || $out['removed']) {
             Log::write('crm', 'pricelist_items_set', 'price_list', $listId, $out + ['by' => $userId]);
+            self::touchVersion($listId);
         }
         return $out;
     }
@@ -348,6 +353,7 @@ final class PriceLists
         $n = $s->rowCount();
         if ($n > 0) {
             Log::write('crm', 'pricelist_items_set', 'price_list', $listId, ['added' => $n, 'removed' => 0, 'bulk' => true, 'by' => $userId]);
+            self::touchVersion($listId);
         }
         return $n;
     }
@@ -360,6 +366,7 @@ final class PriceLists
         if ($s->rowCount() > 0) {
             Log::write('crm', 'pricelist_items_set', 'price_list', $listId,
                 ['added' => 0, 'removed' => 1, 'article' => $articleId, 'by' => $userId]);
+            self::touchVersion($listId);
             return true;
         }
         return false;
@@ -389,5 +396,89 @@ final class PriceLists
             return null;
         }
         return max(0.0, round(Articles::num($raw), 2));
+    }
+
+    // ---- version (migration 062) --------------------------------------------------
+
+    /**
+     * A fingerprint of everything that decides what this list charges: its own
+     * rules, and the live price of every article in it. Two states of a list
+     * that would print the same prices have the same fingerprint.
+     */
+    public static function fingerprint(int $listId): string
+    {
+        $l = self::find($listId);
+        if (!$l) {
+            return '';
+        }
+        $s = Db::pdo()->prepare(
+            'SELECT a.id, a.list_price, a.sale_price4, a.vat_rate, i.price AS pl_price
+               FROM price_list_items i JOIN articles a ON a.id = i.article_id
+              WHERE i.list_id = ? AND a.archived = 0 ORDER BY a.id'
+        );
+        $s->execute([$listId]);
+        $parts = [$l['price_basis'] . '|' . (float)$l['adjust_pct'] . '|' . (int)$l['vat_included']];
+        foreach ($s->fetchAll() ?: [] as $r) {
+            $parts[] = $r['id'] . ':' . number_format(self::netPrice($r, $l), 2, '.', '')
+                     . ':' . number_format(self::vatRate($r), 2, '.', '');
+        }
+        return md5(implode("\n", $parts));
+    }
+
+    /**
+     * Move the list to a new version when — and only when — its prices really
+     * changed. Called after every change the office makes to a list, after a
+     * gestionale import (which moves prices underneath it), and before a quote
+     * prints the version, so the number on the paper is the true one.
+     *
+     * Re-saving a list without touching a price leaves the version alone: a
+     * version that moves for nothing tells the office nothing.
+     *
+     * @return array{version:int, version_at:?string, changed:bool}
+     */
+    public static function touchVersion(int $listId): array
+    {
+        $l = self::find($listId);
+        if (!$l) {
+            return ['version' => 0, 'version_at' => null, 'changed' => false];
+        }
+        $hash = self::fingerprint($listId);
+        if ($hash === (string)($l['price_hash'] ?? '') && !empty($l['version_at'])) {
+            return ['version' => (int)$l['version'], 'version_at' => (string)$l['version_at'], 'changed' => false];
+        }
+        // The first fingerprint of a list is not a change — we simply had not
+        // looked before, so it stays at the version it has.
+        $bump    = (string)($l['price_hash'] ?? '') !== '';
+        $version = (int)$l['version'] + ($bump ? 1 : 0);
+        $at      = ($bump || empty($l['version_at'])) ? date('Y-m-d H:i:s') : (string)$l['version_at'];
+        Db::pdo()->prepare('UPDATE price_lists SET version = ?, version_at = ?, price_hash = ? WHERE id = ?')
+            ->execute([$version, $at, $hash, $listId]);
+        if ($bump) {
+            Log::write('crm', 'pricelist_version', 'price_list', $listId, ['version' => $version]);
+        }
+        return ['version' => $version, 'version_at' => $at, 'changed' => $bump];
+    }
+
+    /**
+     * Every list, after something that can move prices underneath them all: a
+     * gestionale import, a product edited in the warehouse.
+     *
+     * @return int how many lists moved to a new version
+     */
+    public static function touchAll(): int
+    {
+        $n = 0;
+        foreach (Db::pdo()->query('SELECT id FROM price_lists')->fetchAll(\PDO::FETCH_COLUMN) ?: [] as $id) {
+            $n += self::touchVersion((int)$id)['changed'] ? 1 : 0;
+        }
+        return $n;
+    }
+
+    /** "v5 del 20/09/2026" — how a version reads on screen and on paper. */
+    public static function versionLabel(array $l, string $lang = 'it'): string
+    {
+        $v  = 'v' . (int)($l['version'] ?? 1);
+        $at = (string)($l['version_at'] ?? '');
+        return $at === '' ? $v : $v . ($lang === 'en' ? ' of ' : ' del ') . date('d/m/Y', (int)strtotime($at));
     }
 }
