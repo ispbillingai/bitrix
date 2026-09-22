@@ -237,15 +237,23 @@ final class Contacts
         // "IT 012 3456" for what is stored as IT01234567.
         $tight = strtoupper((string)preg_replace('/[^A-Za-z0-9]+/', '', $q));
 
+        // Every placeholder appears exactly once: the driver runs real prepared
+        // statements, and MySQL rejects a named parameter used more than once
+        // in the same statement (SQLSTATE HY093).
         $stmt = Db::pdo()->prepare(
             "SELECT id, name, company, phone, email, city, customer_code, vat_number, is_customer
                FROM contacts
-              WHERE name LIKE :like OR company LIKE :like OR phone LIKE :like OR email LIKE :like
-                 OR (:tight <> '' AND (customer_code = :tight OR vat_number = :tight))
+              WHERE name LIKE :l1 OR company LIKE :l2 OR phone LIKE :l3 OR email LIKE :l4
+                 OR (:t1 <> '' AND customer_code = :t2)
+                 OR (:t3 <> '' AND vat_number = :t4)
               ORDER BY is_customer DESC, (name LIKE :starts) DESC, name
               LIMIT $limit"
         );
-        $stmt->execute([':like' => $like, ':tight' => $tight, ':starts' => $q . '%']);
+        $stmt->execute([
+            ':l1' => $like, ':l2' => $like, ':l3' => $like, ':l4' => $like,
+            ':t1' => $tight, ':t2' => $tight, ':t3' => $tight, ':t4' => $tight,
+            ':starts' => $q . '%',
+        ]);
 
         return array_map(static function (array $r): array {
             $label = trim((string)$r['name']) ?: trim((string)$r['company']);
