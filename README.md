@@ -149,6 +149,10 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 | Warehouse: the gestionale catalogue plus CRM products, editable stock, restock alerts | `bin/import-articoli.php` (cron) → `Crm\ArticleImport` → `Crm\Articles` → `views/articles.php` |
 | Sales price lists for agents: per-list flag on each product, shop-style catalogue, photo links to more information, PDF export / print | `Crm\PriceLists` + `Crm\ArticleMedia` → `views/pricelists.php` (+ the product's record in `views/articles.php`) → `Crm\PriceListPdf` (`?plpdf=`) |
 | Technicians schedule the service call a claimed assistance request becomes; customer and technician both told, then given notice at a fixed hour (17:00) the evening before, whatever time the visit is | `views/support.php` (the drawer on a claimed request) → `Crm\Interventions` → `Crm\Automation::interventionReminders` (migration 063) |
+| Book straight into the calendar: day/week/month per technician, drag to move, customer type-ahead with "+ nuovo cliente" inline, mandatory zone, colour-coded labels (INSTALLAZIONE / ASSISTENZA / SOPRALLUOGO) | `views/calendar.php` → `Crm\Booking` + `Crm\AppointmentTypes` (migration 064); the picker is `?find=contacts` → `Crm\Contacts::searchPicker` |
+| A visit booked with nobody on it waits in a "da assegnare" pool; a technician takes one, or hands their own to a colleague | `Crm\Booking::pool/assign` — `agent_id IS NULL` is the pool |
+| An INSTALLAZIONE carries its installation report from the moment it is booked | `Crm\Booking::ensureInstallReport` → `Install\Reports` |
+| Technicians are asked each evening to plan the next day, by WhatsApp and email, and chased until they click the confirm link | `Crm\DayPlanner` (cron, in `bin/scheduler.php`) → `public/plan-confirm.php`; off until Settings → Pianificazione |
 | The CRM's own calendar of service calls and appointments, and a read-only .ics feed each person subscribes to from their phone — no Google account, no OAuth | `views/calendar.php` → `Crm\Calendar` → `public/calendar-feed.php` (`/calendar.ics?k=`) |
 | Bitrix24 sync | **optional** `Sync\BitrixSync`, off by default |
 
@@ -169,6 +173,7 @@ public/
   index.php                health check
   request.php              public customer request form
   calendar-feed.php        read-only .ics feed (/calendar.ics?k=<token>) a phone subscribes to
+  plan-confirm.php         "tomorrow is planned" — the link in the technician evening reminder
   portal.php               customer portal (magic-link/password login; view
                            estimate + order status; sign the contract via OTP)
   pay-return.php           where SmallPay sends the customer after the cashier page

@@ -213,6 +213,57 @@ final class Contacts
         Db::pdo()->prepare('UPDATE contacts SET ' . implode(', ', $set) . ' WHERE id = ?')->execute($args);
     }
 
+    /**
+     * Type-ahead search for a person picker — the customer field on the
+     * calendar's appointment form.
+     *
+     * Customers first, then everyone else: the registry is what the office
+     * books against, but a lead who has not been won yet still gets visits.
+     * Matches a name, a company, a phone, an email, the gestionale code or a
+     * VAT number, because whoever is booking has whichever of those the caller
+     * gave them over the phone.
+     *
+     * @return array<int,array{id:int,label:string,sub:string,is_customer:bool}>
+     */
+    public static function searchPicker(string $q, int $limit = 12): array
+    {
+        $q = trim($q);
+        if (mb_strlen($q) < 2) {
+            return [];
+        }
+        $limit = max(1, min(50, $limit));
+        $like  = '%' . $q . '%';
+        // The VAT/code comparison is on the normalised form: people type
+        // "IT 012 3456" for what is stored as IT01234567.
+        $tight = strtoupper((string)preg_replace('/[^A-Za-z0-9]+/', '', $q));
+
+        $stmt = Db::pdo()->prepare(
+            "SELECT id, name, company, phone, email, city, customer_code, vat_number, is_customer
+               FROM contacts
+              WHERE name LIKE :like OR company LIKE :like OR phone LIKE :like OR email LIKE :like
+                 OR (:tight <> '' AND (customer_code = :tight OR vat_number = :tight))
+              ORDER BY is_customer DESC, (name LIKE :starts) DESC, name
+              LIMIT $limit"
+        );
+        $stmt->execute([':like' => $like, ':tight' => $tight, ':starts' => $q . '%']);
+
+        return array_map(static function (array $r): array {
+            $label = trim((string)$r['name']) ?: trim((string)$r['company']);
+            $bits  = array_filter([
+                trim((string)$r['company']) !== '' && trim((string)$r['company']) !== $label
+                    ? (string)$r['company'] : '',
+                (string)$r['city'],
+                (string)$r['phone'],
+            ], static fn($s) => trim((string)$s) !== '');
+            return [
+                'id'          => (int)$r['id'],
+                'label'       => $label !== '' ? $label : ('#' . (int)$r['id']),
+                'sub'         => implode(' · ', $bits),
+                'is_customer' => (int)$r['is_customer'] === 1,
+            ];
+        }, $stmt->fetchAll() ?: []);
+    }
+
     public static function count(): int
     {
         return (int)Db::pdo()->query('SELECT COUNT(*) FROM contacts')->fetchColumn();

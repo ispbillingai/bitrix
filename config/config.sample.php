@@ -125,6 +125,18 @@ return [
         'sign_overdue_max_days'   => 15,  // 15-day window
     ],
 
+    // Technicians plan their own next day: an evening WhatsApp + email asking
+    // them to sort tomorrow out, carrying the link they click to say they have.
+    // OFF until switched on in Settings — it messages real people every evening,
+    // and the hours want agreeing with those people first.
+    'planning' => [
+        'enabled'            => false,
+        'prompt_at'          => '17:00', // "plan tomorrow", with the confirm link
+        'escalate_from'      => '19:00', // from here, chase whoever has not confirmed
+        'escalate_every_min' => 60,
+        'escalate_max'       => 4,       // then stop asking for that day (hard cap 6)
+    ],
+
     // OPTIONAL Bitrix24 sync — OFF by default. The CRM is fully standalone; enable
     // this only to also mirror new leads/deals into a Bitrix24 portal. Toggle and
     // fill these from Settings → Bitrix24 sync.

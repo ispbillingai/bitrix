@@ -45,6 +45,11 @@ if ($ov !== null):
       <a class="btn tiny" href="?tab=tickets&tk=<?= (int)$cuNewest['id'] ?>"><?= svg('chat') ?> <?= $h($t('cu_open_chat')) ?></a>
     <?php endif; ?>
     <a class="btn ghost tiny" href="?tab=tickets&to=<?= (int)$custId ?>"><?= svg('send') ?> <?= $h($t('cu_new_msg')) ?></a>
+    <?php // Straight into the calendar with this customer already chosen. The
+          // name rides along so the picker shows who it is without a second
+          // lookup; the id is what actually links the appointment. ?>
+    <a class="btn ghost tiny" href="?tab=calendar&new=1&contact=<?= (int)$custId ?>&cname=<?= urlencode((string)$c['name']) ?>">
+      <?= svg('appointments') ?> <?= $h($t('cu_book')) ?></a>
   </span>
 </div>
 

@@ -49,12 +49,12 @@ return [
         'intervention_confirmed' =>
             "Hi {name}, your {company} service call is booked for {when}"
             . "{?location} at {location}{/location}. "
-            . "{agent_name} will be coming. Reply to this message if anything changes.",
+            . "{?agent_name}{agent_name} will be coming. {/agent_name}Reply to this message if anything changes.",
 
         'intervention_customer' =>
             "Hi {name}, a reminder of your {company} service call on {when}"
             . "{?location} at {location}{/location}. "
-            . "{agent_name} will be coming. See you soon!",
+            . "{?agent_name}{agent_name} will be coming. {/agent_name}See you soon!",
 
         'intervention_tech_set' =>
             "🔧 Service call booked: {customer_name} on {when}"
@@ -63,6 +63,23 @@ return [
         'intervention_tech' =>
             "⏰ Service call reminder: {customer_name} on {when}"
             . "{?location} — {location}{/location} (#{id}).",
+
+        'intervention_taken_over' =>
+            "🔄 Hi {name}, the job at {customer_name} on {when} (#{id}) has been "
+            . "assigned to a colleague. It is off your list.",
+
+        // Planning the day: the evening message and the chasing that follows.
+        // {link} is the "I have planned it" confirmation — without the click the
+        // CRM keeps asking.
+        'planning_prompt' =>
+            "📋 Hi {name}, time to sort out tomorrow ({date}). "
+            . "You have {count} jobs assigned and {pool} still waiting to be picked up. "
+            . "Confirm here when you are done: {link}",
+
+        'planning_nudge' =>
+            "⏰ {name}, tomorrow's schedule ({date}) is still not confirmed. "
+            . "You have {count} jobs assigned and {pool} unassigned. "
+            . "Confirm here as soon as you are done: {link}",
 
         'sign_request' => // sent when the deal enters the signature stage
             "Hi {name}, your contract from {company} is ready to sign. "
@@ -342,13 +359,14 @@ return [
             'subject' => 'Service call booked for {when} — {company}',
             'html'    => '<p>Hi {name},</p><p>Your service call is booked for <strong>{when}</strong>'
                 . '{?location} at <strong>{location}</strong>{/location}.</p>'
-                . '<p><strong>{agent_name}</strong> will be coming. Reply to this email if anything changes.</p>',
+                . '{?agent_name}<p><strong>{agent_name}</strong> will be coming.</p>{/agent_name}'
+                . '<p>Reply to this email if anything changes.</p>',
         ],
         'intervention_customer' => [
             'subject' => 'Reminder: your {company} service call',
             'html'    => '<p>Hi {name},</p><p>A reminder of your service call on <strong>{when}</strong>'
                 . '{?location} at <strong>{location}</strong>{/location}.</p>'
-                . '<p><strong>{agent_name}</strong> will be coming.</p>',
+                . '{?agent_name}<p><strong>{agent_name}</strong> will be coming.</p>{/agent_name}',
         ],
         'intervention_tech_set' => [
             'subject' => 'Service call booked: {customer_name} — {when}',
@@ -359,6 +377,26 @@ return [
             'subject' => 'Service call reminder: {customer_name}',
             'html'    => '<p>Service call at <strong>{customer_name}</strong> on <strong>{when}</strong>'
                 . '{?location} — {location}{/location} (#{id}).</p>',
+        ],
+        'intervention_taken_over' => [
+            'subject' => 'Job reassigned: {customer_name}',
+            'html'    => '<p>Hi {name},</p><p>The job at <strong>{customer_name}</strong> on '
+                . '<strong>{when}</strong> (#{id}) has been assigned to a colleague. '
+                . 'It is off your list.</p>',
+        ],
+        'planning_prompt' => [
+            'subject' => 'Plan tomorrow ({date})',
+            'html'    => '<p>Hi {name},</p><p>Time to sort out <strong>{date}</strong>. You have '
+                . '<strong>{count}</strong> jobs assigned and <strong>{pool}</strong> still waiting '
+                . 'to be picked up.</p>'
+                . '<p><a href="{link}">I am done: confirm my schedule</a></p>',
+        ],
+        'planning_nudge' => [
+            'subject' => 'Reminder: tomorrow\'s schedule ({date}) is not confirmed',
+            'html'    => '<p>Hi {name},</p><p>The schedule for <strong>{date}</strong> is still not '
+                . 'confirmed. You have <strong>{count}</strong> jobs assigned and '
+                . '<strong>{pool}</strong> unassigned.</p>'
+                . '<p><a href="{link}">Confirm my schedule</a></p>',
         ],
         'sign_request' => [
             'subject' => 'Please sign your contract — {company}',

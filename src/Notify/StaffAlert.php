@@ -47,7 +47,36 @@ final class StaffAlert
                 ['rule' => $ruleKey, 'error' => $e->getMessage()]);
             return 0;
         }
+        return self::queue($users, $ruleKey, $text, $subject, $html, $entityType, $entityId);
+    }
 
+    /**
+     * The same, to ONE person — a job handed to a colleague, the evening
+     * planning prompt. Queued for the same reason: it happens inside a web
+     * request (or a cron pass) that must not wait on WhatsApp.
+     */
+    public static function toUser(int $userId, string $ruleKey, string $text, string $subject, string $html,
+                                  string $entityType = '', int $entityId = 0): int
+    {
+        try {
+            $stmt = Db::pdo()->prepare(
+                "SELECT id, COALESCE(NULLIF(TRIM(full_name), ''), username) AS name, phone, email
+                   FROM users WHERE id = ? AND active = 1"
+            );
+            $stmt->execute([$userId]);
+            $users = $stmt->fetchAll() ?: [];
+        } catch (Throwable $e) {
+            Log::write('notify', 'staff_alert_failed', $entityType !== '' ? $entityType : 'user', $entityId,
+                ['rule' => $ruleKey, 'user' => $userId, 'error' => $e->getMessage()]);
+            return 0;
+        }
+        return self::queue($users, $ruleKey, $text, $subject, $html, $entityType, $entityId);
+    }
+
+    /** One reminder row per recipient, carrying the finished text. */
+    private static function queue(array $users, string $ruleKey, string $text, string $subject, string $html,
+                                  string $entityType, int $entityId): int
+    {
         $sched = new Scheduler();
         $batch = date('YmdHis') . bin2hex(random_bytes(3)); // one alert = one batch; the same text later is a new one
         $queued = 0;

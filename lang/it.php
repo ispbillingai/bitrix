@@ -52,12 +52,12 @@ return [
         'intervention_confirmed' =>
             "Ciao {name}, l'intervento tecnico di {company} è fissato per {when}"
             . "{?location} presso {location}{/location}. "
-            . "Interviene {agent_name}. Se hai un imprevisto, rispondi a questo messaggio.",
+            . "{?agent_name}Interviene {agent_name}. {/agent_name}Se hai un imprevisto, rispondi a questo messaggio.",
 
         'intervention_customer' =>
             "Ciao {name}, ti ricordiamo l'intervento tecnico di {company} in programma {when}"
             . "{?location} presso {location}{/location}. "
-            . "Ti raggiunge {agent_name}. A presto!",
+            . "{?agent_name}Ti raggiunge {agent_name}. {/agent_name}A presto!",
 
         'intervention_tech_set' =>
             "🔧 Intervento fissato: {customer_name} — {when}"
@@ -66,6 +66,22 @@ return [
         'intervention_tech' =>
             "⏰ Promemoria intervento: {customer_name} — {when}"
             . "{?location} — {location}{/location} (#{id}).",
+
+        'intervention_taken_over' =>
+            "🔄 Ciao {name}, l'intervento presso {customer_name} del {when} (#{id}) "
+            . "è stato assegnato a un collega. Non devi più occupartene.",
+
+        // La pianificazione della giornata: il messaggio delle 17:00 e i solleciti.
+        // {link} è la conferma "ho pianificato" — senza il clic il CRM continua a chiedere.
+        'planning_prompt' =>
+            "📋 Ciao {name}, è il momento di organizzare la giornata di domani ({date}). "
+            . "Hai {count} interventi già assegnati e {pool} in attesa di essere presi in carico. "
+            . "Quando hai finito, conferma qui: {link}",
+
+        'planning_nudge' =>
+            "⏰ {name}, la pianificazione di domani ({date}) non risulta ancora confermata. "
+            . "Hai {count} interventi assegnati, {pool} ancora da assegnare. "
+            . "Conferma qui appena hai finito: {link}",
 
         'sign_request' => // inviato quando la trattativa entra nella fase di firma
             "Ciao {name}, il tuo contratto di {company} è pronto per la firma. "
@@ -348,13 +364,13 @@ return [
             'subject' => 'Intervento tecnico fissato per {when} — {company}',
             'html'    => '<p>Ciao {name},</p><p>L\'intervento tecnico è fissato per <strong>{when}</strong>'
                 . '{?location} presso <strong>{location}</strong>{/location}.</p>'
-                . '<p>Interviene <strong>{agent_name}</strong>. Se hai un imprevisto, rispondi a questa email.</p>',
+                . '{?agent_name}<p>Interviene <strong>{agent_name}</strong>.</p>{/agent_name}<p>Se hai un imprevisto, rispondi a questa email.</p>',
         ],
         'intervention_customer' => [
             'subject' => 'Promemoria: intervento tecnico {company}',
             'html'    => '<p>Ciao {name},</p><p>Ti ricordiamo l\'intervento tecnico in programma <strong>{when}</strong>'
                 . '{?location} presso <strong>{location}</strong>{/location}.</p>'
-                . '<p>Ti raggiunge <strong>{agent_name}</strong>.</p>',
+                . '{?agent_name}<p>Ti raggiunge <strong>{agent_name}</strong>.</p>{/agent_name}',
         ],
         'intervention_tech_set' => [
             'subject' => 'Intervento fissato: {customer_name} — {when}',
@@ -365,6 +381,26 @@ return [
             'subject' => 'Promemoria intervento: {customer_name}',
             'html'    => '<p>Intervento da <strong>{customer_name}</strong> — <strong>{when}</strong>'
                 . '{?location} — {location}{/location} (#{id}).</p>',
+        ],
+        'intervention_taken_over' => [
+            'subject' => 'Intervento riassegnato: {customer_name}',
+            'html'    => '<p>Ciao {name},</p><p>L\'intervento presso <strong>{customer_name}</strong> '
+                . 'del <strong>{when}</strong> (#{id}) è stato assegnato a un collega. '
+                . 'Non devi più occupartene.</p>',
+        ],
+        'planning_prompt' => [
+            'subject' => 'Pianifica la giornata di domani ({date})',
+            'html'    => '<p>Ciao {name},</p><p>È il momento di organizzare la giornata di '
+                . '<strong>{date}</strong>. Hai <strong>{count}</strong> interventi già assegnati e '
+                . '<strong>{pool}</strong> in attesa di essere presi in carico.</p>'
+                . '<p><a href="{link}">Ho finito: conferma la pianificazione</a></p>',
+        ],
+        'planning_nudge' => [
+            'subject' => 'Sollecito: pianificazione di domani ({date}) non confermata',
+            'html'    => '<p>Ciao {name},</p><p>La pianificazione del <strong>{date}</strong> non risulta '
+                . 'ancora confermata. Hai <strong>{count}</strong> interventi assegnati e '
+                . '<strong>{pool}</strong> ancora da assegnare.</p>'
+                . '<p><a href="{link}">Conferma la pianificazione</a></p>',
         ],
         'sign_request' => [
             'subject' => 'Firma il tuo contratto — {company}',

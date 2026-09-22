@@ -139,7 +139,11 @@ $techActions  = array_merge($installActions,
     ['assist_claim', 'ticket_reply', 'ticket_status',
      // booking, moving and closing the visit they took charge of, and the
      // address their own phone subscribes to
-     'interv_schedule', 'interv_status', 'cal_feed_reset'], $teamActions);
+     'interv_schedule', 'interv_status', 'cal_feed_reset',
+     // the calendar: book their own round, take a job out of the pool, hand
+     // one to a colleague, move it, add a customer they found on site, and
+     // say the next day is planned
+     'cal_save', 'cal_assign', 'cal_move', 'cal_newcust', 'plan_confirm'], $teamActions);
 $agentActions = [
     'lead_create', 'lead_move', 'lead_convert', 'lead_note', 'lead_edit', 'lead_quote',
     'lead_appointment',
@@ -147,6 +151,7 @@ $agentActions = [
     'appt_create', 'appt_schedule', 'appt_status',
     'task_complete', 'task_status', 'ticket_reply', 'ticket_status', 'ticket_open_staff', 'change_my_password',
     'doc_create', 'doc_send', 'doc_void', 'cal_feed_reset',
+    'cal_save', 'cal_assign', 'cal_move', 'cal_newcust', 'plan_confirm',
     // Asking the office for a quote and sending back the answer is the seller's
     // job; uploading the quote and cancelling a request are the office's.
     'quote_scratch', 'quote_send', 'quote_revise',
@@ -266,6 +271,16 @@ if (isset($_GET['cpf'])) {
     }
     http_response_code(404);
     exit('Not found');
+}
+
+// ---- Customer/contact type-ahead for the calendar's booking form (?find=contacts&q=) ----
+// Open to every logged-in role: a technician booking their own visit has to be
+// able to find the customer, and this returns nothing a staff member cannot
+// already read on the Contacts page.
+if (($_GET['find'] ?? '') === 'contacts') {
+    header('Content-Type: application/json');
+    echo json_encode(Contacts::searchPicker((string)($_GET['q'] ?? ''), 12), JSON_UNESCAPED_UNICODE);
+    exit;
 }
 
 // ---- Sibill invoices for an instalment commission (?find=sibill_invoices&q=...) ----
@@ -574,6 +589,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      // carries the REQUEST id in req_id and no 'id', so it falls
                      // past this guard and checks the claimer itself.
                      'interv_' => ['appointments', 'agent_id'],
+                     // cal_* is NOT listed here on purpose: taking a job out of
+                     // the pool means acting on a row owned by nobody, which this
+                     // guard reads as owner 0 and denies. Each cal_ handler checks
+                     // "mine or unowned" itself.
                      'ticket_' => ['tickets', 'assigned_agent_id'],
                      'doc_' => ['sign_documents', 'created_by'],
                      'quote_' => ['quote_requests', 'requested_by'],
@@ -620,6 +639,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'reminders.sign_due_default_days',
                     'reminders.appointment_offsets_min', 'reminders.intervention_offsets_min',
                     'reminders.intervention_day_before_at',
+                    'planning.prompt_at', 'planning.escalate_from',
+                    'planning.escalate_every_min', 'planning.escalate_max',
                     'reminders.sign_before_due_days', 'reminders.offer_read_days',
                     'textmebot.api_key', 'mail.from_name', 'mail.from_email',
                     'mail.smtp.host', 'mail.smtp.port', 'mail.smtp.user', 'mail.smtp.pass', 'mail.smtp.secure',
@@ -664,6 +685,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pairs['sibill.chase_pay_link'] = $post('sibill.chase_pay_link') !== null ? 'true' : 'false';
                 $pairs['ai.read_only'] = $post('ai.read_only') !== null ? 'true' : 'false';
                 $pairs['leads_mailbox.enabled'] = $post('leads_mailbox.enabled') !== null ? 'true' : 'false';
+                $pairs['planning.enabled'] = $post('planning.enabled') !== null ? 'true' : 'false';
                 $pairs['smallpay.enabled'] = $post('smallpay.enabled') !== null ? 'true' : 'false';
                 $pairs['smallpay.modify_installments'] = $post('smallpay.modify_installments') !== null ? 'true' : 'false';
                 $pairs['smallpay.notify_customer_on_failure'] = $post('smallpay.notify_customer_on_failure') !== null ? 'true' : 'false';
@@ -1636,6 +1658,105 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 Interventions::setStatus((int)$_POST['id'], (string)($_POST['status'] ?? ''), $uid);
                 $_SESSION['dash_flash'] = [$t('iv_status_set'), 'ok'];
                 header('Location: ?tab=' . (($_POST['back'] ?? '') === 'calendar' ? 'calendar' : 'support'));
+                exit;
+
+            // ---------- the calendar: book, assign, move ----------
+            case 'cal_save': { // create or edit an appointment from the calendar
+                // A technician books for themselves. Only the office hands work
+                // to someone else at creation — and 0 means the pool, which is
+                // a choice the office makes deliberately.
+                $agentId = ($isAgent || $isTech)
+                    ? (int)$uid
+                    : (int)($_POST['agent_id'] ?? 0);
+                $res = \Glue\Crm\Booking::save([
+                    'id'           => (int)($_POST['id'] ?? 0),
+                    'contact_id'   => (int)($_POST['contact_id'] ?? 0),
+                    'type_code'    => (string)($_POST['type_code'] ?? ''),
+                    'agent_id'     => $agentId,
+                    'starts_at'    => (string)($_POST['starts_at'] ?? ''),
+                    'duration_min' => (int)($_POST['duration_min'] ?? 60),
+                    'zone'         => (string)($_POST['zone'] ?? ''),
+                    'location'     => (string)($_POST['location'] ?? ''),
+                    'title'        => (string)($_POST['title'] ?? ''),
+                    'notes'        => (string)($_POST['notes'] ?? ''),
+                ], $uid);
+                $msg = match ($res['error']) {
+                    null           => $res['clashes'] ? $t('cal_saved_clash') : $t('cal_saved'),
+                    'no_customer'  => $t('cal_err_customer'),
+                    'no_zone'      => $t('cal_err_zone'),
+                    'bad_when'     => $t('iv_err_when'),
+                    default        => $t('iv_err_failed'),
+                };
+                $_SESSION['dash_flash'] = [$msg,
+                    $res['ok'] ? ($res['clashes'] ? 'warn' : 'ok') : 'err'];
+                header('Location: ?tab=calendar' . calBackQs());
+                exit;
+            }
+            case 'cal_assign': { // take one out of the pool, or hand it to a colleague
+                $to = (int)($_POST['to_id'] ?? 0);
+                // "Prendo io" is any technician's to press. Giving a job to a
+                // NAMED colleague is theirs too — the client asked for exactly
+                // that — but only on a job that is currently unowned or their own.
+                $appt = Appointments::find((int)($_POST['id'] ?? 0));
+                $mine = $appt && ((int)($appt['agent_id'] ?? 0) === (int)$uid || empty($appt['agent_id']));
+                if (!$appt || (($isAgent || $isTech) && !$mine)) {
+                    $_SESSION['dash_flash'] = [$t('not_allowed'), 'err'];
+                } else {
+                    \Glue\Crm\Booking::assign((int)$appt['id'], $to ?: null, $uid);
+                    $_SESSION['dash_flash'] = [$to ? $t('cal_assigned') : $t('cal_pooled'), 'ok'];
+                }
+                header('Location: ?tab=calendar' . calBackQs());
+                exit;
+            }
+            case 'cal_move': { // drag-and-drop, or a new time typed into the form
+                $appt = Appointments::find((int)($_POST['id'] ?? 0));
+                $mine = $appt && ((int)($appt['agent_id'] ?? 0) === (int)$uid || empty($appt['agent_id']));
+                if (!$appt || (($isAgent || $isTech) && !$mine)) {
+                    if ($ajax) { http_response_code(403); echo json_encode(['ok' => false]); exit; }
+                    $_SESSION['dash_flash'] = [$t('not_allowed'), 'err'];
+                    header('Location: ?tab=calendar' . calBackQs());
+                    exit;
+                }
+                $ok = \Glue\Crm\Booking::move((int)$appt['id'], (string)($_POST['starts_at'] ?? ''),
+                    isset($_POST['duration_min']) ? (int)$_POST['duration_min'] : null, $uid);
+                if ($ajax) { echo json_encode(['ok' => $ok]); exit; }
+                $_SESSION['dash_flash'] = [$ok ? $t('cal_moved') : $t('iv_err_when'), $ok ? 'ok' : 'err'];
+                header('Location: ?tab=calendar' . calBackQs());
+                exit;
+            }
+            case 'cal_newcust': { // "+ nuovo cliente" from inside the booking form
+                $res = \Glue\Crm\Customers::createManual([
+                    'first_name' => $_POST['first_name'] ?? '', 'last_name' => $_POST['last_name'] ?? '',
+                    'company'    => $_POST['company'] ?? '',
+                    'phone'      => $_POST['phone'] ?? '',   'email'   => $_POST['email'] ?? '',
+                    'vat_number' => $_POST['vat_number'] ?? '',
+                    'address'    => $_POST['address'] ?? '', 'city'    => $_POST['city'] ?? '',
+                    'province'   => $_POST['province'] ?? '', 'zip'    => $_POST['zip'] ?? '',
+                ], $uid);
+                if ($ajax) {
+                    // The form stays open and the picker fills itself in, which
+                    // is the whole point of creating from here.
+                    $c = $res['ok'] ? Contacts::find((int)$res['id']) : null;
+                    echo json_encode([
+                        'ok'    => (bool)$res['ok'],
+                        'id'    => (int)$res['id'],
+                        'label' => $c ? (trim((string)$c['name']) ?: (string)$c['company']) : '',
+                        'error' => $res['error'],
+                    ], JSON_UNESCAPED_UNICODE);
+                    exit;
+                }
+                $_SESSION['dash_flash'] = [$res['ok'] ? $t('cu_created') : $t('cal_err_customer'),
+                    $res['ok'] ? 'ok' : 'err'];
+                header('Location: ?tab=calendar' . calBackQs());
+                exit;
+            }
+            case 'plan_confirm': // "ho pianificato" pressed inside the CRM
+                if ($uid) {
+                    \Glue\Crm\DayPlanner::confirmFor((int)$uid,
+                        (string)($_POST['plan_date'] ?? date('Y-m-d', strtotime('+1 day'))));
+                    $_SESSION['dash_flash'] = [$t('plan_confirmed'), 'ok'];
+                }
+                header('Location: ?tab=calendar' . calBackQs());
                 exit;
 
             case 'cal_feed_reset': // the phone-subscription address leaked, or they want a new one
@@ -3038,6 +3159,25 @@ function secret_fld(callable $h, string $name, string $label, $value, string $hi
         . ($hint ? '<small class="muted">' . $h($hint) . '</small>' : '') . '</label>';
 }
 /** <select> of agents for assignment. */
+/**
+ * The calendar's view state, carried back through a POST redirect.
+ *
+ * Booking a job from the week of 12 October, on the "Napoli" filter, has to
+ * land back on the week of 12 October with that filter still on — a redirect
+ * to a bare ?tab=calendar drops the planner back on today and they lose their
+ * place mid-round. The form posts what it was showing in `back`; only the keys
+ * the calendar understands are echoed, so nothing arbitrary reaches the URL.
+ */
+function calBackQs(): string {
+    parse_str((string)($_POST['back'] ?? ''), $b);
+    $out = [];
+    foreach (['m', 'd', 'v', 'k', 'u', 'z', 'ty'] as $key) {
+        if (isset($b[$key]) && $b[$key] !== '' && is_scalar($b[$key])) {
+            $out[$key] = mb_substr((string)$b[$key], 0, 40);
+        }
+    }
+    return $out ? '&' . http_build_query($out) : '';
+}
 function agent_select(callable $h, array $agents, string $name, $selected = null, string $placeholder = '—'): void {
     echo '<select name="' . $h($name) . '"><option value="">' . $h($placeholder) . '</option>';
     foreach ($agents as $a) {
