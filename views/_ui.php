@@ -440,6 +440,15 @@ a.tel:hover{text-decoration:underline;}
 .table-wrap{overflow-x:auto;-webkit-overflow-scrolling:touch;margin-bottom:16px;}
 .table-wrap table{margin-bottom:0;}
 @media(max-width:560px){.table-wrap table{min-width:520px;}}
+/* A table whose last column is the only way to act on the row: on a phone the
+   row is wider than the screen, so that column would sit off to the right and
+   the buttons were never reached. Pin it to the edge and let the rest scroll
+   underneath. */
+@media(max-width:560px){
+  table.acts-pinned td:last-child,table.acts-pinned th:last-child{
+    position:sticky;right:0;background:var(--surface);box-shadow:-6px 0 6px -6px rgba(0,0,0,.35);}
+  table.acts-pinned tr:nth-child(even) td:last-child{background:var(--surface2,var(--surface));}
+}
 /* commission statements (Provvigioni): the office desk, an agent's own list, the partner area */
 .cm-card{background:var(--surface);border:1px solid var(--line);border-radius:12px;margin-bottom:10px;}
 .cm-card>summary{display:flex;align-items:center;gap:12px;padding:14px 16px;cursor:pointer;list-style:none;flex-wrap:wrap;}

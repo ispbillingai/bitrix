@@ -27,7 +27,7 @@ $stColor = ['open' => 'var(--accent)', 'taken' => 'var(--green)',
 <p class="muted small" style="margin:-6px 0 14px"><?= $h($t('as_sub')) ?></p>
 
 <?php if (!$asRows): ?><div class="empty"><?= $h($t('as_none')) ?></div><?php else: ?>
-<table>
+<table class="acts-pinned">
   <thead><tr>
     <th>#</th><th><?= $h($t('th_customer')) ?></th><th><?= $h($t('tk_subject_l')) ?></th>
     <th><?= $h($t('as_priority')) ?></th><th><?= $h($t('th_status')) ?></th>
