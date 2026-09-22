@@ -580,7 +580,7 @@ final class Articles
 
         // Queued, like every staff alert (Notify\StaffAlert): the save that
         // crossed the threshold does not wait for one WhatsApp per admin.
-        \Glue\Notify\StaffAlert::toRole('admin', 'staff_restock', $text, "Da riordinare — " . count($rows) . ' prodotti', $body);
+        \Glue\Notify\StaffAlert::toRole(StaffAlert::OFFICE, 'staff_restock', $text, "Da riordinare — " . count($rows) . ' prodotti', $body);
 
         $ids = array_map(static fn($r) => (int)$r['id'], $rows);
         $pdo->exec('UPDATE articles SET low_alert_at = NOW() WHERE id IN (' . implode(',', $ids) . ')');

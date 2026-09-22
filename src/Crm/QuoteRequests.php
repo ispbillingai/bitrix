@@ -416,7 +416,7 @@ final class QuoteRequests
                    . htmlspecialchars($number, ENT_QUOTES) . '</b> per ' . htmlspecialchars($who, ENT_QUOTES) . ':</p>'
                    . '<p>' . nl2br(htmlspecialchars($note, ENT_QUOTES)) . '</p>'
                    . '<p><a href="' . htmlspecialchars($link, ENT_QUOTES) . '">Apri il preventivo nel CRM</a></p>';
-            self::sendToStaff('admin', $text, "Modifica richiesta — preventivo $number", $html, 'staff_quote_revision', $id);
+            self::sendToStaff(\Glue\Notify\StaffAlert::OFFICE, $text, "Modifica richiesta — preventivo $number", $html, 'staff_quote_revision', $id);
         } catch (Throwable $e) {
             // The request is recorded either way; a failed message must not lose it.
             Log::write('crm', 'quote_revision_notify_failed', 'lead', (int)$r['lead_id'],
@@ -897,7 +897,7 @@ final class QuoteRequests
                 . '</p><p><b>Richiesta:</b><br>' . nl2br(htmlspecialchars($notes, ENT_QUOTES)) . '</p>'
                 . '<p><a href="' . htmlspecialchars($link, ENT_QUOTES) . '">Carica il preventivo nel CRM</a></p>';
 
-            self::sendToStaff('admin', $text, "Richiesta preventivo #$id — $who", $html, 'staff_quote_request', $id);
+            self::sendToStaff(\Glue\Notify\StaffAlert::OFFICE, $text, "Richiesta preventivo #$id — $who", $html, 'staff_quote_request', $id);
         } catch (Throwable $e) {
             // Notifying the office must never lose the request itself.
             Log::write('crm', 'quote_notify_failed', 'lead', (int)($lead['id'] ?? 0),
@@ -939,7 +939,8 @@ final class QuoteRequests
     }
 
     /** Message every active user of a role. True if at least one channel went out. */
-    private static function sendToStaff(string $role, string $text, string $subject, string $html,
+    /** @param string|array $role one role, or several (StaffAlert::OFFICE) */
+    private static function sendToStaff($role, string $text, string $subject, string $html,
                                         string $ruleKey = 'staff_quote_request', int $requestId = 0): bool
     {
         // Queued (Notify\StaffAlert): the seller who pressed the button no longer

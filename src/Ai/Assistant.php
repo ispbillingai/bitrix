@@ -224,8 +224,10 @@ final class Assistant
     private static function system(array $ctx): string
     {
         $company = (string)Config::get('app.company_name', '') ?: 'l\'azienda';
-        $role = ['admin' => 'amministratore (ufficio): vede tutto il CRM', 'agent' => 'agente di vendita: vede SOLO i propri lead, trattative, clienti, ticket, attività e appuntamenti',
-                 'tech' => 'tecnico: vede i clienti, i ticket presi in carico da lui, le installazioni'][$ctx['role']] ?? $ctx['role'];
+        $role = ['admin'  => 'amministratore: vede tutto il CRM, comprese impostazioni e account',
+                 'office' => 'amministrazione (ufficio): vede tutto il lavoro operativo del CRM, ma non impostazioni, account e modelli di messaggio',
+                 'agent'  => 'agente di vendita: vede SOLO i propri lead, trattative, clienti, ticket, attività e appuntamenti',
+                 'tech'   => 'tecnico: vede i clienti, i ticket presi in carico da lui, le installazioni'][$ctx['role']] ?? $ctx['role'];
         $lang = $ctx['lang'] === 'en' ? 'English' : 'italiano';
         $refusal = self::refusal($ctx);
         // Settings → Assistente AI → Solo lettura: no action is offered (Tools::definitions), and it knows why.

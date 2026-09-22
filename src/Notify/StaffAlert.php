@@ -28,19 +28,38 @@ use Throwable;
 final class StaffAlert
 {
     /**
+     * Who hears the operational traffic — quote requests, assistance requests,
+     * customer documents, restock alerts.
+     *
+     * It is the back office's job, so Amministrazione hears it; the
+     * Administrator is kept on the list because before the roles were split
+     * every one of these people WAS an admin, and dropping them would have
+     * silently stopped the alerts on the day of the deploy. Move an account to
+     * Amministrazione and it keeps receiving; leave it an Administrator and it
+     * does too.
+     */
+    public const OFFICE = ['admin', 'office'];
+
+    /**
+     * @param string|array $role one role, or several (self::OFFICE)
      * @param string $ruleKey    what it is, for the Reminders list (rk_<key> in lang/ui.*.php)
      * @param string $entityType what it is about ('quote_request', 'assist_request'…); '' for nothing in particular
      * @return int how many people were queued (0: nobody of that role has a phone or an email)
      */
-    public static function toRole(string $role, string $ruleKey, string $text, string $subject, string $html,
+    public static function toRole($role, string $ruleKey, string $text, string $subject, string $html,
                                   string $entityType = '', int $entityId = 0): int
     {
+        $roles = array_values(array_filter(array_map('strval', (array)$role)));
+        if (!$roles) {
+            return 0;
+        }
         try {
+            $in = implode(',', array_fill(0, count($roles), '?'));
             $stmt = Db::pdo()->prepare(
                 "SELECT id, COALESCE(NULLIF(TRIM(full_name), ''), username) AS name, phone, email
-                   FROM users WHERE role = ? AND active = 1 ORDER BY id"
+                   FROM users WHERE role IN ($in) AND active = 1 ORDER BY id"
             );
-            $stmt->execute([$role]);
+            $stmt->execute($roles);
             $users = $stmt->fetchAll() ?: [];
         } catch (Throwable $e) {
             Log::write('notify', 'staff_alert_failed', $entityType !== '' ? $entityType : 'user', $entityId,

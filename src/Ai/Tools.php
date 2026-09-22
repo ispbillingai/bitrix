@@ -47,10 +47,23 @@ final class Tools
     // ---- definitions -----------------------------------------------------------------
 
     /** Tool definitions for the API, filtered to what this role may use. camelCase keys: the SDK maps them. */
+    /**
+     * Does this person see the whole CRM, or only their own records?
+     *
+     * The Amministrazione role does the back office job, so for the assistant
+     * it is an administrator: scoping it to "its own leads" would leave the
+     * office unable to ask about the work it actually does. What it may not do
+     * is configure the system, and the assistant offers no tool for that.
+     */
+    private static function seesAll(array $ctx): bool
+    {
+        return in_array((string)($ctx['role'] ?? ''), ['admin', 'office'], true);
+    }
+
     public static function definitions(array $ctx): array
     {
         $role = (string)$ctx['role'];
-        $isAdmin = $role === 'admin';
+        $isAdmin = in_array($role, ['admin', 'office'], true);
         $str = fn(string $d) => ['type' => 'string', 'description' => $d];
         $int = fn(string $d) => ['type' => 'integer', 'description' => $d];
         $obj = fn(array $props, array $req = []) => ['type' => 'object', 'properties' => $props, 'required' => $req];
@@ -217,12 +230,12 @@ final class Tools
 
     private static function leadVisible(array $ctx, array $lead): bool
     {
-        return $ctx['role'] === 'admin' || ($ctx['role'] === 'agent' && (int)($lead['assigned_to'] ?? 0) === (int)$ctx['uid']);
+        return self::seesAll($ctx) || ($ctx['role'] === 'agent' && (int)($lead['assigned_to'] ?? 0) === (int)$ctx['uid']);
     }
 
     private static function ticketVisible(array $ctx, array $t): bool
     {
-        return $ctx['role'] === 'admin' || (int)($t['assigned_agent_id'] ?? 0) === (int)$ctx['uid'];
+        return self::seesAll($ctx) || (int)($t['assigned_agent_id'] ?? 0) === (int)$ctx['uid'];
     }
 
     private static function searchCustomers(string $q, array $ctx): string
@@ -277,7 +290,7 @@ final class Tools
             'gestionale_agent' => $c['gestionale_agent'], 'contract_expiry' => $c['contract_expiry'],
             'portal_enabled' => (bool)$c['portal_enabled'], 'notes' => $c['notes'],
         ]];
-        if ($ctx['role'] === 'admin') {
+        if (self::seesAll($ctx)) {
             $out['contact']['balance_gestionale'] = (float)$c['balance'];
             $out['invoices'] = ['open_total' => round((float)$ov['owed'], 2), 'overdue_count' => (int)$ov['overdue'],
                 'recent' => array_map(fn($i) => ['number' => $i['number'], 'date' => $i['creation_date'], 'due' => $i['due_date'],
@@ -286,10 +299,10 @@ final class Tools
             $out['contracts'] = array_map(fn($k) => ['id' => (int)$k['id'], 'status' => $k['status'] ?? null,
                 'amount_cents' => $k['amount_cents'] ?? null, 'description' => $k['description'] ?? null], $ov['contracts']);
         }
-        $leads = array_filter($ov['leads'], fn($l) => $ctx['role'] !== 'tech' && ($ctx['role'] === 'admin' || (int)$l['assigned_to'] === (int)$ctx['uid']));
+        $leads = array_filter($ov['leads'], fn($l) => $ctx['role'] !== 'tech' && (self::seesAll($ctx) || (int)$l['assigned_to'] === (int)$ctx['uid']));
         $out['leads'] = array_map(fn($l) => ['lead_id' => (int)$l['id'], 'status' => $l['status'], 'stage' => Pipelines::label('lead', (string)$l['stage_code']),
             'source' => $l['source'], 'received_at' => $l['received_at'], 'agent_id' => $l['assigned_to'], 'request' => mb_substr((string)$l['comments'], 0, 300)], array_values($leads));
-        $deals = array_filter($ov['deals'], fn($d) => $ctx['role'] !== 'tech' && ($ctx['role'] === 'admin' || (int)$d['assigned_to'] === (int)$ctx['uid']));
+        $deals = array_filter($ov['deals'], fn($d) => $ctx['role'] !== 'tech' && (self::seesAll($ctx) || (int)$d['assigned_to'] === (int)$ctx['uid']));
         $out['deals'] = array_map(fn($d) => ['deal_id' => (int)$d['id'], 'title' => $d['title'], 'status' => $d['status'],
             'stage' => Pipelines::label('deal', (string)$d['stage_code']), 'amount' => (float)$d['amount'], 'agent_id' => $d['assigned_to'],
             'created_at' => $d['created_at']], array_values($deals));
@@ -372,7 +385,7 @@ final class Tools
                 'stage' => Pipelines::label('deal', (string)$d['stage_code']), 'amount' => (float)$d['amount'], 'agent_id' => $d['assigned_to']], $s->fetchAll());
         }
         if ($want('ticket')) {
-            $own = $ctx['role'] === 'admin' ? '' : ' AND t.assigned_agent_id = ' . (int)$ctx['uid'];
+            $own = self::seesAll($ctx) ? '' : ' AND t.assigned_agent_id = ' . (int)$ctx['uid'];
             $s = $pdo->prepare("SELECT t.id, t.subject, t.status, t.updated_at, t.assigned_agent_id, c.name AS customer FROM tickets t
                                 LEFT JOIN contacts c ON c.id = t.contact_id
                                 WHERE (t.subject LIKE ? OR c.name LIKE ? OR EXISTS (SELECT 1 FROM ticket_messages m WHERE m.ticket_id = t.id AND m.body LIKE ?))$own
@@ -382,14 +395,14 @@ final class Tools
                 'updated_at' => $t['updated_at'], 'agent_id' => $t['assigned_agent_id']], $s->fetchAll());
         }
         if ($want('task')) {
-            $own = $ctx['role'] === 'admin' ? '' : ' AND assigned_to = ' . (int)$ctx['uid'];
+            $own = self::seesAll($ctx) ? '' : ' AND assigned_to = ' . (int)$ctx['uid'];
             $s = $pdo->prepare("SELECT id, title, status, due_at, assigned_to, related_type, related_id FROM tasks WHERE (title LIKE ? OR description LIKE ?)$own ORDER BY id DESC LIMIT 10");
             $s->execute([$like, $like]);
             $out['tasks'] = array_map(fn($t) => ['task_id' => (int)$t['id'], 'title' => $t['title'], 'status' => $t['status'], 'due_at' => $t['due_at'],
                 'assigned_to' => $t['assigned_to'], 'related' => $t['related_type'] ? $t['related_type'] . ' #' . $t['related_id'] : null], $s->fetchAll());
         }
         if ($want('appointment')) {
-            $own = $ctx['role'] === 'admin' ? '' : ' AND agent_id = ' . (int)$ctx['uid'];
+            $own = self::seesAll($ctx) ? '' : ' AND agent_id = ' . (int)$ctx['uid'];
             $s = $pdo->prepare("SELECT id, title, customer_name, starts_at, preferred_at, status, agent_id FROM appointments WHERE (title LIKE ? OR customer_name LIKE ? OR notes LIKE ?)$own ORDER BY COALESCE(starts_at, preferred_at) DESC LIMIT 10");
             $s->execute([$like, $like, $like]);
             $out['appointments'] = array_map(fn($a) => ['appointment_id' => (int)$a['id'], 'title' => $a['title'], 'customer' => $a['customer_name'],
@@ -454,7 +467,7 @@ final class Tools
 
     private static function listTasks(string $status, int $assignedTo, array $ctx): string
     {
-        $uid = $ctx['role'] === 'admin' ? ($assignedTo ?: null) : (int)$ctx['uid'];
+        $uid = self::seesAll($ctx) ? ($assignedTo ?: null) : (int)$ctx['uid'];
         $rows = Tasks::all(300, $uid);
         $rows = array_values(array_filter($rows, fn($t) => match ($status) {
             'overdue' => $t['status'] === 'open' && $t['due_at'] !== null && $t['due_at'] < date('Y-m-d H:i:s'),
@@ -474,7 +487,7 @@ final class Tools
     {
         $ahead = max(0, min(365, $ahead));
         $back = max(0, min(365, $back));
-        $uid = $ctx['role'] === 'admin' ? ($agentId ?: null) : (int)$ctx['uid'];
+        $uid = self::seesAll($ctx) ? ($agentId ?: null) : (int)$ctx['uid'];
         $sql = 'SELECT a.id, a.title, a.customer_name, a.customer_phone, a.starts_at, a.preferred_at, a.status, a.agent_id, a.location, u.full_name, u.username
                   FROM appointments a LEFT JOIN users u ON u.id = a.agent_id
                  WHERE COALESCE(a.starts_at, a.preferred_at) BETWEEN DATE_SUB(CURDATE(), INTERVAL ? DAY) AND DATE_ADD(CURDATE(), INTERVAL ? DAY)'
@@ -494,7 +507,7 @@ final class Tools
     {
         $rows = Db::pdo()->query("SELECT id, username, full_name, role, title FROM users WHERE active = 1 ORDER BY role, full_name, username")->fetchAll();
         return self::j(array_map(fn($u) => ['user_id' => (int)$u['id'], 'name' => trim((string)$u['full_name']) ?: $u['username'],
-            'role' => ['admin' => 'ufficio/admin', 'agent' => 'agente', 'tech' => 'tecnico'][$u['role']] ?? $u['role'], 'title' => $u['title']], $rows));
+            'role' => ['admin' => 'amministratore', 'office' => 'amministrazione', 'agent' => 'agente', 'tech' => 'tecnico'][$u['role']] ?? $u['role'], 'title' => $u['title']], $rows));
     }
 
     private static function pipelineReport(array $ctx): string
@@ -514,13 +527,13 @@ final class Tools
         $won = $pdo->query("SELECT COUNT(*) n, COALESCE(SUM(amount),0) v FROM deals WHERE status = 'won' AND updated_at >= '$month-01'$w")->fetch();
         $lost = (int)$pdo->query("SELECT COUNT(*) FROM deals WHERE status = 'lost' AND updated_at >= '$month-01'$w")->fetchColumn();
         $newLeads = (int)$pdo->query("SELECT COUNT(*) FROM leads WHERE received_at >= '$month-01'$w")->fetchColumn();
-        $tw = $ctx['role'] === 'admin' ? '' : ' AND assigned_agent_id = ' . (int)$ctx['uid'];
+        $tw = self::seesAll($ctx) ? '' : ' AND assigned_agent_id = ' . (int)$ctx['uid'];
         $tickets = $pdo->query("SELECT status, COUNT(*) n FROM tickets WHERE status <> 'closed'$tw GROUP BY status")->fetchAll(\PDO::FETCH_KEY_PAIR);
         $waiting = (int)$pdo->query("SELECT COUNT(*) FROM tickets WHERE status <> 'closed' AND last_sender = 'customer'$tw")->fetchColumn();
-        $kw = $ctx['role'] === 'admin' ? '' : ' AND assigned_to = ' . (int)$ctx['uid'];
+        $kw = self::seesAll($ctx) ? '' : ' AND assigned_to = ' . (int)$ctx['uid'];
         $overdue = (int)$pdo->query("SELECT COUNT(*) FROM tasks WHERE status = 'open' AND due_at < NOW()$kw")->fetchColumn();
         $openTasks = (int)$pdo->query("SELECT COUNT(*) FROM tasks WHERE status = 'open'$kw")->fetchColumn();
-        $aw = $ctx['role'] === 'admin' ? '' : ' AND agent_id = ' . (int)$ctx['uid'];
+        $aw = self::seesAll($ctx) ? '' : ' AND agent_id = ' . (int)$ctx['uid'];
         $apptWeek = (int)$pdo->query("SELECT COUNT(*) FROM appointments WHERE status = 'confirmed' AND starts_at BETWEEN NOW() AND DATE_ADD(NOW(), INTERVAL 7 DAY)$aw")->fetchColumn();
         return self::j([
             'scope' => $scope ? 'solo i tuoi record' : 'tutto il CRM', 'month' => $month,
@@ -561,7 +574,7 @@ final class Tools
         return match ($name) {
             'create_task' => 'Crea attività «' . (string)($in['title'] ?? '') . '»'
                 . (!empty($in['due_at']) ? ' — scadenza ' . $when((string)$in['due_at']) : '')
-                . (!empty($in['assigned_to']) && $ctx['role'] === 'admin' ? ' — assegnata a utente #' . (int)$in['assigned_to'] : '')
+                . (!empty($in['assigned_to']) && self::seesAll($ctx) ? ' — assegnata a utente #' . (int)$in['assigned_to'] : '')
                 . (!empty($in['related_type']) ? ' — su ' . $in['related_type'] . ' #' . (int)($in['related_id'] ?? 0) : ''),
             'add_note' => 'Aggiungi nota su ' . (string)($in['entity_type'] ?? '') . ' #' . (int)($in['entity_id'] ?? 0) . ': «' . mb_substr((string)($in['body'] ?? ''), 0, 200) . '»',
             'send_message_to_customer' => 'Scrivi al cliente #' . (int)($in['contact_id'] ?? 0) . ' nella sua chat: «' . mb_substr((string)($in['body'] ?? ''), 0, 400) . '»',
@@ -610,7 +623,7 @@ final class Tools
 
     private static function doCreateTask(array $in, array $ctx): array
     {
-        $assignee = $ctx['role'] === 'admin' && !empty($in['assigned_to']) ? (int)$in['assigned_to'] : (int)$ctx['uid'];
+        $assignee = self::seesAll($ctx) && !empty($in['assigned_to']) ? (int)$in['assigned_to'] : (int)$ctx['uid'];
         $rel = in_array($in['related_type'] ?? '', ['lead', 'deal', 'contact', 'ticket'], true) ? (string)$in['related_type'] : null;
         $id = Tasks::create([
             'title' => (string)($in['title'] ?? 'Attività'), 'description' => $in['description'] ?? null,
@@ -648,7 +661,7 @@ final class Tools
         if ($body === '') {
             return ['ok' => false, 'text' => 'Messaggio vuoto.'];
         }
-        $senderType = $ctx['role'] === 'admin' ? 'admin' : 'agent';
+        $senderType = self::seesAll($ctx) ? 'admin' : 'agent';
         // An open conversation with this customer continues; a technician may only continue one they hold.
         $s = Db::pdo()->prepare("SELECT id, assigned_agent_id FROM tickets WHERE contact_id = ? AND status <> 'closed' ORDER BY updated_at DESC LIMIT 1");
         $s->execute([$cid]);
@@ -774,7 +787,7 @@ final class Tools
         if (!$ts) {
             return ['ok' => false, 'text' => 'Data/ora non valida.'];
         }
-        $agentId = $ctx['role'] === 'admin' && !empty($in['agent_id']) ? (int)$in['agent_id'] : (int)$ctx['uid'];
+        $agentId = self::seesAll($ctx) && !empty($in['agent_id']) ? (int)$in['agent_id'] : (int)$ctx['uid'];
         $leadId = (int)($in['lead_id'] ?? 0) ?: null;
         $cid = (int)($in['contact_id'] ?? 0) ?: null;
         if ($leadId) {
@@ -805,7 +818,7 @@ final class Tools
         $limit = max(1, min(50, $limit ?: 20));
         $state = in_array($state, ['all', 'in_stock', 'low', 'negative', 'ordered'], true) ? $state : 'all';
         $res   = \Glue\Crm\Articles::search(['q' => trim($q), 'state' => $state], 1, $limit);
-        $admin = $ctx['role'] === 'admin';
+        $admin = self::seesAll($ctx);
         $num   = fn($v) => $v === null || $v === '' ? null : (float)$v;
         return self::j(['found' => $res['total'], 'shown' => count($res['rows']), 'articles' => array_map(fn($a) => array_filter([
             'code' => $a['code'], 'description' => $a['description'], 'barcode' => $a['barcode'] ?: null,
@@ -832,7 +845,7 @@ final class Tools
             'to_reorder' => array_map($row, \Glue\Crm\Articles::search(['state' => 'low'], 1, 25)['rows']),
             'negative'   => array_map($row, \Glue\Crm\Articles::search(['state' => 'negative'], 1, 10)['rows']),
         ];
-        if ($ctx['role'] === 'admin') {
+        if (self::seesAll($ctx)) {
             $out['value_at_cost_eur'] = round($v['on_hand'], 2);
             $out['negative_value_at_cost_eur'] = round($v['owed'], 2);
         }
@@ -876,7 +889,7 @@ final class Tools
             'sibill_invoice' => $p['invoice_number'] ?? null,
         ], fn($v) => $v !== null && $v !== '');
         $planLegend = 'active = rate in corso, completed = tutte le rate pagate dal cliente, cancelled = annullata';
-        if ($ctx['role'] === 'admin') {
+        if (self::seesAll($ctx)) {
             $open = \Glue\Db::pdo()->query(
                 "SELECT p.name, COUNT(*) n, SUM(a.amount) amt FROM partner_accruals a JOIN partners p ON p.id = a.partner_id
                   WHERE a.statement_id IS NULL AND a.status IN ('pending','approved') GROUP BY p.id, p.name ORDER BY amt DESC"
@@ -933,7 +946,7 @@ final class Tools
     {
         $limit = max(1, min(50, $limit ?: 20));
         $uid   = (int)$ctx['uid'];
-        $where = $ctx['role'] === 'admin' ? '' : " WHERE (r.created_by = $uid OR r.technician_id = $uid)";
+        $where = self::seesAll($ctx) ? '' : " WHERE (r.created_by = $uid OR r.technician_id = $uid)";
         $rows  = \Glue\Db::pdo()->query(
             "SELECT r.id, r.contact_id, c.name AS customer, c.company, r.technician_name, r.report_type, r.machine_model,
                     r.serial_number, r.status, r.sent_at, r.created_at

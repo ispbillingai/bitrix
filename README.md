@@ -156,6 +156,27 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 | The CRM's own calendar of service calls and appointments, and a read-only .ics feed each person subscribes to from their phone — no Google account, no OAuth | `views/calendar.php` → `Crm\Calendar` → `public/calendar-feed.php` (`/calendar.ics?k=`) |
 | Bitrix24 sync | **optional** `Sync\BitrixSync`, off by default |
 
+## Roles
+
+Four groups, in `users.role` (validated by `Auth::ROLES` — an unknown value would
+otherwise read as the Administrator):
+
+| Role | Italian | Sees |
+|---|---|---|
+| `admin` | Amministratore | everything, **and alone**: Impostazioni, Agenti, Modelli, Eventi (`SYS_VIEWS` / `SYS_ACTIONS` in dashboard.php) |
+| `office` | Amministrazione | the whole operational CRM — customers, quotes, documents, invoices, support, calendar — but none of the four tabs above |
+| `agent` | Agente | only their own leads, deals, quotes, appointments, commissions |
+| `tech` | Tecnico | devices (read-only), installations, the support queue, their own round and tickets |
+
+`office` is a blacklist, not a whitelist: every `(!$isAgent && !$isTech)` check in
+the dashboard means "office or administrator", which is right for operational
+work, and the role is then held out of the short system list. A new feature is
+therefore available to the office by default — which is the intended direction.
+
+Operational alerts (quote requests, assistance requests, customer documents,
+restock, commissions) go to `StaffAlert::OFFICE` = both `admin` and `office`, so
+nothing went quiet on the day the roles were split.
+
 ## Layout
 
 ```

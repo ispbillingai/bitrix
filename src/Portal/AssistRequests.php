@@ -348,7 +348,7 @@ final class AssistRequests
             . ': «' . htmlspecialchars((string)$r['subject'], ENT_QUOTES) . '»</p>'
             . '<p><a href="' . htmlspecialchars($link, ENT_QUOTES) . '">Prendila in carico nel CRM</a></p>';
         self::sendToStaff('tech', $text, 'Nuova richiesta di assistenza — ' . $customer, $html, 'staff_assist_request', (int)($r['id'] ?? 0))
-            || self::sendToStaff('admin', $text, 'Nuova richiesta di assistenza — ' . $customer, $html, 'staff_assist_request', (int)($r['id'] ?? 0));
+            || self::sendToStaff(\Glue\Notify\StaffAlert::OFFICE, $text, 'Nuova richiesta di assistenza — ' . $customer, $html, 'staff_assist_request', (int)($r['id'] ?? 0));
     }
 
     /** SmallPay would not open the Helpdesk contract — the admins should know. */
@@ -359,12 +359,13 @@ final class AssistRequests
             . " — il cliente {$customer} voleva attivare il contratto Helpdesk ma SmallPay ha rifiutato "
             . "l'apertura della posizione. La richiesta #{$requestId} («{$subject}») è passata comunque "
             . 'in orario lavorativo. Contattarlo per il contratto.';
-        self::sendToStaff('admin', $text, 'Attivazione Helpdesk non riuscita — ' . $customer,
+        self::sendToStaff(\Glue\Notify\StaffAlert::OFFICE, $text, 'Attivazione Helpdesk non riuscita — ' . $customer,
             '<p>' . htmlspecialchars($text, ENT_QUOTES) . '</p>', 'staff_assist_failed', (int)$requestId);
     }
 
     /** Message every active user of a role. True if at least one channel went out. */
-    private static function sendToStaff(string $role, string $text, string $subject, string $html,
+    /** @param string|array $role one role, or several (StaffAlert::OFFICE) */
+    private static function sendToStaff($role, string $text, string $subject, string $html,
                                         string $ruleKey = 'staff_assist_request', int $requestId = 0): bool
     {
         // Queued (Notify\StaffAlert): the customer's page does not wait for one

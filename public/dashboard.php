@@ -116,7 +116,31 @@ $isAgent = $role === 'agent';
 // Technical-area users: not a CRM role — they only see network monitoring
 // (Devices + Network areas), no leads/deals/etc. Not scoped like agents.
 $isTech  = $role === 'tech';
-$scopeId = $isAgent ? (int)($_SESSION['glue_user']['id'] ?? 0) : null; // null = no scope (admin)
+// Amministrazione: the back office. Does the whole operational job — customers,
+// quotes, documents, invoices, the support queue — but does not hold the keys
+// to the system. Deliberately NOT a variant of "agent": every existing
+// (!$isAgent && !$isTech) check means "office or administrator", and that is
+// exactly right for operational work, so this role inherits all of it and is
+// then held OUT of the four system tabs below. Nothing changes for anyone until
+// an account is actually moved to this role.
+$isOffice = $role === 'office';
+// The Administrator: the only role that may change configuration, create or
+// re-role accounts, edit the message templates, and read the global audit log.
+$isSysAdmin = !$isAgent && !$isTech && !$isOffice;
+$scopeId = $isAgent ? (int)($_SESSION['glue_user']['id'] ?? 0) : null; // null = no scope (admin/office)
+
+/**
+ * Tabs and POST actions that belong to the Administrator alone — configuration,
+ * accounts and the audit trail. Everything else in the CRM is operational and
+ * the office does it too.
+ */
+const SYS_VIEWS = ['settings', 'agents', 'events', 'templates'];
+const SYS_ACTIONS = [
+    'save_settings', 'save_templates', 'stage_add', 'stage_delete',
+    'create_user', 'update_profile', 'set_password', 'toggle_user', 'delete_user',
+    'test_whatsapp', 'test_email', 'test_bitrix', 'test_sibill', 'test_ai',
+    'test_mailbox', 'test_smallpay',
+];
 // Admin-only pipeline filter: ?agent=<id> narrows the Leads/Deals boards (and the
 // overview) to one seller. Agents are always hard-scoped to themselves and ignore it.
 $filterAgentId = (!$isAgent && !empty($_GET['agent'])) ? (int)$_GET['agent'] : null;
@@ -574,6 +598,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     // this whitelist the tech role, being neither agent nor admin, slipped past
     // the agent gate and could POST anything — closed now that techs get logins.)
     if ($isTech && !in_array($do, $techActions, true)) {
+        if ($ajax) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
+        $flash = $t('not_allowed');
+        $flashType = 'err';
+        $do = '';
+    }
+    // Amministrazione is a blacklist, not a whitelist: the office does the whole
+    // operational job, so listing everything it MAY do would be a list of nearly
+    // every action in this file and a new feature would silently be denied to
+    // them. What it may not do is the short, stable list — configuration,
+    // accounts, templates, the connection tests.
+    if ($isOffice && in_array($do, SYS_ACTIONS, true)) {
         if ($ajax) { http_response_code(403); echo json_encode(['ok' => false, 'error' => 'forbidden']); exit; }
         $flash = $t('not_allowed');
         $flashType = 'err';
@@ -2795,6 +2830,12 @@ if ($isAgent && !in_array($view, $agentViews, true)) {
     $tab  = 'overview';
 }
 // Technical-area users can only reach their own views. Default them to Devices.
+// The office reaches everything except the Administrator's four tabs, even by
+// typing the URL.
+if ($isOffice && in_array($view, SYS_VIEWS, true)) {
+    $view = 'overview';
+    $tab  = 'overview';
+}
 if ($isTech) {
     if (!in_array($view, $techViews, true)) {
         $view = 'devices';
@@ -2828,7 +2869,7 @@ try {
     $finBadge = ($isAgent || $isTech) ? 0 : \Glue\Finance\Docs::countInReview();
 } catch (Throwable $e) {
     $finBadge = 0; // before migration 058
-}render_head($t, $h, $lang, $tab, $flash, $flashType, $isAgent, $isTech, $agentInstalls, $uid ? TeamChat::unreadTotal((int)$uid) : 0, $cmBadge, $finBadge);
+}render_head($t, $h, $lang, $tab, $flash, $flashType, $isAgent, $isTech, $agentInstalls, $uid ? TeamChat::unreadTotal((int)$uid) : 0, $cmBadge, $finBadge, $isOffice);
 
 require dirname(__DIR__) . '/views/' . $view . '.php';
 
@@ -2854,7 +2895,7 @@ function render_login(callable $t, callable $h, string $lang, ?string $err): voi
 </body></html>
 <?php }
 
-function render_head(callable $t, callable $h, string $lang, string $tab, ?string $flash, string $flashType, bool $isAgent = false, bool $isTech = false, bool $agentInstalls = false, int $teamUnread = 0, int $cmBadge = 0, int $finBadge = 0): void {
+function render_head(callable $t, callable $h, string $lang, string $tab, ?string $flash, string $flashType, bool $isAgent = false, bool $isTech = false, bool $agentInstalls = false, int $teamUnread = 0, int $cmBadge = 0, int $finBadge = 0, bool $isOffice = false): void {
     $brand = (string)\Glue\Config::get('app.company_name', '') ?: $t('app_title');
     $nav = [
         'overview' => 'nav_overview', 'leads' => 'nav_leads', 'deals' => 'nav_deals',
@@ -2879,6 +2920,14 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
         $nav = array_intersect_key($nav, array_flip(['devices', 'installations', 'support', 'calendar', 'tickets', 'team']));
     } else { // the office files statements; it is not paid by them
         unset($nav['my_commissions']);
+        // Amministrazione: the same menu as the Administrator, without the four
+        // tabs that configure the system rather than run it. Hidden as well as
+        // blocked — a tab that answers "non consentito" is worse than no tab.
+        if ($isOffice) {
+            foreach (SYS_VIEWS as $sv) {
+                unset($nav[$sv]);
+            }
+        }
     } ?>
 <!DOCTYPE html><html lang="<?= $h($lang) ?>"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">

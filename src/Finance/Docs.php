@@ -711,7 +711,7 @@ final class Docs
                    . '<p>Documenti: <b>' . $p['done'] . '/' . $p['required'] . '</b>'
                    . ($p['missing'] ? '<br>Mancano: ' . htmlspecialchars(implode(', ', $p['missing']), ENT_QUOTES) : '') . '</p>'
                    . '<p><a href="' . htmlspecialchars($link, ENT_QUOTES) . '">Apri la cartella del cliente</a></p>';
-            StaffAlert::toRole('admin', 'staff_finance_' . ($kind === 'review' ? 'review' : 'docs'), $text,
+            StaffAlert::toRole(StaffAlert::OFFICE, 'staff_finance_' . ($kind === 'review' ? 'review' : 'docs'), $text,
                 'Pratica di finanziamento — ' . $who, $html, 'finance_app', $appId);
         } catch (Throwable $e) {
             Log::write('finance', 'alert_failed', 'finance_app', $appId, ['error' => $e->getMessage()]);
@@ -729,7 +729,7 @@ final class Docs
             $html = '<p>📎 <b>' . $count . ' documenti</b> caricati per ' . htmlspecialchars($who, ENT_QUOTES)
                   . ($co !== '' ? ' (' . htmlspecialchars($co, ENT_QUOTES) . ')' : '') . '</p>'
                   . '<p><a href="' . htmlspecialchars($link, ENT_QUOTES) . '">Apri la scheda del cliente</a></p>';
-            StaffAlert::toRole('admin', 'staff_lead_docs', $text, 'Documenti cliente — ' . $who, $html, 'lead', $leadId);
+            StaffAlert::toRole(StaffAlert::OFFICE, 'staff_lead_docs', $text, 'Documenti cliente — ' . $who, $html, 'lead', $leadId);
         } catch (Throwable $e) {
             Log::write('finance', 'alert_failed', 'lead', $leadId, ['error' => $e->getMessage()]);
         }

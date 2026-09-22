@@ -89,6 +89,10 @@ final class Auth
     public static function updateProfile(int $id, array $fields): void
     {
         $allowed = ['full_name', 'email', 'phone', 'title', 'role', 'lang', 'can_install'];
+        // Same reason as create(): an unknown role reads as the Administrator.
+        if (array_key_exists('role', $fields)) {
+            $fields['role'] = self::normalizeRole((string)$fields['role']);
+        }
         $set = [];
         $args = [];
         foreach ($fields as $k => $v) {
@@ -108,6 +112,26 @@ final class Auth
      * @throws \RuntimeException 'username_taken' if the username is already used —
      *         the unique index is the judge, so a concurrent create can't slip past.
      */
+    /**
+     * The four groups, and the only values `users.role` may hold.
+     *
+     *   admin   Amministratore — configuration, accounts, templates, audit log
+     *   office  Amministrazione — the whole operational job, none of the keys
+     *   agent   Agente — their own leads, deals, quotes, commissions
+     *   tech    Tecnico — devices, installations, the support queue, their round
+     *
+     * Validated on the way in because an unrecognised value is not merely
+     * untidy: the dashboard reads "not agent, not tech, not office" as the
+     * Administrator, so a typo in this column would hand somebody the keys.
+     */
+    public const ROLES = ['admin', 'office', 'agent', 'tech'];
+
+    public static function normalizeRole(?string $role, string $fallback = 'agent'): string
+    {
+        $role = strtolower(trim((string)$role));
+        return in_array($role, self::ROLES, true) ? $role : $fallback;
+    }
+
     public static function create(string $username, string $password, string $role = 'admin'): int
     {
         $username = trim($username);
@@ -118,7 +142,8 @@ final class Auth
             'INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)'
         );
         try {
-            $stmt->execute([$username, password_hash($password, PASSWORD_BCRYPT), $role ?: 'admin']);
+            $stmt->execute([$username, password_hash($password, PASSWORD_BCRYPT),
+                            self::normalizeRole($role, 'admin')]);
         } catch (\PDOException $e) {
             if ((int)($e->errorInfo[1] ?? 0) === 1062) {
                 throw new \RuntimeException('username_taken');

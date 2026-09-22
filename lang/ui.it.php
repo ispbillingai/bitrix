@@ -710,6 +710,7 @@ return [
     'role_agent'     => 'agente',
     'role_admin'     => 'amministratore',
     'role_tech'      => 'area tecnica',
+    'role_office'    => 'amministrazione',
     'u_can_install'  => 'Esegue anche installazioni',
     'u_can_install_h' => 'Aggiunge il menu Installazioni al pannello di questo agente, per i rapporti di installazione che apre lui stesso.',
     'u_installs_pill' => '+ installazioni',

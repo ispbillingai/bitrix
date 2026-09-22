@@ -653,12 +653,16 @@ final class LeadCustomers
 
     // ---- helpers ------------------------------------------------------------------------
 
-    /** Active administrators with a phone or an email — who the office alerts go to. */
+    /**
+     * Who the office alerts go to: Amministrazione and the Administrator, active
+     * and reachable on at least one channel. Both roles, because this is the
+     * back office's work and an Administrator was doing it before the split.
+     */
     public static function admins(): array
     {
         return Db::pdo()->query(
             "SELECT id, full_name, username, phone, email FROM users
-              WHERE role = 'admin' AND active = 1
+              WHERE role IN ('admin', 'office') AND active = 1
                 AND ((phone IS NOT NULL AND phone <> '') OR (email IS NOT NULL AND email <> ''))
               ORDER BY id"
         )->fetchAll() ?: [];

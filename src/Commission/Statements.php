@@ -664,7 +664,7 @@ final class Statements
             $link = Config::appBaseUrl() . '/dashboard.php?tab=commissions&st=' . $id . '#cm-' . $id;
             $admins = Db::pdo()->query(
                 "SELECT id, COALESCE(NULLIF(TRIM(full_name), ''), username) AS name, phone, email
-                   FROM users WHERE role = 'admin' AND active = 1"
+                   FROM users WHERE role IN ('admin', 'office') AND active = 1"
             )->fetchAll();
             foreach ($admins as $a) {
                 if (trim((string)$a['phone']) === '' && trim((string)$a['email']) === '') {
