@@ -146,8 +146,18 @@ $monthLabel = $monthNames[(int)date('n', $monthTs) - 1] . ' ' . date('Y', $month
   <summary class="btn ghost"><?= $h($t('cal_feed_h')) ?></summary>
   <div class="card" style="margin-top:10px">
     <p class="muted small" style="margin-top:0"><?= $h($t('cal_feed_hint')) ?></p>
-    <input readonly onclick="this.select()" style="width:100%;font-family:monospace;font-size:12px"
-           value="<?= $h(Calendar::feedUrl((int)$uid)) ?>">
+    <?php /* Two addresses, not one: a phone shows each subscribed calendar as
+             its own layer, so support sessions can carry their own colour and be
+             silenced on a day off. Subscribe to one OR the other — both together
+             and every visit appears twice. */
+          foreach (['all' => 'cal_feed_all', 'intervention' => 'cal_feed_support'] as $fk => $fLabel): ?>
+      <label class="fld" style="margin-bottom:8px">
+        <span><?= $h($t($fLabel)) ?></span>
+        <input readonly onclick="this.select()" style="width:100%;font-family:monospace;font-size:12px"
+               value="<?= $h(Calendar::feedUrl((int)$uid, $fk)) ?>">
+      </label>
+    <?php endforeach; ?>
+    <p class="muted small" style="margin:0 0 4px"><?= $h($t('cal_feed_pick')) ?></p>
     <form method="post" style="margin-top:10px"
           onsubmit="return confirm('<?= $h($t('cal_feed_reset_c')) ?>')">
       <input type="hidden" name="do" value="cal_feed_reset">

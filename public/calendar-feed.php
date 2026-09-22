@@ -35,9 +35,16 @@ if (!$user) {
     exit;
 }
 
+// One calendar or a narrowed one. A phone treats each subscribed address as its
+// own layer — own colour, own on/off switch — so "assistenza" is worth its own
+// URL. Subscribe to one or the other, not both, or every visit shows twice.
+$kind = (string)($_GET['kind'] ?? 'all');
+$kind = in_array($kind, ['intervention', 'sales'], true) ? $kind : 'all';
+
 $who  = trim((string)($user['full_name'] ?? '')) ?: (string)$user['username'];
-$name = (string)Config::get('app.company_name', 'CRM') . ' — ' . $who;
-$body = Calendar::ics((int)$user['id'], $name);
+$suffix = ['intervention' => ' · Assistenza', 'sales' => ' · Appuntamenti'][$kind] ?? '';
+$name = (string)Config::get('app.company_name', 'CRM') . ' — ' . $who . $suffix;
+$body = Calendar::ics((int)$user['id'], $name, $kind);
 
 // text/calendar is what makes a phone offer to subscribe rather than download.
 header('Content-Type: text/calendar; charset=utf-8');

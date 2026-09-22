@@ -117,10 +117,16 @@ final class Calendar
      * /calendar.ics rewrite: the rewrite is an Apache nicety, and a URL a
      * technician pastes once into their phone must work on whatever the CRM is
      * actually served by.
+     *
+     * $kind narrows it to one calendar. Support sessions get their own address
+     * on purpose: a phone shows each subscribed calendar as its own layer, with
+     * its own colour and its own on/off switch, so "assistenza" can be read —
+     * or silenced on a day off — without touching the rest of the diary.
      */
-    public static function feedUrl(int $userId): string
+    public static function feedUrl(int $userId, string $kind = 'all'): string
     {
-        return rtrim(Config::appBaseUrl(), '/') . '/calendar-feed.php?k=' . self::tokenFor($userId);
+        $url = rtrim(Config::appBaseUrl(), '/') . '/calendar-feed.php?k=' . self::tokenFor($userId);
+        return $kind === 'all' ? $url : $url . '&kind=' . rawurlencode($kind);
     }
 
     /**
@@ -131,18 +137,23 @@ final class Calendar
      * cancelled visit is published as CANCELLED rather than dropped, so a phone
      * that already holds the event removes it instead of keeping a ghost.
      */
-    public static function ics(int $userId, string $calName): string
+    public static function ics(int $userId, string $calName, string $kind = 'all'): string
     {
-        $stmt = Db::pdo()->prepare(
+        $sql =
             'SELECT a.id, a.kind, a.title, a.location, a.starts_at, a.ends_at, a.status,
                     a.customer_name, a.customer_phone, a.notes, a.updated_at
                FROM appointments a
               WHERE a.agent_id = ? AND a.starts_at IS NOT NULL
                 AND a.starts_at >= (NOW() - INTERVAL 1 MONTH)
-                AND a.starts_at <= (NOW() + INTERVAL 1 YEAR)
-              ORDER BY a.starts_at ASC'
-        );
-        $stmt->execute([$userId]);
+                AND a.starts_at <= (NOW() + INTERVAL 1 YEAR)';
+        $args = [$userId];
+        if ($kind === Interventions::KIND || $kind === 'sales') {
+            $sql .= ' AND a.kind = ?';
+            $args[] = $kind;
+        }
+        $sql .= ' ORDER BY a.starts_at ASC';
+        $stmt = Db::pdo()->prepare($sql);
+        $stmt->execute($args);
         $rows = $stmt->fetchAll() ?: [];
 
         // Times are stored in the server's local zone; the feed states that zone

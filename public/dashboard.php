@@ -619,6 +619,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'reminders.sign_overdue_every_days', 'reminders.sign_overdue_max_days',
                     'reminders.sign_due_default_days',
                     'reminders.appointment_offsets_min', 'reminders.intervention_offsets_min',
+                    'reminders.intervention_day_before_at',
                     'reminders.sign_before_due_days', 'reminders.offer_read_days',
                     'textmebot.api_key', 'mail.from_name', 'mail.from_email',
                     'mail.smtp.host', 'mail.smtp.port', 'mail.smtp.user', 'mail.smtp.pass', 'mail.smtp.secure',

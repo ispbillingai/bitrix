@@ -150,6 +150,7 @@ $pipelines = \Glue\Crm\Pipelines::all();
     <?php
     fld($h, 'reminders.appointment_offsets_min', $t('f_appt_offsets'), $list('reminders.appointment_offsets_min', [1440, 120]), $t('f_appt_offsets_h'));
     fld($h, 'reminders.intervention_offsets_min', $t('f_interv_offsets'), $list('reminders.intervention_offsets_min', [1440, 120]), $t('f_interv_offsets_h'));
+    fld($h, 'reminders.intervention_day_before_at', $t('f_interv_dayb'), $cfg('reminders.intervention_day_before_at', '17:00'), $t('f_interv_dayb_h'));
     fld($h, 'reminders.sign_before_due_days', $t('f_sign_before'), $list('reminders.sign_before_due_days', [10, 5]), $t('f_sign_before_h'));
     fld($h, 'reminders.offer_read_days', $t('f_offer_read'), $list('reminders.offer_read_days', [2, 5]), $t('f_offer_read_h'));
     fld($h, 'reminders.sign_due_default_days', $t('f_sign_due_default'), $cfg('reminders.sign_due_default_days', 30), $t('f_sign_due_default_h'));

@@ -225,13 +225,46 @@ final class Automation
     public static function interventionReminders(int $apptId, int $whenTs, string $whenLabel,
                                                  string $location = ''): int
     {
-        $offsets = (array)Config::get(
-            'reminders.intervention_offsets_min',
-            (array)Config::get('reminders.appointment_offsets_min', [1440, 120])
-        );
         $payload = ['when' => $whenLabel, 'location' => $location];
         $sched = self::sched();
         $n = 0;
+
+        // The client's rule: a support visit is announced at a FIXED time the
+        // evening before — 17:00 by default — not at so many hours before the
+        // slot. A visit at 08:30 and one at 16:00 are then both read the same
+        // evening, while an offset would have woken the customer at 08:30 for
+        // the first and told the technician too late to plan the round.
+        foreach (self::dayBeforeDue($whenTs) as $tag => $dueTs) {
+            $due = date('Y-m-d H:i:s', $dueTs);
+            $sched->enqueue([
+                'entity_type'    => 'appointment',
+                'entity_id'      => $apptId,
+                'rule_key'       => 'intervention_customer',
+                'recipient_type' => 'customer',
+                'channel'        => 'both',
+                'due_at'         => $due,
+                'payload'        => $payload,
+                'dedupe_key'     => "interv_cust:$apptId:$whenTs:$tag",
+            ]);
+            $n++;
+
+            $sched->enqueue([
+                'entity_type'    => 'appointment',
+                'entity_id'      => $apptId,
+                'rule_key'       => 'intervention_tech',
+                'recipient_type' => 'agent',
+                'channel'        => 'both',
+                'due_at'         => $due,
+                'payload'        => $payload,
+                'dedupe_key'     => "interv_tech:$apptId:$whenTs:$tag",
+            ]);
+            $n++;
+        }
+
+        // Extra nudges closer in, for anyone who wants them. Empty by default:
+        // the evening-before notice is the rule, and a second message two hours
+        // before a visit the customer already confirmed is noise.
+        $offsets = (array)Config::get('reminders.intervention_offsets_min', []);
         foreach ($offsets as $minBefore) {
             $dueTs = $whenTs - (int)$minBefore * 60;
             if ($dueTs < time()) {
@@ -264,6 +297,33 @@ final class Automation
             $n++;
         }
         return $n;
+    }
+
+    /**
+     * When the evening-before notice for a visit is due.
+     *
+     * Returns ['daybefore' => timestamp] normally, or an empty array when that
+     * moment has already passed — a visit booked this morning for tomorrow at
+     * 18:00 is past 17:00 today only if it is already gone, and a visit booked
+     * for today has no evening before at all. Nothing is back-dated: the
+     * scheduler would fire it on its very next run, which is a reminder arriving
+     * after the confirmation it was meant to follow.
+     *
+     * @return array<string,int>
+     */
+    private static function dayBeforeDue(int $whenTs): array
+    {
+        $at = trim((string)Config::get('reminders.intervention_day_before_at', '17:00'));
+        if (!preg_match('/^([01]?\d|2[0-3]):([0-5]\d)$/', $at, $m)) {
+            $m = [null, '17', '00'];
+        }
+        // Anchored to the DAY of the visit minus one, then that clock time —
+        // built from the date parts rather than "-86400 seconds", so the hour
+        // stays 17:00 across a daylight-saving change.
+        $dueTs = mktime((int)$m[1], (int)$m[2], 0,
+            (int)date('n', $whenTs), (int)date('j', $whenTs) - 1, (int)date('Y', $whenTs));
+
+        return ($dueTs !== false && $dueTs > time()) ? ['daybefore' => $dueTs] : [];
     }
 
     /**

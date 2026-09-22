@@ -148,7 +148,7 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 | Charge a card / monthly support contract | `views/payments.php` → `Pay\Contracts` → `Pay\SmallPay` → `webhooks/smallpay-status.php` |
 | Warehouse: the gestionale catalogue plus CRM products, editable stock, restock alerts | `bin/import-articoli.php` (cron) → `Crm\ArticleImport` → `Crm\Articles` → `views/articles.php` |
 | Sales price lists for agents: per-list flag on each product, shop-style catalogue, photo links to more information, PDF export / print | `Crm\PriceLists` + `Crm\ArticleMedia` → `views/pricelists.php` (+ the product's record in `views/articles.php`) → `Crm\PriceListPdf` (`?plpdf=`) |
-| Technicians schedule the service call a claimed assistance request becomes; customer and technician both told, and reminded before it | `views/support.php` (the drawer on a claimed request) → `Crm\Interventions` → `Crm\Automation::interventionReminders` (migration 063) |
+| Technicians schedule the service call a claimed assistance request becomes; customer and technician both told, then given notice at a fixed hour (17:00) the evening before, whatever time the visit is | `views/support.php` (the drawer on a claimed request) → `Crm\Interventions` → `Crm\Automation::interventionReminders` (migration 063) |
 | The CRM's own calendar of service calls and appointments, and a read-only .ics feed each person subscribes to from their phone — no Google account, no OAuth | `views/calendar.php` → `Crm\Calendar` → `public/calendar-feed.php` (`/calendar.ics?k=`) |
 | Bitrix24 sync | **optional** `Sync\BitrixSync`, off by default |
 
