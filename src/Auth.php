@@ -67,6 +67,24 @@ final class Auth
         return $rows ?: [];
     }
 
+    /**
+     * The people who can be sent out on a service call: the technical role, and
+     * the sellers ticked as also installing. Admins are in too — in a small
+     * office the person who books the visit is often the one who drives to it.
+     *
+     * @return array<int,array>
+     */
+    public static function technicians(): array
+    {
+        $rows = Db::pdo()->query(
+            "SELECT id, username, full_name, email, phone, title, role
+               FROM users
+              WHERE active = 1 AND (role = 'tech' OR role = 'admin' OR can_install = 1)
+              ORDER BY (role = 'tech') DESC, full_name, username"
+        )->fetchAll();
+        return $rows ?: [];
+    }
+
     /** Update an agent's profile fields (name/email/phone/title, role, installs flag). */
     public static function updateProfile(int $id, array $fields): void
     {

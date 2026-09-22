@@ -215,6 +215,58 @@ final class Automation
     }
 
     /**
+     * The same, for a technical support intervention: the customer is reminded
+     * that someone is coming, the technician that they have somewhere to be.
+     *
+     * Its own offsets, because a visit is not a sales meeting — the technician
+     * plans a round the evening before and wants the morning's list early,
+     * while a seller's two-hour nudge is plenty.
+     */
+    public static function interventionReminders(int $apptId, int $whenTs, string $whenLabel,
+                                                 string $location = ''): int
+    {
+        $offsets = (array)Config::get(
+            'reminders.intervention_offsets_min',
+            (array)Config::get('reminders.appointment_offsets_min', [1440, 120])
+        );
+        $payload = ['when' => $whenLabel, 'location' => $location];
+        $sched = self::sched();
+        $n = 0;
+        foreach ($offsets as $minBefore) {
+            $dueTs = $whenTs - (int)$minBefore * 60;
+            if ($dueTs < time()) {
+                continue; // booked closer than this offset — that reminder is moot
+            }
+            $due = date('Y-m-d H:i:s', $dueTs);
+
+            $sched->enqueue([
+                'entity_type'    => 'appointment',
+                'entity_id'      => $apptId,
+                'rule_key'       => 'intervention_customer',
+                'recipient_type' => 'customer',
+                'channel'        => 'both',
+                'due_at'         => $due,
+                'payload'        => $payload,
+                'dedupe_key'     => "interv_cust:$apptId:$whenTs:$minBefore",
+            ]);
+            $n++;
+
+            $sched->enqueue([
+                'entity_type'    => 'appointment',
+                'entity_id'      => $apptId,
+                'rule_key'       => 'intervention_tech',
+                'recipient_type' => 'agent',
+                'channel'        => 'both',
+                'due_at'         => $due,
+                'payload'        => $payload,
+                'dedupe_key'     => "interv_tech:$apptId:$whenTs:$minBefore",
+            ]);
+            $n++;
+        }
+        return $n;
+    }
+
+    /**
      * #6 Signing cadence (Phase 4 "Quote sent"). The agent sets a signature due
      * date on the deal when sending the quote; the cadence anchors on it:
      *   R1  — unsigned N days AFTER the quote was sent (sign_after_sent_days)

@@ -2,6 +2,10 @@
 <IfModule mod_rewrite.c>
 RewriteEngine On
 RewriteRule ^support$ support.php [L]
+# The calendar feed a technician subscribes to from their phone. The real
+# endpoint keeps a plain .php name so no server has to reason about a double
+# extension; this only makes the address people paste look like a calendar.
+RewriteRule ^calendar\.ics$ calendar-feed.php [QSA,L]
 </IfModule>
 
 # Raise upload limits when PHP runs as an Apache module: the team chat takes

@@ -47,6 +47,24 @@ return [
         'appointment_agent' =>
             "⏰ Promemoria appuntamento: {customer_name} il {when} (#{id}). Agente: {agent_name}.",
 
+        'intervention_confirmed' =>
+            "Ciao {name}, l'intervento tecnico di {company} è fissato per il {when}"
+            . "{?location} presso {location}{/location}. "
+            . "Interviene {agent_name}. Se hai un imprevisto, rispondi a questo messaggio.",
+
+        'intervention_customer' =>
+            "Ciao {name}, ti ricordiamo l'intervento tecnico di {company} del {when}"
+            . "{?location} presso {location}{/location}. "
+            . "Ti raggiunge {agent_name}. A presto!",
+
+        'intervention_tech_set' =>
+            "🔧 Intervento fissato: {customer_name} il {when}"
+            . "{?location} — {location}{/location} (#{id}).",
+
+        'intervention_tech' =>
+            "⏰ Promemoria intervento: {customer_name} il {when}"
+            . "{?location} — {location}{/location} (#{id}).",
+
         'sign_request' => // inviato quando la trattativa entra nella fase di firma
             "Ciao {name}, il tuo contratto di {company} è pronto per la firma. "
             . "Apri la tua area clienti per verificarlo e firmarlo: {link}",
@@ -323,6 +341,28 @@ return [
             'subject' => 'Promemoria appuntamento: {customer_name}',
             'html'    => '<p>Appuntamento con {customer_name} il <strong>{when}</strong> (#{id}).</p>'
                 . '<p>Agente: <strong>{agent_name}</strong></p>',
+        ],
+        'intervention_confirmed' => [
+            'subject' => 'Intervento tecnico fissato per il {when} — {company}',
+            'html'    => '<p>Ciao {name},</p><p>L\'intervento tecnico è fissato per il <strong>{when}</strong>'
+                . '{?location} presso <strong>{location}</strong>{/location}.</p>'
+                . '<p>Interviene <strong>{agent_name}</strong>. Se hai un imprevisto, rispondi a questa email.</p>',
+        ],
+        'intervention_customer' => [
+            'subject' => 'Promemoria: intervento tecnico {company}',
+            'html'    => '<p>Ciao {name},</p><p>Ti ricordiamo l\'intervento tecnico del <strong>{when}</strong>'
+                . '{?location} presso <strong>{location}</strong>{/location}.</p>'
+                . '<p>Ti raggiunge <strong>{agent_name}</strong>.</p>',
+        ],
+        'intervention_tech_set' => [
+            'subject' => 'Intervento fissato: {customer_name} — {when}',
+            'html'    => '<p>🔧 Intervento fissato con <strong>{customer_name}</strong> '
+                . 'il <strong>{when}</strong>{?location} — {location}{/location} (#{id}).</p>',
+        ],
+        'intervention_tech' => [
+            'subject' => 'Promemoria intervento: {customer_name}',
+            'html'    => '<p>Intervento da <strong>{customer_name}</strong> il <strong>{when}</strong>'
+                . '{?location} — {location}{/location} (#{id}).</p>',
         ],
         'sign_request' => [
             'subject' => 'Firma il tuo contratto — {company}',

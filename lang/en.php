@@ -46,6 +46,24 @@ return [
         'appointment_agent' =>
             "⏰ Appointment reminder: {customer_name} on {when} (#{id}). Agent: {agent_name}.",
 
+        'intervention_confirmed' =>
+            "Hi {name}, your {company} service call is booked for {when}"
+            . "{?location} at {location}{/location}. "
+            . "{agent_name} will be coming. Reply to this message if anything changes.",
+
+        'intervention_customer' =>
+            "Hi {name}, a reminder of your {company} service call on {when}"
+            . "{?location} at {location}{/location}. "
+            . "{agent_name} will be coming. See you soon!",
+
+        'intervention_tech_set' =>
+            "🔧 Service call booked: {customer_name} on {when}"
+            . "{?location} — {location}{/location} (#{id}).",
+
+        'intervention_tech' =>
+            "⏰ Service call reminder: {customer_name} on {when}"
+            . "{?location} — {location}{/location} (#{id}).",
+
         'sign_request' => // sent when the deal enters the signature stage
             "Hi {name}, your contract from {company} is ready to sign. "
             . "Open your customer area to review and sign it: {link}",
@@ -319,6 +337,28 @@ return [
             'subject' => 'Appointment reminder: {customer_name}',
             'html'    => '<p>Appointment with {customer_name} on <strong>{when}</strong> (#{id}).</p>'
                 . '<p>Agent: <strong>{agent_name}</strong></p>',
+        ],
+        'intervention_confirmed' => [
+            'subject' => 'Service call booked for {when} — {company}',
+            'html'    => '<p>Hi {name},</p><p>Your service call is booked for <strong>{when}</strong>'
+                . '{?location} at <strong>{location}</strong>{/location}.</p>'
+                . '<p><strong>{agent_name}</strong> will be coming. Reply to this email if anything changes.</p>',
+        ],
+        'intervention_customer' => [
+            'subject' => 'Reminder: your {company} service call',
+            'html'    => '<p>Hi {name},</p><p>A reminder of your service call on <strong>{when}</strong>'
+                . '{?location} at <strong>{location}</strong>{/location}.</p>'
+                . '<p><strong>{agent_name}</strong> will be coming.</p>',
+        ],
+        'intervention_tech_set' => [
+            'subject' => 'Service call booked: {customer_name} — {when}',
+            'html'    => '<p>🔧 Service call booked with <strong>{customer_name}</strong> '
+                . 'on <strong>{when}</strong>{?location} — {location}{/location} (#{id}).</p>',
+        ],
+        'intervention_tech' => [
+            'subject' => 'Service call reminder: {customer_name}',
+            'html'    => '<p>Service call at <strong>{customer_name}</strong> on <strong>{when}</strong>'
+                . '{?location} — {location}{/location} (#{id}).</p>',
         ],
         'sign_request' => [
             'subject' => 'Please sign your contract — {company}',

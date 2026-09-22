@@ -110,6 +110,10 @@ return [
         'deal_inactivity_hours'   => 3,   // "To Work" timer for deals
         // Appointment reminders: minutes-before-event to fire (customer + seller).
         'appointment_offsets_min' => [1440, 120], // 24h and 2h before
+        // Service calls: the technician plans the round the night before, so the
+        // early nudge matters more than it does for a sales meeting. Blank/absent
+        // falls back to appointment_offsets_min.
+        'intervention_offsets_min' => [1440, 120],
         // Signing cadence (Phase 4). The agent sets a signature due date per deal
         // when sending the quote; the cadence anchors on it:
         'sign_after_sent_days'    => 15,      // R1: nudge if unsigned N days after the quote went out

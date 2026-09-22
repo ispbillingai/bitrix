@@ -21,8 +21,10 @@ use Glue\Campaign\Sender;
 use Glue\Config;
 use Glue\Crm\Activities;
 use Glue\Crm\Appointments;
+use Glue\Crm\Calendar as CrmCalendar;
 use Glue\Crm\Contacts;
 use Glue\Crm\Deals;
+use Glue\Crm\Interventions;
 use Glue\Crm\Leads;
 use Glue\Crm\Pipelines;
 use Glue\Crm\Tasks;
@@ -124,8 +126,8 @@ if ($filterAgentId !== null) {
 // Admin-only too: ?partner=<id> narrows the Leads board to the leads one partner
 // brought in — entered in their own area or through their referral link.
 $filterPartnerId = (!$isAgent && !empty($_GET['partner'])) ? (int)$_GET['partner'] : null;
-$agentViews   = ['overview', 'leads', 'deals', 'quotes', 'articles', 'pricelists', 'appointments', 'tasks', 'messages', 'tickets', 'team', 'documents', 'instructions', 'my_commissions'];
-$techViews    = ['devices', 'network_areas', 'installations', 'support', 'tickets', 'team'];
+$agentViews   = ['overview', 'calendar', 'leads', 'deals', 'quotes', 'articles', 'pricelists', 'appointments', 'tasks', 'messages', 'tickets', 'team', 'documents', 'instructions', 'my_commissions'];
+$techViews    = ['devices', 'network_areas', 'installations', 'support', 'calendar', 'tickets', 'team'];
 // The installation-report flow: open a draft, fill it in, attach the photos,
 // send it for signature. Deleting a report stays admin-only.
 $installActions = ['install_create', 'install_save', 'install_photos', 'install_photo_del', 'install_send'];
@@ -133,14 +135,18 @@ $installActions = ['install_create', 'install_save', 'install_photos', 'install_
 // assistance requests, and replying on the tickets they claimed.
 // The team chat and the assistant: every role has them; membership is checked per chat.
 $teamActions  = ['team_new', 'team_send', 'team_add', 'team_leave', 'team_rename', 'ai_ask', 'ai_confirm', 'ai_cancel'];
-$techActions  = array_merge($installActions, ['assist_claim', 'ticket_reply', 'ticket_status'], $teamActions);
+$techActions  = array_merge($installActions,
+    ['assist_claim', 'ticket_reply', 'ticket_status',
+     // booking, moving and closing the visit they took charge of, and the
+     // address their own phone subscribes to
+     'interv_schedule', 'interv_status', 'cal_feed_reset'], $teamActions);
 $agentActions = [
     'lead_create', 'lead_move', 'lead_convert', 'lead_note', 'lead_edit', 'lead_quote',
     'lead_appointment',
     'deal_move', 'deal_note', 'deal_invite',
     'appt_create', 'appt_schedule', 'appt_status',
     'task_complete', 'task_status', 'ticket_reply', 'ticket_status', 'ticket_open_staff', 'change_my_password',
-    'doc_create', 'doc_send', 'doc_void',
+    'doc_create', 'doc_send', 'doc_void', 'cal_feed_reset',
     // Asking the office for a quote and sending back the answer is the seller's
     // job; uploading the quote and cancelling a request are the office's.
     'quote_scratch', 'quote_send', 'quote_revise',
@@ -564,6 +570,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         $rid = (int)($_POST['id'] ?? 0);
         $ownerCol = ['lead_' => ['leads', 'assigned_to'], 'deal_' => ['deals', 'assigned_to'],
                      'appt_' => ['appointments', 'agent_id'], 'task_' => ['tasks', 'assigned_to'],
+                     // interv_status carries an appointment id; interv_schedule
+                     // carries the REQUEST id in req_id and no 'id', so it falls
+                     // past this guard and checks the claimer itself.
+                     'interv_' => ['appointments', 'agent_id'],
                      'ticket_' => ['tickets', 'assigned_agent_id'],
                      'doc_' => ['sign_documents', 'created_by'],
                      'quote_' => ['quote_requests', 'requested_by'],
@@ -608,7 +618,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'reminders.sign_after_sent_days',
                     'reminders.sign_overdue_every_days', 'reminders.sign_overdue_max_days',
                     'reminders.sign_due_default_days',
-                    'reminders.appointment_offsets_min', 'reminders.sign_before_due_days', 'reminders.offer_read_days',
+                    'reminders.appointment_offsets_min', 'reminders.intervention_offsets_min',
+                    'reminders.sign_before_due_days', 'reminders.offer_read_days',
                     'textmebot.api_key', 'mail.from_name', 'mail.from_email',
                     'mail.smtp.host', 'mail.smtp.port', 'mail.smtp.user', 'mail.smtp.pass', 'mail.smtp.secure',
                     'logistics.email', 'logistics.phone',
@@ -699,7 +710,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Comma/space-separated number lists -> JSON arrays (so Config::get
                 // returns an array the cadence code can loop over). Clearing a field
                 // stores '' so it falls back to the built-in default.
-                foreach (['reminders.appointment_offsets_min', 'reminders.sign_before_due_days', 'reminders.offer_read_days'] as $lk) {
+                foreach (['reminders.appointment_offsets_min', 'reminders.intervention_offsets_min',
+                          'reminders.sign_before_due_days', 'reminders.offer_read_days'] as $lk) {
                     if (array_key_exists($lk, $pairs)) {
                         $nums = array_values(array_filter(array_map(
                             'intval', preg_split('/[\s,]+/', (string)$pairs[$lk], -1, PREG_SPLIT_NO_EMPTY) ?: []
@@ -1565,6 +1577,72 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $ok = \Glue\Portal\AssistRequests::cancel((int)$_POST['id']);
                 $_SESSION['dash_flash'] = [$ok ? $t('as_cancelled') : $t('not_allowed'), $ok ? 'ok' : 'err'];
                 header('Location: ?tab=support');
+                exit;
+
+            // ---------- technical interventions ----------
+            case 'interv_schedule': { // book, or move, the visit for a request
+                $reqId = (int)($_POST['req_id'] ?? 0);
+                $when  = trim((string)($_POST['starts_at'] ?? ''));
+                $req   = \Glue\Portal\AssistRequests::find($reqId);
+                // The office may book on anyone's behalf; a technician only on
+                // the request they themselves took charge of.
+                $techId = (!$isAgent && !$isTech && !empty($_POST['tech_id']))
+                    ? (int)$_POST['tech_id']
+                    : (int)($req['claimed_by'] ?? 0);
+                if (!$req || $techId <= 0 || ($isTech && (int)$req['claimed_by'] !== (int)$uid)) {
+                    $_SESSION['dash_flash'] = [$req ? $t('iv_err_tech') : $t('not_allowed'), 'err'];
+                    header('Location: ?tab=support');
+                    exit;
+                }
+                if ($when === '' || !strtotime($when)) {
+                    $_SESSION['dash_flash'] = [$t('iv_err_when'), 'err'];
+                    header('Location: ?tab=support');
+                    exit;
+                }
+                $mins   = (int)($_POST['duration_min'] ?? \Glue\Crm\Interventions::DEFAULT_MIN);
+                $prevId = (int)($req['appointment_id'] ?? 0);
+                // Warn, do not refuse: the office sometimes double-books a
+                // technician on purpose (two jobs in the same building), and
+                // refusing would send them back to the phone.
+                $clash = Interventions::clashes($techId, $when, $mins, $prevId);
+                $apptId = Interventions::schedule($reqId, $techId, $when, [
+                    'title'        => $_POST['title'] ?? '',
+                    'location'     => $_POST['location'] ?? '',
+                    'notes'        => $_POST['notes'] ?? '',
+                    'duration_min' => $mins,
+                ], $uid);
+                if ($apptId <= 0) {
+                    $_SESSION['dash_flash'] = [$t('iv_err_failed'), 'err'];
+                } elseif ($clash) {
+                    $who  = trim((string)($pdo->query('SELECT COALESCE(NULLIF(full_name, ""), username) FROM users WHERE id = ' . $techId)->fetchColumn() ?: ''));
+                    $what = implode(', ', array_map(
+                        fn($c) => short_time($c['starts_at']) . ' ' . ($c['customer_name'] ?: $c['title']),
+                        $clash));
+                    $_SESSION['dash_flash'] = [sprintf($t('iv_clash'), $who, $what), 'warn'];
+                } else {
+                    // Moved only when the same row was reused; a fresh id means
+                    // this is a second visit, not a change of date.
+                    $moved = $prevId > 0 && $apptId === $prevId;
+                    $_SESSION['dash_flash'] = [
+                        sprintf($t($moved ? 'iv_moved' : 'iv_saved'),
+                            \Glue\Reminder\Templates::when((int)strtotime($when), $lang, true)),
+                        'ok'];
+                }
+                header('Location: ?tab=support');
+                exit;
+            }
+            case 'interv_status':
+                Interventions::setStatus((int)$_POST['id'], (string)($_POST['status'] ?? ''), $uid);
+                $_SESSION['dash_flash'] = [$t('iv_status_set'), 'ok'];
+                header('Location: ?tab=' . (($_POST['back'] ?? '') === 'calendar' ? 'calendar' : 'support'));
+                exit;
+
+            case 'cal_feed_reset': // the phone-subscription address leaked, or they want a new one
+                if ($uid) {
+                    CrmCalendar::resetToken((int)$uid);
+                    $_SESSION['dash_flash'] = [$t('cal_feed_reset_ok'), 'ok'];
+                }
+                header('Location: ?tab=calendar');
                 exit;
 
             // ---------- contacts ----------
@@ -2584,7 +2662,7 @@ $cfg = fn(string $k, $d = '') => Config::get($k, $d);
 $agents = Auth::agents();
 $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_format((float)$n, 0);
 
-$views = ['overview', 'leads', 'deals', 'quotes', 'customers', 'articles', 'pricelists', 'contacts', 'appointments', 'tasks', 'tickets', 'team', 'documents',
+$views = ['overview', 'calendar', 'leads', 'deals', 'quotes', 'customers', 'articles', 'pricelists', 'contacts', 'appointments', 'tasks', 'tickets', 'team', 'documents',
           'installations', 'support',
           'invoices', 'payments', 'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents',
           'partners', 'commissions', 'my_commissions', 'finance', 'devices', 'network_areas', 'settings', 'instructions'];
@@ -2660,7 +2738,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
         'overview' => 'nav_overview', 'leads' => 'nav_leads', 'deals' => 'nav_deals',
         'quotes' => 'nav_quotes',
         'customers' => 'nav_customers', 'articles' => 'nav_articles', 'pricelists' => 'nav_pricelists',
-        'contacts' => 'nav_contacts', 'appointments' => 'nav_appointments', 'tasks' => 'nav_tasks',
+        'contacts' => 'nav_contacts', 'appointments' => 'nav_appointments', 'calendar' => 'nav_calendar', 'tasks' => 'nav_tasks',
         'tickets' => 'nav_tickets', 'team' => 'nav_team', 'documents' => 'nav_documents', 'installations' => 'nav_installations',
         'support' => 'nav_support',
         'invoices' => 'nav_invoices',
@@ -2672,11 +2750,11 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
     ];
     if ($isAgent) { // agents only see their own work — plus Installations when they also install
         $nav = array_intersect_key($nav, array_flip(array_merge(
-            ['overview', 'leads', 'deals', 'quotes', 'articles', 'pricelists', 'appointments', 'tasks', 'messages', 'team', 'documents', 'my_commissions', 'instructions'],
+            ['overview', 'leads', 'deals', 'quotes', 'articles', 'pricelists', 'appointments', 'calendar', 'tasks', 'messages', 'team', 'documents', 'my_commissions', 'instructions'],
             $agentInstalls ? ['installations'] : []
         )));
     } elseif ($isTech) { // technical-area users: devices, install reports, support queue, own tickets
-        $nav = array_intersect_key($nav, array_flip(['devices', 'installations', 'support', 'tickets', 'team']));
+        $nav = array_intersect_key($nav, array_flip(['devices', 'installations', 'support', 'calendar', 'tickets', 'team']));
     } else { // the office files statements; it is not paid by them
         unset($nav['my_commissions']);
     } ?>
