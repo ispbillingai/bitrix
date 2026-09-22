@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace Glue\Crm;
 
 use Glue\Config;
+use Glue\Db;
 use Glue\Reminder\Scheduler;
 
 /**
@@ -180,6 +181,14 @@ final class Automation
         $offsets = (array)Config::get('reminders.appointment_offsets_min', [1440, 120]);
         $sched = self::sched();
         $n = 0;
+        // See interventionReminders: the assignee decides whether the staff copy
+        // is queued at all, and goes into the dedupe key so reassigning a visit
+        // does not collide with the cancelled rows it just replaced.
+        $agentId = (int)(Db::pdo()->query(
+            'SELECT COALESCE(agent_id, 0) FROM appointments WHERE id = ' . $apptId
+        )->fetchColumn() ?: 0);
+        $rev = ':a' . $agentId;
+
         foreach ($offsets as $minBefore) {
             $dueTs = $whenTs - (int)$minBefore * 60;
             if ($dueTs < time()) {
@@ -195,21 +204,23 @@ final class Automation
                 'channel'        => 'both',
                 'due_at'         => $due,
                 'payload'        => ['when' => $whenLabel],
-                'dedupe_key'     => "appt_cust:$apptId:$whenTs:$minBefore",
+                'dedupe_key'     => "appt_cust:$apptId:$whenTs:$minBefore$rev",
             ]);
             $n++;
 
-            $sched->enqueue([
-                'entity_type'    => 'appointment',
-                'entity_id'      => $apptId,
-                'rule_key'       => 'appointment_agent',
-                'recipient_type' => 'agent',
-                'channel'        => 'both',
-                'due_at'         => $due,
-                'payload'        => ['when' => $whenLabel],
-                'dedupe_key'     => "appt_agent:$apptId:$whenTs:$minBefore",
-            ]);
-            $n++;
+            if ($agentId > 0) {
+                $sched->enqueue([
+                    'entity_type'    => 'appointment',
+                    'entity_id'      => $apptId,
+                    'rule_key'       => 'appointment_agent',
+                    'recipient_type' => 'agent',
+                    'channel'        => 'both',
+                    'due_at'         => $due,
+                    'payload'        => ['when' => $whenLabel],
+                    'dedupe_key'     => "appt_agent:$apptId:$whenTs:$minBefore$rev",
+                ]);
+                $n++;
+            }
         }
         return $n;
     }
@@ -229,6 +240,23 @@ final class Automation
         $sched = self::sched();
         $n = 0;
 
+        // Who the visit belongs to, read off the row rather than passed in —
+        // and it does two jobs.
+        //
+        // It decides whether to queue the technician's copy at all: a visit
+        // still in the pool has nobody to tell, and a reminder addressed to
+        // agent_id NULL resolves no phone and no email and sits there failing.
+        //
+        // And it goes into the dedupe key, because dedupe_key is UNIQUE and a
+        // cancelled row keeps its key: reassigning a visit cancels what was
+        // queued and re-queues it, and without the assignee in the key the
+        // re-queue collides with the cancelled row, is skipped, and the
+        // day-before notice is lost for good.
+        $agentId = (int)(Db::pdo()->query(
+            'SELECT COALESCE(agent_id, 0) FROM appointments WHERE id = ' . $apptId
+        )->fetchColumn() ?: 0);
+        $rev = ':a' . $agentId;
+
         // The client's rule: a support visit is announced at a FIXED time the
         // evening before — 17:00 by default — not at so many hours before the
         // slot. A visit at 08:30 and one at 16:00 are then both read the same
@@ -244,21 +272,24 @@ final class Automation
                 'channel'        => 'both',
                 'due_at'         => $due,
                 'payload'        => $payload,
-                'dedupe_key'     => "interv_cust:$apptId:$whenTs:$tag",
+                'dedupe_key'     => "interv_cust:$apptId:$whenTs:$tag$rev",
             ]);
             $n++;
 
-            $sched->enqueue([
-                'entity_type'    => 'appointment',
-                'entity_id'      => $apptId,
-                'rule_key'       => 'intervention_tech',
-                'recipient_type' => 'agent',
-                'channel'        => 'both',
-                'due_at'         => $due,
-                'payload'        => $payload,
-                'dedupe_key'     => "interv_tech:$apptId:$whenTs:$tag",
-            ]);
-            $n++;
+            // Nobody to tell while the visit is still in the pool.
+            if ($agentId > 0) {
+                $sched->enqueue([
+                    'entity_type'    => 'appointment',
+                    'entity_id'      => $apptId,
+                    'rule_key'       => 'intervention_tech',
+                    'recipient_type' => 'agent',
+                    'channel'        => 'both',
+                    'due_at'         => $due,
+                    'payload'        => $payload,
+                    'dedupe_key'     => "interv_tech:$apptId:$whenTs:$tag$rev",
+                ]);
+                $n++;
+            }
         }
 
         // Extra nudges closer in, for anyone who wants them. Empty by default:
@@ -280,21 +311,23 @@ final class Automation
                 'channel'        => 'both',
                 'due_at'         => $due,
                 'payload'        => $payload,
-                'dedupe_key'     => "interv_cust:$apptId:$whenTs:$minBefore",
+                'dedupe_key'     => "interv_cust:$apptId:$whenTs:$minBefore$rev",
             ]);
             $n++;
 
-            $sched->enqueue([
-                'entity_type'    => 'appointment',
-                'entity_id'      => $apptId,
-                'rule_key'       => 'intervention_tech',
-                'recipient_type' => 'agent',
-                'channel'        => 'both',
-                'due_at'         => $due,
-                'payload'        => $payload,
-                'dedupe_key'     => "interv_tech:$apptId:$whenTs:$minBefore",
-            ]);
-            $n++;
+            if ($agentId > 0) {
+                $sched->enqueue([
+                    'entity_type'    => 'appointment',
+                    'entity_id'      => $apptId,
+                    'rule_key'       => 'intervention_tech',
+                    'recipient_type' => 'agent',
+                    'channel'        => 'both',
+                    'due_at'         => $due,
+                    'payload'        => $payload,
+                    'dedupe_key'     => "interv_tech:$apptId:$whenTs:$minBefore$rev",
+                ]);
+                $n++;
+            }
         }
         return $n;
     }
