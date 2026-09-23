@@ -18,6 +18,9 @@ $partnerRow = null;
 foreach ($partnerOpts as $po) { if ((int)$po['id'] === (int)$partnerFilter) { $partnerRow = $po; } }
 $sources = \Glue\Crm\Leads::sources();
 $zones   = \Glue\Crm\Leads::zones();
+// The towns already on file, so the office picks one instead of inventing a
+// second spelling of the same place.
+$cities  = \Glue\Crm\Leads::cities();
 $fairs      = \Glue\Crm\Leads::fairs();
 $fairCities = \Glue\Crm\Leads::fairCities();
 $fairViews  = \Glue\Crm\FormViews::stats('fair');
@@ -100,6 +103,8 @@ $focus = $openLeadId > 0;
     <div class="row">
       <label class="fld"><span><?= $h($t('f_zone')) ?></span>
         <input name="zone" list="zone-list" placeholder="<?= $h($t('f_zone_ph')) ?>"></label>
+      <label class="fld"><span><?= $h($t('cu_address')) ?></span><input name="address"></label>
+      <label class="fld"><span><?= $h($t('cu_city')) ?></span><input name="city" list="city-list"></label>
       <label class="fld"><span><?= $h($t('f_lang')) ?></span>
         <select name="lang"><option value="">—</option><option value="it">IT</option><option value="en">EN</option></select></label>
       <?php if ($partnerOpts): ?>
@@ -141,6 +146,8 @@ $focus = $openLeadId > 0;
         <label class="fld"><span><?= $h($t('f_company')) ?></span><input name="company"></label>
         <label class="fld"><span><?= $h($t('f_vat')) ?></span><input name="vat_number" placeholder="<?= $h($t('f_vat_ph')) ?>"></label>
         <label class="fld"><span><?= $h($t('f_zone')) ?></span><input name="zone" list="zone-list" placeholder="<?= $h($t('f_zone_ph')) ?>"></label>
+        <label class="fld"><span><?= $h($t('cu_address')) ?></span><input name="address"></label>
+        <label class="fld"><span><?= $h($t('cu_city')) ?></span><input name="city" list="city-list"></label>
         <label class="fld"><span><?= $h($t('f_lang')) ?></span>
           <select name="lang"><option value="">—</option><option value="it">IT</option><option value="en">EN</option></select></label>
       </div>
@@ -161,6 +168,7 @@ $focus = $openLeadId > 0;
 
 <?php // The datalists stay in both modes: the lead EDIT form inside the drawer
       // below suggests from them too. ?>
+<datalist id="city-list"><?php foreach ($cities as $c): ?><option value="<?= $h($c) ?>"><?php endforeach; ?></datalist>
 <datalist id="zone-list"><?php foreach ($zones as $z): ?><option value="<?= $h($z) ?>"><?php endforeach; ?></datalist>
 <datalist id="src-list"><?php foreach ($sources as $s): ?><option value="<?= $h($s) ?>"><?php endforeach; ?></datalist>
 <datalist id="fair-list"><?php foreach ($fairs as $f): ?><option value="<?= $h($f) ?>"><?php endforeach; ?></datalist>

@@ -950,6 +950,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'vat_number' => $vat,
                     // set by the trade-fair form (#16); blank on the standard form
                     'fair_name' => $_POST['fair_name'] ?? '', 'fair_city' => $_POST['fair_city'] ?? '',
+                    // Where they are. Both entry forms send these; they land on
+                    // the CONTACT, filling a blank and never overwriting.
+                    'address' => $_POST['address'] ?? '', 'city' => $_POST['city'] ?? '',
                 ], $uid);
                 // An agent's own entry is theirs: auto-assign so it shows in their
                 // scope. Only when it really is a NEW lead — when the entry merged

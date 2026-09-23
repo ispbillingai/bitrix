@@ -681,6 +681,24 @@ final class Leads
         )->fetchAll(\PDO::FETCH_COLUMN);
     }
 
+    /**
+     * @return string[] towns already on file, for the datalist on the lead forms.
+     *
+     * Read from CONTACTS, not leads: the address lives on the contact, and the
+     * registry's ten thousand imported customers are where the real spellings
+     * are. Offering them is what stops "Napoli", "NAPOLI" and "Napoli (NA)"
+     * becoming three zones nobody can filter on.
+     */
+    public static function cities(): array
+    {
+        return Db::pdo()->query(
+            "SELECT city FROM contacts
+              WHERE city IS NOT NULL AND city <> ''
+              GROUP BY city ORDER BY COUNT(*) DESC, city
+              LIMIT 400"
+        )->fetchAll(\PDO::FETCH_COLUMN);
+    }
+
     /** @return string[] fair names already used (datalist on the trade-fair form). */
     public static function fairs(): array
     {
