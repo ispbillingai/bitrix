@@ -1219,6 +1219,8 @@ return [
     'f_mt_on_h'         => 'When on, customers with no periodic contract are invited to book a maintenance visit after the months below, counted from their last visit. Off until you switch it on.',
     'f_mt_months'       => 'Months since the last visit',
     'f_mt_months_h'     => 'Default 3. The count restarts at every completed visit.',
+    'f_mt_cap'          => 'Most customers contacted per day',
+    'f_mt_cap_h'        => 'Default 50. The registry holds over 10,000 customers with no contract: this ceiling stops the first day sending thousands of messages at once.',
     'f_mt_msg'          => 'Write to the customer (WhatsApp + email)',
     'f_mt_task'         => 'Create a task for the operator',
     'cal_v_day'         => 'Day',

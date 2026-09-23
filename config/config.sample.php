@@ -144,6 +144,7 @@ return [
     'maintenance' => [
         'enabled'          => false,
         'followup_months'  => 3,
+        'max_per_day'      => 50,    // a ceiling, not a rate: 25/pass x 1440 passes is not a limit
         'message_customer' => true,  // WhatsApp + email with a booking link
         'create_task'      => true,  // and/or a follow-up task for the operator
     ],

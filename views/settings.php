@@ -177,6 +177,7 @@ $pipelines = \Glue\Crm\Pipelines::all();
   </label>
   <div class="row">
     <?php fld($h, 'maintenance.followup_months', $t('f_mt_months'), $cfg('maintenance.followup_months', 3), $t('f_mt_months_h')); ?>
+    <?php fld($h, 'maintenance.max_per_day', $t('f_mt_cap'), $cfg('maintenance.max_per_day', 50), $t('f_mt_cap_h')); ?>
   </div>
   <label class="fld" style="display:flex;flex-direction:row;align-items:center;gap:10px">
     <input type="checkbox" name="maintenance.message_customer" value="true" style="width:auto" <?= (bool)$cfg('maintenance.message_customer', true) ? 'checked' : '' ?>>

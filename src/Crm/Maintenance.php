@@ -38,6 +38,18 @@ final class Maintenance
     /** Never message more than this many customers in one cron pass. */
     private const BATCH = 25;
 
+    /**
+     * ...and never more than this many in a day.
+     *
+     * The per-pass cap alone is not a limit: the scheduler runs every minute,
+     * so 25 a pass is 36,000 a day. The registry holds over ten thousand
+     * customers with no periodic contract, and the day somebody switches this
+     * on, every one of them with an old completed visit becomes due at once.
+     * A daily ceiling turns that from a blast into a roll-out, and leaves room
+     * to switch it off again after seeing the first day's replies.
+     */
+    private const DEFAULT_MAX_PER_DAY = 50;
+
     public static function enabled(): bool
     {
         return (bool)Config::get('maintenance.enabled', false);
@@ -228,8 +240,20 @@ final class Maintenance
         }
         $msgCustomer = (bool)Config::get('maintenance.message_customer', true);
         $makeTask    = (bool)Config::get('maintenance.create_task', true);
+
+        // How much of today's allowance is left. Counted from the rows actually
+        // written, so a restarted cron or a second server cannot spend it twice.
+        $maxDay = max(1, min(2000, (int)Config::get('maintenance.max_per_day', self::DEFAULT_MAX_PER_DAY)));
+        $today  = (int)Db::pdo()->query(
+            'SELECT COUNT(*) FROM maintenance_followups WHERE sent_at >= CURDATE()'
+        )->fetchColumn();
+        $room = $maxDay - $today;
+        if ($room <= 0) {
+            return 0;
+        }
+
         $n = 0;
-        foreach (self::due() as $c) {
+        foreach (self::due(min(self::BATCH, $room)) as $c) {
             if (self::chase($c, $msgCustomer, $makeTask)) {
                 $n++;
             }

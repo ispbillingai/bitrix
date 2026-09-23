@@ -1219,6 +1219,8 @@ return [
     'f_mt_on_h'         => 'Se attivo, i clienti senza contratto periodico vengono invitati a fissare una manutenzione dopo i mesi indicati dall’ultimo intervento. Disattivato finché non lo accendi.',
     'f_mt_months'       => 'Mesi dall’ultimo intervento',
     'f_mt_months_h'     => 'Predefinito 3. Il conteggio riparte a ogni intervento eseguito.',
+    'f_mt_cap'          => 'Massimo clienti contattati al giorno',
+    'f_mt_cap_h'        => 'Predefinito 50. In anagrafica ci sono oltre 10.000 clienti senza contratto: questo tetto evita che il primo giorno partano migliaia di messaggi tutti insieme.',
     'f_mt_msg'          => 'Scrivi al cliente (WhatsApp + email)',
     'f_mt_task'         => 'Crea un’attività per l’operatore',
     'cal_v_day'         => 'Giorno',
