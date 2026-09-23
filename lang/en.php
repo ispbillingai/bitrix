@@ -115,6 +115,12 @@ return [
             . "your equipment. Would you like to book a maintenance visit? "
             . "Ask for one here and we will call you to agree a day and time: {link}",
 
+        // Invitation to an internal chat: only somebody already signed in sees
+        // the badge, so the invitation goes to the phone.
+        'team_chat_invite' =>
+            "💬 Hi {name}, {by} has messaged you on {company}: '{chat}'. "
+            . "Sign in to the CRM to read it and reply: {link}",
+
         'password_reset' =>
             "Hi {name}, you asked to reset your {company} CRM password. "
             . "Open this link within {minutes} minutes and choose a new one: {link} "
@@ -450,6 +456,12 @@ return [
                 . 'since your equipment was last serviced.</p>'
                 . '<p><a href="{link}">Ask for a maintenance visit</a></p>'
                 . '<p>We will call you to agree a day and time.</p>',
+        ],
+        'team_chat_invite' => [
+            'subject' => '{by} has messaged you on {company}',
+            'html'    => '<p>Hi {name},</p><p><strong>{by}</strong> has messaged you in the internal chat '
+                . '<strong>{chat}</strong>.</p>'
+                . '<p><a href="{link}">Open the chat in the CRM</a></p>',
         ],
         'password_reset' => [
             'subject' => 'Reset your password — {company}',

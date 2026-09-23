@@ -1741,6 +1741,7 @@ return [
     'rk_appointment_agent_set'    => 'Appuntamento fissato (avviso all\'agente)',
     'rk_password_reset'           => 'Recupero password (staff)',
     'rk_maintenance_due'          => 'Manutenzione a chiamata (cliente)',
+    'rk_team_chat_invite'         => 'Invito a una chat interna',
     'rk_intervention_confirmed'   => 'Intervento fissato (cliente)',
     'rk_intervention_customer'    => 'Promemoria intervento (cliente)',
     'rk_intervention_tech_set'    => 'Intervento fissato (avviso al tecnico)',

@@ -71,11 +71,16 @@ final class StaffAlert
 
     /**
      * The same, to ONE person — a job handed to a colleague, the evening
-     * planning prompt. Queued for the same reason: it happens inside a web
-     * request (or a cron pass) that must not wait on WhatsApp.
+     * planning prompt, an invitation to a chat. Queued for the same reason: it
+     * happens inside a web request (or a cron pass) that must not wait on
+     * WhatsApp.
+     *
+     * @param string $prefer 'both' (default), or 'whatsapp'/'email' to use that
+     *        channel when the person has it and fall back to the other when
+     *        they do not — for a nudge that would be noise sent twice.
      */
     public static function toUser(int $userId, string $ruleKey, string $text, string $subject, string $html,
-                                  string $entityType = '', int $entityId = 0): int
+                                  string $entityType = '', int $entityId = 0, string $prefer = 'both'): int
     {
         try {
             $stmt = Db::pdo()->prepare(
@@ -89,12 +94,25 @@ final class StaffAlert
                 ['rule' => $ruleKey, 'user' => $userId, 'error' => $e->getMessage()]);
             return 0;
         }
-        return self::queue($users, $ruleKey, $text, $subject, $html, $entityType, $entityId);
+        return self::queue($users, $ruleKey, $text, $subject, $html, $entityType, $entityId, $prefer);
+    }
+
+    /**
+     * Which channels one alert actually uses. 'both' is the default because an
+     * alert somebody must act on should be hard to miss; a preference narrows
+     * it to one channel where the person has it, and falls back rather than
+     * dropping the message when they do not.
+     */
+    private static function channelFor(string $phone, string $email, string $prefer): string
+    {
+        if ($phone === '') { return 'email'; }
+        if ($email === '') { return 'whatsapp'; }
+        return $prefer === 'whatsapp' || $prefer === 'email' ? $prefer : 'both';
     }
 
     /** One reminder row per recipient, carrying the finished text. */
     private static function queue(array $users, string $ruleKey, string $text, string $subject, string $html,
-                                  string $entityType, int $entityId): int
+                                  string $entityType, int $entityId, string $prefer = 'both'): int
     {
         $sched = new Scheduler();
         $batch = date('YmdHis') . bin2hex(random_bytes(3)); // one alert = one batch; the same text later is a new one
@@ -112,7 +130,7 @@ final class StaffAlert
                     'rule_key'       => $ruleKey,
                     // A staff member is addressed like an agent: agent_phone / agent_email below.
                     'recipient_type' => 'agent',
-                    'channel'        => $phone !== '' && $email !== '' ? 'both' : ($phone !== '' ? 'whatsapp' : 'email'),
+                    'channel'        => self::channelFor($phone, $email, $prefer),
                     'due_at'         => date('Y-m-d H:i:s'),
                     'payload'        => [
                         'name'        => (string)$u['name'],

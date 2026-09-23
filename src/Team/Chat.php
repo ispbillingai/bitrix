@@ -79,7 +79,72 @@ final class Chat
             $ins->execute([$id, (int)$u]);
         }
         Log::write('team', 'chat_created', 'team_chat', $id, ['kind' => $kind, 'members' => $userIds, 'by' => $creator]);
+
+        // Tell the people who have just been put in it. Not the assistant chat,
+        // which a person opens for themselves, and never the creator — they are
+        // looking at the conversation they just started.
+        if ($kind !== 'ai') {
+            self::invite($id, $name, array_filter($userIds, fn($u) => (int)$u !== (int)$creator), (int)$creator);
+        }
         return $id;
+    }
+
+    /**
+     * "You have a message waiting in the CRM."
+     *
+     * A chat nobody knows about is a chat nobody answers: the CRM only shows an
+     * unread badge to someone who is already logged in, and the people most
+     * worth reaching — technicians and sellers — are the ones not sitting at
+     * the dashboard. So the invitation goes to the phone.
+     *
+     * WhatsApp by preference and email only when there is no phone, rather than
+     * both: this is a nudge to go and look, and the same nudge twice in two
+     * places is noise. Queued, never inline — starting a chat must not wait out
+     * the gateway's gap between sends.
+     */
+    private static function invite(int $chatId, ?string $name, array $userIds, int $creator): void
+    {
+        $userIds = array_values(array_filter(array_map('intval', $userIds), fn($i) => $i > 0));
+        if (!$userIds) {
+            return;
+        }
+        $pdo = Db::pdo();
+        $by = $pdo->prepare("SELECT COALESCE(NULLIF(TRIM(full_name), ''), username) FROM users WHERE id = ?");
+        $by->execute([$creator]);
+        $byName = (string)($by->fetchColumn() ?: '');
+
+        $link = rtrim((string)Config::appBaseUrl(), '/') . '/dashboard.php?tab=team&c=' . $chatId;
+        $lang = \Glue\Reminder\Templates::lang(Config::get('app.default_lang', 'it'));
+
+        $in = implode(',', array_fill(0, count($userIds), '?'));
+        $q = $pdo->prepare(
+            "SELECT id, COALESCE(NULLIF(TRIM(full_name), ''), username) AS name, phone, email
+               FROM users WHERE id IN ($in) AND active = 1"
+        );
+        $q->execute($userIds);
+
+        foreach ($q->fetchAll() ?: [] as $u) {
+            $phone = trim((string)($u['phone'] ?? ''));
+            $email = trim((string)($u['email'] ?? ''));
+            if ($phone === '' && $email === '') {
+                continue;
+            }
+            $vars = [
+                'name'       => (string)$u['name'],
+                'agent_name' => (string)$u['name'],
+                'by'         => $byName,
+                'chat'       => trim((string)$name) !== '' ? (string)$name : $byName,
+                'company'    => (string)Config::get('app.company_name', 'CRM'),
+                'link'       => $link,
+            ];
+            $mail = \Glue\Reminder\Templates::email('team_chat_invite', $vars, $lang);
+            \Glue\Notify\StaffAlert::toUser(
+                (int)$u['id'], 'team_chat_invite',
+                \Glue\Reminder\Templates::whatsapp('team_chat_invite', $vars, $lang),
+                (string)$mail['subject'], (string)$mail['html'],
+                'team_chat', $chatId, 'whatsapp'
+            );
+        }
     }
 
     // ---- membership ------------------------------------------------------------------
@@ -117,6 +182,7 @@ final class Chat
         $ins = $pdo->prepare('INSERT IGNORE INTO team_chat_members (chat_id, user_id) VALUES (?, ?)');
         $who = $pdo->prepare('SELECT full_name, username FROM users WHERE id = ? AND active = 1');
         $added = [];
+        $addedIds = [];
         foreach (array_unique(array_map('intval', $userIds)) as $u) {
             if ($u <= 0) {
                 continue;
@@ -129,11 +195,16 @@ final class Chat
             $ins->execute([$chatId, $u]);
             if ($ins->rowCount() > 0) {
                 $added[] = trim((string)$row['full_name']) ?: (string)$row['username'];
+                $addedIds[] = $u;
             }
         }
         if ($added) {
             self::post($chatId, null, null, $actorName . ' ha aggiunto ' . implode(', ', $added), null, 'system');
             Log::write('team', 'chat_members_added', 'team_chat', $chatId, ['users' => $userIds, 'by' => $actor]);
+            // Being added to an existing group is the same event from the
+            // recipient's side as being put in a new one, so it gets the same
+            // invitation — only the people actually added, not the whole group.
+            self::invite($chatId, (string)($chat['name'] ?? ''), $addedIds, $actor);
         }
         return $added;
     }

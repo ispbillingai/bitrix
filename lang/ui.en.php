@@ -1743,6 +1743,7 @@ return [
     'rk_appointment_agent_set'    => 'Appointment set (notice to the agent)',
     'rk_password_reset'           => 'Password recovery (staff)',
     'rk_maintenance_due'          => 'On-demand maintenance (customer)',
+    'rk_team_chat_invite'         => 'Internal chat invitation',
     'rk_intervention_confirmed'   => 'Service call booked (customer)',
     'rk_intervention_customer'    => 'Service call reminder (customer)',
     'rk_intervention_tech_set'    => 'Service call booked (notice to the technician)',
