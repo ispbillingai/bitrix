@@ -138,18 +138,48 @@ final class Contacts
                         "UPDATE contacts SET vat_number = ? WHERE id = ? AND (vat_number IS NULL OR vat_number = '')"
                     )->execute([$vat, $id]);
                 }
+                self::fillBlankAddress($id, $d);
                 return $id;
             }
         }
         return self::create($d);
     }
 
+    /**
+     * Give a matched contact the address they just typed, but only where we do
+     * not already hold one.
+     *
+     * Filling a blank is a gain: a customer imported from the gestionale with no
+     * street, who now fills in the public form, becomes a customer a technician
+     * can drive to. OVERWRITING would be a loss — the registry address is the
+     * one on the invoices, and a visitor typing their office by hand should not
+     * silently replace it.
+     */
+    private static function fillBlankAddress(int $id, array $d): void
+    {
+        $address = trim((string)($d['address'] ?? ''));
+        $city    = trim((string)($d['city'] ?? ''));
+        if ($address === '' && $city === '') {
+            return;
+        }
+        if ($address !== '') {
+            Db::pdo()->prepare(
+                "UPDATE contacts SET address = ? WHERE id = ? AND (address IS NULL OR address = '')"
+            )->execute([$address, $id]);
+        }
+        if ($city !== '') {
+            Db::pdo()->prepare(
+                "UPDATE contacts SET city = ? WHERE id = ? AND (city IS NULL OR city = '')"
+            )->execute([$city, $id]);
+        }
+    }
+
     public static function create(array $d): int
     {
         $n = self::nameParts($d);
         $stmt = Db::pdo()->prepare(
-            'INSERT INTO contacts (name, first_name, last_name, company, vat_number, phone, email, lang, source, assigned_to, notes)
-             VALUES (:name, :first_name, :last_name, :company, :vat_number, :phone, :email, :lang, :source, :assigned_to, :notes)'
+            'INSERT INTO contacts (name, first_name, last_name, company, vat_number, phone, email, lang, source, assigned_to, notes, address, city)
+             VALUES (:name, :first_name, :last_name, :company, :vat_number, :phone, :email, :lang, :source, :assigned_to, :notes, :address, :city)'
         );
         $stmt->execute([
             ':name'        => $n['name'],
@@ -167,6 +197,10 @@ final class Contacts
             ':source'      => $d['source'] ?? null,
             ':assigned_to' => $d['assigned_to'] ?? null,
             ':notes'       => $d['notes'] ?? null,
+            // Carried from the public and trade-show forms, where they are the
+            // only chance to learn where somebody actually is.
+            ':address'     => trim((string)($d['address'] ?? '')) ?: null,
+            ':city'        => trim((string)($d['city'] ?? '')) ?: null,
         ]);
         return (int)Db::pdo()->lastInsertId();
     }

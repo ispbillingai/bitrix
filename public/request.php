@@ -32,6 +32,7 @@ $T = [
         'first' => 'Nome', 'last' => 'Cognome', 'email' => 'Email', 'phone' => 'Telefono',
         'country' => 'Prefisso internazionale', 'phone_ph' => 'es. 339 1234567',
         'company' => 'Azienda', 'vat' => 'Partita IVA (facoltativa)', 'vat_ph' => 'es. 01234567890',
+        'address' => 'Indirizzo', 'address_ph' => 'Via e numero civico', 'town' => 'Città',
         'message' => 'Messaggio', 'message_ph' => 'Come possiamo aiutarti?',
         'preferred' => 'Quando preferisci essere contattato? (facoltativo)',
         'consent' => 'Ho letto e accetto l’informativa sulla privacy.',
@@ -46,6 +47,7 @@ $T = [
         'first' => 'First name', 'last' => 'Last name', 'email' => 'Email', 'phone' => 'Phone',
         'country' => 'Country code', 'phone_ph' => 'e.g. 339 1234567',
         'company' => 'Company', 'vat' => 'VAT number (optional)', 'vat_ph' => 'e.g. 01234567890',
+        'address' => 'Address', 'address_ph' => 'Street and number', 'town' => 'Town',
         'message' => 'Message', 'message_ph' => 'How can we help you?',
         'preferred' => 'When would you prefer to be contacted? (optional)',
         'consent' => 'I have read and accept the privacy policy.',
@@ -128,6 +130,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         'source'   => $partner ? 'partner' : 'website',
                         'lang'     => $lang,
                         'vat_number' => $vat,
+                        'address'  => trim((string)($_POST['address'] ?? '')),
+                        'city'     => trim((string)($_POST['city'] ?? '')),
                     ]);
 
                     if ($partner) {
@@ -264,6 +268,10 @@ textarea{resize:vertical;min-height:84px;}
         <div class="row">
           <label class="fld"><span><?= $h($T['company']) ?></span><input name="company" value="<?= $h($old['company'] ?? '') ?>"></label>
           <label class="fld"><span><?= $h($T['vat']) ?></span><input name="vat_number" value="<?= $h($old['vat_number'] ?? '') ?>" placeholder="<?= $h($T['vat_ph']) ?>"></label>
+        </div>
+        <div class="row">
+          <label class="fld"><span><?= $h($T['address']) ?></span><input name="address" value="<?= $h($old['address'] ?? '') ?>" placeholder="<?= $h($T['address_ph']) ?>"></label>
+          <label class="fld"><span><?= $h($T['town']) ?></span><input name="city" value="<?= $h($old['city'] ?? '') ?>"></label>
         </div>
         <label class="fld"><span><?= $h($T['message']) ?></span><textarea name="message" placeholder="<?= $h($T['message_ph']) ?>"><?= $h($old['message'] ?? '') ?></textarea></label>
         <label class="fld"><span><?= $h($T['preferred']) ?></span><input type="datetime-local" name="preferred_at" value="<?= $h($old['preferred_at'] ?? '') ?>"></label>

@@ -40,6 +40,10 @@ final class LeadIntake
         'title'       => ['title', 'subject', 'oggetto', 'titolo'],
         'comments'    => ['comments', 'comment', 'message', 'messaggio', 'note', 'notes', 'richiesta', 'description'],
         'zone'        => ['zone', 'zona', 'area', 'region', 'regione', 'provincia'],
+        // Where they are. Lands on the CONTACT (Leads::create passes it on), so
+        // an integration that knows the address does not make the office ask.
+        'address'     => ['address', 'indirizzo', 'via', 'street', 'street_address'],
+        'city'        => ['city', 'citta', 'città', 'comune', 'town', 'localita', 'località'],
         'lang'        => ['lang', 'language', 'lingua', 'locale'],
     ];
 

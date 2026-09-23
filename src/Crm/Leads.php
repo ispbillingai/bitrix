@@ -92,6 +92,11 @@ final class Leads
                     // CRM already knows. Withholding it here is what put a lead
                     // for an existing customer onto a fresh, empty contact.
                     'vat_number' => $vat,
+                    // Where they are. Kept on the CONTACT, not the lead: a person
+                    // has one address and any number of requests, and it is the
+                    // contact the technician's visit and the invoice read from.
+                    'address' => trim((string)($d['address'] ?? '')) ?: null,
+                    'city'    => trim((string)($d['city'] ?? '')) ?: null,
                 ];
                 // An existing customer — same VAT, or the phone/email of exactly
                 // one registry card — gets the lead on their CARD: it is then in
