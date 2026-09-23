@@ -623,7 +623,7 @@ final class Tickets
             'entity_id'      => (int)$t['contact_id'],
             'rule_key'       => 'ticket_staff',
             'recipient_type' => 'agent',
-            'channel'        => 'both',
+            'channel'        => self::nudgeChannel((string)($a['phone'] ?? ''), (string)($a['email'] ?? '')),
             'due_at'         => date('Y-m-d H:i:s'),
             // payload wins over resolved vars, so it carries the agent's contact
             // details (the resolver can't derive them from a bare contact row).
@@ -638,6 +638,44 @@ final class Tickets
         ]);
     }
 
+    /**
+     * Which channels a "there is something to read" nudge goes out on.
+     *
+     * WhatsApp where we can reach one, email otherwise — the same rule as the
+     * internal chat, because the message itself lives in the CRM and this is
+     * only the tap on the shoulder that sends somebody to it. The identical
+     * nudge in two inboxes is noise, not insurance.
+     *
+     * With one caveat the internal chat does not have. Staff numbers are mobiles
+     * somebody typed in; customer numbers come from the gestionale export, and
+     * 2,493 of the customers on file have an Italian number that is not a mobile
+     * — a landline, which cannot receive WhatsApp at all. Sending only there
+     * would leave a quarter of the registry hearing nothing. So the preference
+     * applies where the number can actually take a WhatsApp, and where we cannot
+     * tell we keep both: a nudge that never arrives is worse than one that
+     * arrives twice.
+     *
+     * Messages carrying something a person must ACT on — a signing code, a
+     * failed payment — keep 'both' everywhere, deliberately.
+     */
+    private static function nudgeChannel(string $phone, string $email): string
+    {
+        $phone = trim($phone);
+        $email = trim($email);
+        if ($phone === '') {
+            return 'email';
+        }
+        if ($email === '') {
+            return 'whatsapp'; // nothing else to try, landline or not
+        }
+        // +39 3xx is an Italian mobile; +39 anything else is a landline.
+        $digits = (string)preg_replace('/\D+/', '', $phone);
+        if (str_starts_with($digits, '39')) {
+            return str_starts_with($digits, '393') ? 'whatsapp' : 'email';
+        }
+        return 'both'; // foreign number: we cannot tell, so do not gamble
+    }
+
     private static function notifyCustomer(int $ticketId): void
     {
         $t = self::find($ticketId);
@@ -650,7 +688,13 @@ final class Tickets
             'entity_id'      => (int)$t['contact_id'],
             'rule_key'       => 'ticket_reply',
             'recipient_type' => 'customer',
-            'channel'        => 'both',
+            // WhatsApp where we have a number, email only where we do not — the
+            // same rule as the internal chat. This is a nudge to go and read
+            // something, and the identical nudge in two inboxes is noise, not
+            // insurance. The magic link is the same either way.
+            'channel'        => self::nudgeChannel(
+                (string)($t['customer_phone'] ?? ''), (string)($t['customer_email'] ?? '')
+            ),
             'due_at'         => date('Y-m-d H:i:s'),
             'payload'        => [
                 'id'      => (string)$ticketId,
