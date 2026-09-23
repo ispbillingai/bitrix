@@ -310,13 +310,22 @@ if (isset($_GET['cpf'])) {
     exit('Not found');
 }
 
-// ---- Customer/contact type-ahead for the calendar's booking form (?find=contacts&q=) ----
-// Open to every logged-in role: a technician booking their own visit has to be
-// able to find the customer, and this returns nothing a staff member cannot
-// already read on the Contacts page.
-if (($_GET['find'] ?? '') === 'contacts') {
+// ---- Customer type-ahead for the calendar's booking form (?find=book_contact&q=) ----
+// Its OWN name, not ?find=contacts: that one belongs to the Messaggi picker and
+// answers a different shape (name/label). Sharing the name shadowed it — the
+// first handler to match exits — and the message picker rendered "undefined"
+// for every hit while quietly losing its agent scoping too.
+//
+// Matches a VAT number and a gestionale code as well as a name, because whoever
+// is booking has whichever of those the caller read out. Agents are scoped to
+// their own customers, exactly like the message picker; technicians and the
+// office see everyone, because a visit can be to any customer.
+if (($_GET['find'] ?? '') === 'book_contact') {
     header('Content-Type: application/json');
-    echo json_encode(Contacts::searchPicker((string)($_GET['q'] ?? ''), 12), JSON_UNESCAPED_UNICODE);
+    echo json_encode(
+        Contacts::searchPicker((string)($_GET['q'] ?? ''), 12, $isAgent ? $scopeId : null),
+        JSON_UNESCAPED_UNICODE
+    );
     exit;
 }
 

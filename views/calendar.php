@@ -539,7 +539,7 @@ function acType() {
   // One request per pause, not per keystroke: the office types a full company
   // name and every letter would otherwise be a query.
   acTimer = setTimeout(() => {
-    fetch('?find=contacts&q=' + encodeURIComponent(q))
+    fetch('?find=book_contact&q=' + encodeURIComponent(q))
       .then(r => r.json()).then(rows => { acRows = rows || []; acDraw(); })
       .catch(() => acHide());
   }, 220);

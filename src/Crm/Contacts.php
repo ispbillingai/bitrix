@@ -227,7 +227,7 @@ final class Contacts
      *
      * @return array<int,array{id:int,label:string,sub:string,is_customer:bool}>
      */
-    public static function searchPicker(string $q, int $limit = 12): array
+    public static function searchPicker(string $q, int $limit = 12, ?int $agentId = null): array
     {
         $q = trim($q);
         if (mb_strlen($q) < 2) {
@@ -235,6 +235,14 @@ final class Contacts
         }
         $limit = max(1, min(50, $limit));
         $like  = '%' . $q . '%';
+        // A seller sees only the people they hold, the same rule the Messaggi
+        // picker uses. Null = no scope: the office and the technicians book
+        // visits for anybody.
+        $scope = '';
+        if ($agentId !== null) {
+            $scope = ' AND (EXISTS (SELECT 1 FROM deals d WHERE d.contact_id = contacts.id AND d.assigned_to = :ag1)
+                         OR EXISTS (SELECT 1 FROM leads l WHERE l.contact_id = contacts.id AND l.assigned_to = :ag2))';
+        }
         // The VAT/code comparison is on the normalised form: people type
         // "IT 012 3456" for what is stored as IT01234567.
         $tight = strtoupper((string)preg_replace('/[^A-Za-z0-9]+/', '', $q));
@@ -242,20 +250,29 @@ final class Contacts
         // Every placeholder appears exactly once: the driver runs real prepared
         // statements, and MySQL rejects a named parameter used more than once
         // in the same statement (SQLSTATE HY093).
+        // The match is a chain of ORs, so it is wrapped in its own brackets:
+        // without them the scope below would bind to the last OR branch alone
+        // and a seller would see every contact whose name matched.
         $stmt = Db::pdo()->prepare(
             "SELECT id, name, company, phone, email, city, customer_code, vat_number, is_customer
                FROM contacts
-              WHERE name LIKE :l1 OR company LIKE :l2 OR phone LIKE :l3 OR email LIKE :l4
-                 OR (:t1 <> '' AND customer_code = :t2)
-                 OR (:t3 <> '' AND vat_number = :t4)
+              WHERE (name LIKE :l1 OR company LIKE :l2 OR phone LIKE :l3 OR email LIKE :l4
+                     OR (:t1 <> '' AND customer_code = :t2)
+                     OR (:t3 <> '' AND vat_number = :t4))
+                    $scope
               ORDER BY is_customer DESC, (name LIKE :starts) DESC, name
               LIMIT $limit"
         );
-        $stmt->execute([
+        $args = [
             ':l1' => $like, ':l2' => $like, ':l3' => $like, ':l4' => $like,
             ':t1' => $tight, ':t2' => $tight, ':t3' => $tight, ':t4' => $tight,
             ':starts' => $q . '%',
-        ]);
+        ];
+        if ($agentId !== null) {
+            $args[':ag1'] = $agentId;
+            $args[':ag2'] = $agentId;
+        }
+        $stmt->execute($args);
 
         return array_map(static function (array $r): array {
             $label = trim((string)$r['name']) ?: trim((string)$r['company']);
