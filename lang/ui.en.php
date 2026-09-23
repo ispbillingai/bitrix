@@ -42,7 +42,7 @@ return [
     'nav_reminders'    => 'Reminders',
     'nav_templates'    => 'Message templates',
     'nav_events'       => 'Activity log',
-    'nav_agents'       => 'Agents',
+    'nav_agents'       => 'Users',
     'nav_instr'        => 'Instructions',
     'nav_settings'     => 'Settings',
     'nav_devices'       => 'Devices',

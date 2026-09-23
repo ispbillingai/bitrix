@@ -42,7 +42,7 @@ return [
     'nav_reminders'    => 'Promemoria',
     'nav_templates'    => 'Modelli messaggi',
     'nav_events'       => 'Registro attività',
-    'nav_agents'       => 'Agenti',
+    'nav_agents'       => 'Utenti',
     'nav_instr'        => 'Istruzioni',
     'nav_settings'     => 'Impostazioni',
     'nav_devices'       => 'Dispositivi',
