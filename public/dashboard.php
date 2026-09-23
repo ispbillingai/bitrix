@@ -77,6 +77,19 @@ if (!empty($_SESSION['dash_flash'])) {
     unset($_SESSION['dash_flash']);
 }
 if (!isset($_SESSION['glue_auth'])) {
+    // "Ho dimenticato la password": send a one-time link to the address already
+    // on the account. The answer is the SAME sentence whatever was typed —
+    // saying "no such user" would turn the login page into a staff directory —
+    // so there is nothing to branch on here.
+    if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['forgot'])) {
+        \Glue\PasswordReset::request((string)($_POST['identifier'] ?? ''));
+        render_login($t, $h, $lang, null, true, $t('fp_sent'));
+        exit;
+    }
+    if (isset($_GET['forgot'])) {
+        render_login($t, $h, $lang, null, true);
+        exit;
+    }
     if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['password'])) {
         $username = trim((string)($_POST['username'] ?? ''));
         $user = Auth::verify($username, (string)$_POST['password']);
@@ -2878,11 +2891,31 @@ render_foot();
 
 // ============================ shared chrome ============================
 
-function render_login(callable $t, callable $h, string $lang, ?string $err): void { ?>
+function render_login(callable $t, callable $h, string $lang, ?string $err, bool $forgot = false, ?string $notice = null): void { ?>
 <!DOCTYPE html><html lang="<?= $h($lang) ?>"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title><?= $h($t('login_title')) ?></title><?php css(); ?></head>
 <body class="center">
+  <?php if ($notice !== null): ?>
+    <div class="login">
+      <div class="logo">C</div>
+      <h1><?= $h($t('login_title')) ?></h1>
+      <p class="muted"><?= $h($notice) ?></p>
+      <p><a href="?"><?= $h($t('fp_back')) ?></a></p>
+    </div>
+  <?php elseif ($forgot): ?>
+    <?php // One field: whatever they remember. The link only ever goes to the
+          // address already on the account, so naming one buys nothing. ?>
+    <form class="login" method="post">
+      <input type="hidden" name="forgot" value="1">
+      <div class="logo">C</div>
+      <h1><?= $h($t('fp_title')) ?></h1>
+      <p class="muted"><?= $h($t('fp_sub')) ?></p>
+      <input type="text" name="identifier" placeholder="<?= $h($t('fp_ph')) ?>" autofocus>
+      <button type="submit"><?= $h($t('fp_btn')) ?></button>
+      <p style="margin-top:14px"><a href="?"><?= $h($t('fp_back')) ?></a></p>
+    </form>
+  <?php else: ?>
   <form class="login" method="post">
     <div class="logo">C</div>
     <h1><?= $h($t('login_title')) ?></h1>
@@ -2891,7 +2924,9 @@ function render_login(callable $t, callable $h, string $lang, ?string $err): voi
     <input type="text" name="username" placeholder="<?= $h($t('login_user_ph')) ?>" autofocus>
     <input type="password" name="password" placeholder="<?= $h($t('login_ph')) ?>">
     <button type="submit"><?= $h($t('login_btn')) ?></button>
+    <p style="margin-top:14px"><a href="?forgot=1"><?= $h($t('fp_link')) ?></a></p>
   </form>
+  <?php endif; ?>
 </body></html>
 <?php }
 

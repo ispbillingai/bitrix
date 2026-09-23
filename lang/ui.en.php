@@ -17,6 +17,13 @@ return [
     'login_ph'       => 'Password',
     'login_btn'      => 'Sign in',
     'login_err'      => 'Wrong username or password',
+    'fp_link'        => 'Forgotten your password?',
+    'fp_title'       => 'Get back in',
+    'fp_sub'         => 'Type your username, your email or your phone number and we will send you a link to set a new password.',
+    'fp_ph'          => 'Username, email or phone',
+    'fp_btn'         => 'Send me the link',
+    'fp_back'        => 'Back to the login page',
+    'fp_sent'        => 'If the account exists we have sent a link by WhatsApp and email. It is good for one hour and can be used once. Check your spam folder too.',
 
     // nav
     'nav_overview'     => 'Overview',
@@ -1695,6 +1702,7 @@ return [
 
     // message templates (rk_ = rule_key)
     'rk_appointment_agent_set'    => 'Appointment set (notice to the agent)',
+    'rk_password_reset'           => 'Password recovery (staff)',
     'rk_intervention_confirmed'   => 'Service call booked (customer)',
     'rk_intervention_customer'    => 'Service call reminder (customer)',
     'rk_intervention_tech_set'    => 'Service call booked (notice to the technician)',

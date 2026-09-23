@@ -108,6 +108,12 @@ return [
             "Hi {name}! 👋 Your {company} customer area is ready. "
             . "Here you can follow your order and sign your contract: {link}",
 
+        // STAFF password recovery: the link is good for {minutes} minutes, once.
+        'password_reset' =>
+            "Hi {name}, you asked to reset your {company} CRM password. "
+            . "Open this link within {minutes} minutes and choose a new one: {link} "
+            . "If this was not you, ignore this message — your current password still works.",
+
         'sign_otp' =>
             "{company}: your signing code is *{code}*. "
             . "It is valid for {minutes} minutes. Do not share it with anyone.",
@@ -431,6 +437,13 @@ return [
                 . 'follow your order and sign your contract.</p>'
                 . '<p><a href="{link}">Open my customer area</a></p>'
                 . '<p>Or paste this link into your browser:<br>{link}</p>',
+        ],
+        'password_reset' => [
+            'subject' => 'Reset your password — {company}',
+            'html'    => '<p>Hi {name},</p><p>You asked to reset your {company} CRM password.</p>'
+                . '<p><a href="{link}">Choose a new password</a></p>'
+                . '<p>The link is good for <strong>{minutes} minutes</strong> and can be used once.</p>'
+                . '<p>If this was not you, ignore this email — your current password still works.</p>',
         ],
         'sign_otp' => [
             'subject' => 'Your {company} signing code: {code}',

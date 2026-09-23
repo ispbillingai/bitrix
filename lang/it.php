@@ -110,6 +110,12 @@ return [
             "Ciao {name}! 👋 La tua area clienti {company} è pronta. "
             . "Qui puoi seguire il tuo ordine e firmare il contratto: {link}",
 
+        // Recupero password dello STAFF: il link vale {minutes} minuti ed è monouso.
+        'password_reset' =>
+            "Ciao {name}, hai chiesto di reimpostare la password del CRM {company}. "
+            . "Apri questo link entro {minutes} minuti e scegli la nuova password: {link} "
+            . "Se non sei stato tu, ignora questo messaggio: la password attuale resta valida.",
+
         'sign_otp' =>
             "{company}: il tuo codice di firma è *{code}*. "
             . "È valido per {minutes} minuti. Non condividerlo con nessuno.",
@@ -435,6 +441,13 @@ return [
                 . 'seguire il tuo ordine e firmare il contratto.</p>'
                 . '<p><a href="{link}">Apri la mia area clienti</a></p>'
                 . '<p>Oppure incolla questo link nel browser:<br>{link}</p>',
+        ],
+        'password_reset' => [
+            'subject' => 'Reimposta la tua password — {company}',
+            'html'    => '<p>Ciao {name},</p><p>Hai chiesto di reimpostare la password del CRM di {company}.</p>'
+                . '<p><a href="{link}">Scegli una nuova password</a></p>'
+                . '<p>Il link vale <strong>{minutes} minuti</strong> e può essere usato una sola volta.</p>'
+                . '<p>Se non sei stato tu, ignora questa email: la password attuale resta valida.</p>',
         ],
         'sign_otp' => [
             'subject' => 'Il tuo codice di firma {company}: {code}',

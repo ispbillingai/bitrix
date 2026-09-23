@@ -17,6 +17,13 @@ return [
     'login_ph'       => 'Password',
     'login_btn'      => 'Accedi',
     'login_err'      => 'Nome utente o password errati',
+    'fp_link'        => 'Password dimenticata?',
+    'fp_title'       => 'Recupera l’accesso',
+    'fp_sub'         => 'Scrivi il tuo nome utente, la tua email o il tuo numero di telefono: ti inviamo un link per impostare una nuova password.',
+    'fp_ph'          => 'Nome utente, email o telefono',
+    'fp_btn'         => 'Inviami il link',
+    'fp_back'        => 'Torna al login',
+    'fp_sent'        => 'Se l’account esiste, ti abbiamo inviato un link su WhatsApp e per email. Vale un’ora e si può usare una volta sola. Controlla anche lo spam.',
 
     // nav
     'nav_overview'     => 'Panoramica',
@@ -1693,6 +1700,7 @@ return [
 
     // modelli di messaggio (rk_ = rule_key)
     'rk_appointment_agent_set'    => 'Appuntamento fissato (avviso all\'agente)',
+    'rk_password_reset'           => 'Recupero password (staff)',
     'rk_intervention_confirmed'   => 'Intervento fissato (cliente)',
     'rk_intervention_customer'    => 'Promemoria intervento (cliente)',
     'rk_intervention_tech_set'    => 'Intervento fissato (avviso al tecnico)',
