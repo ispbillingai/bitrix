@@ -6,6 +6,7 @@ namespace Glue\Crm;
 use Glue\Config;
 use Glue\Db;
 use Glue\Event\Log;
+use Glue\Notify\Quiet;
 use Glue\Portal\Account;
 use Glue\Reminder\Scheduler;
 use Throwable;
@@ -104,6 +105,10 @@ final class Tickets
         if (!$ticket || ($body === '' && $attachment === null && $signDocId === null)) {
             return false;
         }
+        // The previous message in this thread, read BEFORE the new one lands:
+        // it is what decides whether this arrives into a live exchange or into
+        // silence. See Notify\Quiet.
+        $prevAt = self::lastMessageAt($ticketId);
         $messageId = self::addMessage($ticketId, $senderType, $senderId, $senderName, $body, $attachment, $signDocId);
 
         // A staff reply marks the ticket pending-on-customer; a customer reply reopens it.
@@ -112,12 +117,16 @@ final class Tickets
             ->execute([$status, $senderType, $ticketId]);
 
         Log::write('crm', 'ticket_reply', 'ticket', $ticketId, ['by' => $senderType]);
+        // A reply into a conversation somebody is already reading is not news;
+        // the same reply half an hour later is. An attachment always announces
+        // itself — a file the customer has to open is not chatter.
+        $announce = $attachment !== null || $signDocId !== null || Quiet::breaks($prevAt);
         if (!$notify) {
             // Moved in by the office, not written now: nobody is paged.
         } elseif ($senderType === 'customer') {
-            self::notifyStaff($ticketId);
+            if ($announce) { self::notifyStaff($ticketId); }
         } else {
-            self::notifyCustomer($ticketId);
+            if ($announce) { self::notifyCustomer($ticketId); }
             if ($attachment !== null) {
                 // A staff file is (typically) the offer — chase until downloaded.
                 self::armOfferReminders($ticketId, $messageId);
@@ -133,6 +142,15 @@ final class Tickets
         }
         Db::pdo()->prepare('UPDATE tickets SET status = ? WHERE id = ?')->execute([$status, $ticketId]);
         Log::write('crm', 'ticket_status', 'ticket', $ticketId, ['status' => $status]);
+    }
+
+    /** When the newest message in this thread landed, or null for an empty one. */
+    private static function lastMessageAt(int $ticketId): ?string
+    {
+        $stmt = Db::pdo()->prepare('SELECT MAX(created_at) FROM ticket_messages WHERE ticket_id = ?');
+        $stmt->execute([$ticketId]);
+        $at = $stmt->fetchColumn();
+        return $at ? (string)$at : null;
     }
 
     private static function addMessage(int $ticketId, string $type, ?int $senderId, string $name, string $body, ?array $attachment = null, ?int $signDocId = null): int

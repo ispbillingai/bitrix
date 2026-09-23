@@ -900,6 +900,8 @@ return [
     'f_appt_offsets_h' => 'Comma-separated. e.g. 1440, 120 = 24h and 2h before. Blank = default.',
     'f_interv_dayb'     => 'Service call notice — time on the day before',
     'f_interv_dayb_h'   => 'The customer and the technician are told at this time the day before the visit, whatever time the visit is. Blank = 17:00. For a visit today (or once that time has passed) the confirmation sent at booking stands instead.',
+    'f_quiet'           => 'Chat alerts — minutes of silence',
+    'f_quiet_h'         => 'A message only triggers the WhatsApp alert when at least this many minutes have passed since the previous message in the same conversation. Default 15. An attachment always alerts. 0 = alert on every message.',
     'f_interv_offsets'  => 'Service call reminders — minutes before (extra)',
     'f_interv_offsets_h' => 'Extra notices on top of the day-before one. Comma-separated, e.g. 120 = also 2h before. Blank = no extra notice.',
     'f_sign_before'    => 'Signature reminders — days before due date',

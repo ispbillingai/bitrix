@@ -125,6 +125,14 @@ return [
         'sign_overdue_max_days'   => 15,  // 15-day window
     ],
 
+    // Chat alerts. A message only triggers a WhatsApp when the conversation has
+    // been quiet this long — a new chat, or somebody picking a thread back up.
+    // Notifying on every line is what makes people mute the channel, and a muted
+    // channel carries nothing. 0 = alert on every message (the old behaviour).
+    'notify' => [
+        'quiet_minutes' => 15,
+    ],
+
     // Technicians plan their own next day: an evening WhatsApp + email asking
     // them to sort tomorrow out, carrying the link they click to say they have.
     // OFF until switched on in Settings — it messages real people every evening,

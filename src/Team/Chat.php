@@ -80,12 +80,12 @@ final class Chat
         }
         Log::write('team', 'chat_created', 'team_chat', $id, ['kind' => $kind, 'members' => $userIds, 'by' => $creator]);
 
-        // Tell the people who have just been put in it. Not the assistant chat,
-        // which a person opens for themselves, and never the creator — they are
-        // looking at the conversation they just started.
-        if ($kind !== 'ai') {
-            self::invite($id, $name, array_filter($userIds, fn($u) => (int)$u !== (int)$creator), (int)$creator);
-        }
+        // Deliberately silent. Creating a chat in the UI creates it EMPTY — the
+        // person types afterwards — so announcing here said "somebody wants to
+        // talk to you" about a conversation with nothing in it, and then post()
+        // announced the first message a moment later as well. The first message
+        // is the new chat as far as the recipient is concerned, and it announces
+        // itself because there is nothing before it. See post().
         return $id;
     }
 
@@ -347,6 +347,11 @@ final class Chat
             return 0;
         }
         $pdo = Db::pdo();
+        // Read before the write: it is what says whether this message lands in a
+        // live exchange or into silence. See Notify\Quiet.
+        $prevAt = (string)($pdo->query(
+            'SELECT last_message_at FROM team_chats WHERE id = ' . (int)$chatId
+        )->fetchColumn() ?: '');
         $pdo->prepare(
             'INSERT INTO team_messages (chat_id, sender_id, sender_name, role, body, attachment_path, attachment_name, attachment_kind, meta)
              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -359,6 +364,21 @@ final class Chat
         $pdo->prepare('UPDATE team_chats SET last_message_at = NOW() WHERE id = ?')->execute([$chatId]);
         if ($senderId) {
             self::markRead($chatId, $senderId, $id); // your own message is read by definition
+        }
+
+        // A message into a chat that has gone quiet is worth a WhatsApp; the
+        // fourth line of a conversation somebody is already reading is not. A
+        // system line ("X ha aggiunto Y") and the assistant's own replies never
+        // announce anything, and neither does a message with no human sender.
+        if ($role === 'user' && $senderId && \Glue\Notify\Quiet::breaks($prevAt)) {
+            $chat = self::find($chatId);
+            if ($chat && (string)$chat['kind'] !== 'ai') {
+                $others = array_values(array_filter(
+                    array_map(static fn(array $m): int => (int)$m['id'], self::members($chatId)),
+                    static fn(int $m): bool => $m !== (int)$senderId
+                ));
+                self::invite($chatId, (string)($chat['name'] ?? ''), $others, (int)$senderId);
+            }
         }
         return $id;
     }

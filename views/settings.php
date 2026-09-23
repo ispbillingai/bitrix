@@ -151,6 +151,7 @@ $pipelines = \Glue\Crm\Pipelines::all();
     fld($h, 'reminders.appointment_offsets_min', $t('f_appt_offsets'), $list('reminders.appointment_offsets_min', [1440, 120]), $t('f_appt_offsets_h'));
     fld($h, 'reminders.intervention_offsets_min', $t('f_interv_offsets'), $list('reminders.intervention_offsets_min', [1440, 120]), $t('f_interv_offsets_h'));
     fld($h, 'reminders.intervention_day_before_at', $t('f_interv_dayb'), $cfg('reminders.intervention_day_before_at', '17:00'), $t('f_interv_dayb_h'));
+    fld($h, 'notify.quiet_minutes', $t('f_quiet'), $cfg('notify.quiet_minutes', 15), $t('f_quiet_h'));
     ?>
   </div>
 

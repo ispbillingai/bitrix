@@ -700,6 +700,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'planning.escalate_every_min', 'planning.escalate_max',
                     'maintenance.followup_months',
                     'maintenance.max_per_day',
+                    'notify.quiet_minutes',
                     'reminders.sign_before_due_days', 'reminders.offer_read_days',
                     'textmebot.api_key', 'mail.from_name', 'mail.from_email',
                     'mail.smtp.host', 'mail.smtp.port', 'mail.smtp.user', 'mail.smtp.pass', 'mail.smtp.secure',

@@ -900,6 +900,8 @@ return [
     'f_appt_offsets_h' => 'Separati da virgola. Es. 1440, 120 = 24h e 2h prima. Vuoto = predefinito.',
     'f_interv_dayb'     => 'Avviso intervento — ora del giorno prima',
     'f_interv_dayb_h'   => 'Il cliente e il tecnico ricevono l’avviso a quest’ora il giorno prima dell’intervento, qualunque sia l’orario della visita. Vuoto = 17:00. Se l’intervento è per oggi (o è già passata quest’ora), vale la conferma inviata al momento della prenotazione.',
+    'f_quiet'           => 'Avvisi chat — minuti di silenzio',
+    'f_quiet_h'         => 'Un messaggio fa scattare l’avviso WhatsApp solo se sono passati almeno questi minuti dal messaggio precedente della stessa conversazione. Predefinito 15. Un allegato avvisa sempre. 0 = avvisa a ogni messaggio.',
     'f_interv_offsets'  => 'Promemoria intervento — minuti prima (extra)',
     'f_interv_offsets_h' => 'Avvisi aggiuntivi, oltre a quello del giorno prima. Separati da virgola, es. 120 = anche 2h prima. Vuoto = nessun avviso extra.',
     'f_sign_before'    => 'Solleciti firma — giorni prima della scadenza',
