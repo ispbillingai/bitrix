@@ -120,7 +120,7 @@ return [
         // Invito a una chat interna: il badge lo vede solo chi è già collegato,
         // quindi l’invito va sul telefono.
         'team_chat_invite' =>
-            "💬 Ciao {name}, {by} ti ha scritto su {company}: «{chat}». "
+            "💬 Ciao {name}, {by} ti ha scritto su {company}{?chat} nel gruppo «{chat}»{/chat}. "
             . "Accedi al CRM per leggere e rispondere: {link}",
 
         'password_reset' =>
@@ -463,8 +463,8 @@ return [
         ],
         'team_chat_invite' => [
             'subject' => '{by} ti ha scritto su {company}',
-            'html'    => '<p>Ciao {name},</p><p><strong>{by}</strong> ti ha scritto nella chat interna '
-                . '<strong>{chat}</strong>.</p>'
+            'html'    => '<p>Ciao {name},</p><p><strong>{by}</strong> ti ha scritto nella chat interna'
+                . '{?chat}, nel gruppo <strong>{chat}</strong>{/chat}.</p>'
                 . '<p><a href="{link}">Apri la chat nel CRM</a></p>',
         ],
         'password_reset' => [

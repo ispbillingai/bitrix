@@ -133,7 +133,10 @@ final class Chat
                 'name'       => (string)$u['name'],
                 'agent_name' => (string)$u['name'],
                 'by'         => $byName,
-                'chat'       => trim((string)$name) !== '' ? (string)$name : $byName,
+                // Only a group has a name worth quoting. A direct chat left it
+                // reading "Anna ti ha scritto: «Anna»", so the templates wrap
+                // it in {?chat}…{/chat} and it simply disappears.
+                'chat'       => trim((string)$name),
                 'company'    => (string)Config::get('app.company_name', 'CRM'),
                 'link'       => $link,
             ];

@@ -118,7 +118,7 @@ return [
         // Invitation to an internal chat: only somebody already signed in sees
         // the badge, so the invitation goes to the phone.
         'team_chat_invite' =>
-            "💬 Hi {name}, {by} has messaged you on {company}: '{chat}'. "
+            "💬 Hi {name}, {by} has messaged you on {company}{?chat} in the group '{chat}'{/chat}. "
             . "Sign in to the CRM to read it and reply: {link}",
 
         'password_reset' =>
@@ -459,8 +459,8 @@ return [
         ],
         'team_chat_invite' => [
             'subject' => '{by} has messaged you on {company}',
-            'html'    => '<p>Hi {name},</p><p><strong>{by}</strong> has messaged you in the internal chat '
-                . '<strong>{chat}</strong>.</p>'
+            'html'    => '<p>Hi {name},</p><p><strong>{by}</strong> has messaged you in the internal chat'
+                . '{?chat}, in the group <strong>{chat}</strong>{/chat}.</p>'
                 . '<p><a href="{link}">Open the chat in the CRM</a></p>',
         ],
         'password_reset' => [
