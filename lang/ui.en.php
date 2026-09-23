@@ -1238,6 +1238,8 @@ return [
     'cal_zone'          => 'Zone',
     'cal_all_zones'     => 'All zones',
     'cal_leave_pool'    => 'To be assigned (no technician)',
+    'cal_handover'      => 'Hand to a colleague',
+    'cal_handover_h'    => 'If your day is full, assign the job to a colleague with more room: it leaves your calendar, appears in theirs, and we tell them.',
     'cal_install_hint'  => 'This type creates the installation report automatically, already linked to the appointment.',
     'cal_open_install'  => 'Open the installation report',
     'cal_saved'         => 'Appointment saved. The customer has been told.',

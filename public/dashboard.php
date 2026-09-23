@@ -1728,14 +1728,36 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
             // ---------- the calendar: book, assign, move ----------
             case 'cal_save': { // create or edit an appointment from the calendar
-                // A technician books for themselves. Only the office hands work
-                // to someone else at creation — and 0 means the pool, which is
-                // a choice the office makes deliberately.
-                $agentId = ($isAgent || $isTech)
-                    ? (int)$uid
-                    : (int)($_POST['agent_id'] ?? 0);
+                $calId = (int)($_POST['id'] ?? 0);
+                // EDITING one: a seller or a technician may only touch a visit
+                // that is already theirs, or one sitting in the pool. Without
+                // this they could post any appointment id and rewrite somebody
+                // else's day — the generic owner guard skips cal_* because the
+                // pool is owned by nobody, so the check belongs here.
+                if ($calId > 0 && ($isAgent || $isTech)) {
+                    $calRow = Appointments::find($calId);
+                    $calMine = $calRow
+                        && ((int)($calRow['agent_id'] ?? 0) === (int)$uid || empty($calRow['agent_id']));
+                    if (!$calMine) {
+                        $_SESSION['dash_flash'] = [$t('not_allowed'), 'err'];
+                        header('Location: ?tab=calendar' . calBackQs());
+                        exit;
+                    }
+                }
+                // Who it belongs to afterwards. A technician handing an overloaded
+                // day to a colleague is the point of the field — they reach it
+                // only on a visit the check above already let through. Creating
+                // one, they can only book it for themselves; the office may also
+                // leave it in the pool (0) deliberately.
+                if (!$isAgent && !$isTech) {
+                    $agentId = (int)($_POST['agent_id'] ?? 0);
+                } elseif ($calId > 0 && isset($_POST['agent_id'])) {
+                    $agentId = (int)$_POST['agent_id'];
+                } else {
+                    $agentId = (int)$uid;
+                }
                 $res = \Glue\Crm\Booking::save([
-                    'id'           => (int)($_POST['id'] ?? 0),
+                    'id'           => $calId,
                     'contact_id'   => (int)($_POST['contact_id'] ?? 0),
                     'type_code'    => (string)($_POST['type_code'] ?? ''),
                     'agent_id'     => $agentId,

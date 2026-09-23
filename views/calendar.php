@@ -463,15 +463,26 @@ $evChip = function (array $r, bool $abs = false) use ($h, $lang, $backQs) {
         </label>
         <label class="fld"><span><?= $h($t('iv_where')) ?></span><input name="location" id="cfLoc"></label>
       </div>
-      <?php if ($isAdminHere): ?>
-        <label class="fld"><span><?= $h($t('iv_tech')) ?></span>
-          <select name="agent_id" id="cfAgent">
+      <?php // Who it belongs to. The office may also leave it in the pool; a
+            // technician cannot, but CAN hand it to a colleague — an overloaded
+            // day being passed on is the point of the field. On a new booking a
+            // technician only ever books for themselves, so the row is hidden
+            // (calNew/calEdit toggle it) rather than offering a choice the
+            // server would refuse. ?>
+      <label class="fld" id="cfAgentRow"<?= $isAdminHere ? '' : ' style="display:none"' ?>>
+        <span><?= $h($t($isAdminHere ? 'iv_tech' : 'cal_handover')) ?></span>
+        <select name="agent_id" id="cfAgent">
+          <?php if ($isAdminHere): ?>
             <option value="0"><?= $h($t('cal_leave_pool')) ?></option>
-            <?php foreach ($techs as $tu): ?>
-              <option value="<?= (int)$tu['id'] ?>"><?= $h($tu['full_name'] ?: $tu['username']) ?></option>
-            <?php endforeach; ?>
-          </select></label>
-      <?php endif; ?>
+          <?php endif; ?>
+          <?php foreach ($techs as $tu): ?>
+            <option value="<?= (int)$tu['id'] ?>"><?= $h($tu['full_name'] ?: $tu['username']) ?></option>
+          <?php endforeach; ?>
+        </select>
+        <?php if (!$isAdminHere): ?>
+          <small class="muted"><?= $h($t('cal_handover_h')) ?></small>
+        <?php endif; ?>
+      </label>
       <label class="fld"><span><?= $h($t('f_title')) ?></span><input name="title" id="cfTitle2"></label>
       <label class="fld"><span><?= $h($t('iv_notes')) ?></span><textarea name="notes" id="cfNotes" rows="2"></textarea></label>
       <p class="muted small" id="cfInstallLink" style="display:none"></p>
@@ -530,6 +541,7 @@ $evChip = function (array $r, bool $abs = false) use ($h, $lang, $backQs) {
 <?php endif; ?>
 
 <script>
+var CAL_IS_OFFICE = <?= $isAdminHere ? 'true' : 'false' ?>;
 // ---- the customer type-ahead ------------------------------------------------
 let acTimer = null, acRows = [], acSel = -1;
 function acType() {
@@ -588,6 +600,9 @@ function calNew(at) {
   document.getElementById('cfMin').value = 60;
   document.getElementById('calTitle').textContent = <?= json_encode($t('cal_new')) ?>;
   document.getElementById('cfInstallLink').style.display = 'none';
+  // A new booking is your own; only the office chooses an owner up front.
+  var agRow = document.getElementById('cfAgentRow');
+  if (agRow && !CAL_IS_OFFICE) agRow.style.display = 'none';
   calTypeHint();
   document.getElementById('calBg').classList.add('show');
   document.getElementById('cfSearch').focus();
@@ -607,6 +622,9 @@ function calEdit(d) {
   document.getElementById('cfNotes').value = d.notes || '';
   const ag = document.getElementById('cfAgent');
   if (ag) ag.value = d.agent || 0;
+  // Editing an existing visit: everyone may change who it belongs to.
+  var agRow2 = document.getElementById('cfAgentRow');
+  if (agRow2) agRow2.style.display = '';
   document.getElementById('calTitle').textContent = <?= json_encode($t('cal_edit')) ?>;
   if (d.install) {
     const p = document.getElementById('cfInstallLink');

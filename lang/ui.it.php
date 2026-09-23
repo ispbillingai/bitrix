@@ -1238,6 +1238,8 @@ return [
     'cal_zone'          => 'Zona',
     'cal_all_zones'     => 'Tutte le zone',
     'cal_leave_pool'    => 'Da assegnare (nessun tecnico)',
+    'cal_handover'      => 'Passa a un collega',
+    'cal_handover_h'    => 'Se la giornata è piena, assegna l’intervento a un collega più libero: sparisce dal tuo calendario e compare nel suo, e lo avvisiamo noi.',
     'cal_install_hint'  => 'Con questo tipo viene creato automaticamente il rapporto di installazione, già collegato all’appuntamento.',
     'cal_open_install'  => 'Apri il rapporto di installazione',
     'cal_saved'         => 'Appuntamento salvato. Il cliente è stato avvisato.',
