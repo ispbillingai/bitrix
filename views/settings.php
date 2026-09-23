@@ -168,6 +168,26 @@ $pipelines = \Glue\Crm\Pipelines::all();
     fld($h, 'planning.escalate_max', $t('f_plan_max'), $cfg('planning.escalate_max', 4), $t('f_plan_max_h'));
     ?>
   </div>
+
+  <h3><?= $h($t('f_mt_h')) ?></h3>
+  <label class="fld" style="display:flex;flex-direction:row;align-items:flex-start;gap:10px">
+    <input type="checkbox" name="maintenance.enabled" value="true" style="width:auto;margin-top:3px" <?= (bool)$cfg('maintenance.enabled', false) ? 'checked' : '' ?>>
+    <span style="margin:0"><?= $h($t('f_mt_on')) ?>
+      <small class="muted" style="display:block;margin-top:4px;font-weight:400"><?= $h($t('f_mt_on_h')) ?></small></span>
+  </label>
+  <div class="row">
+    <?php fld($h, 'maintenance.followup_months', $t('f_mt_months'), $cfg('maintenance.followup_months', 3), $t('f_mt_months_h')); ?>
+  </div>
+  <label class="fld" style="display:flex;flex-direction:row;align-items:center;gap:10px">
+    <input type="checkbox" name="maintenance.message_customer" value="true" style="width:auto" <?= (bool)$cfg('maintenance.message_customer', true) ? 'checked' : '' ?>>
+    <span style="margin:0"><?= $h($t('f_mt_msg')) ?></span></label>
+  <label class="fld" style="display:flex;flex-direction:row;align-items:center;gap:10px">
+    <input type="checkbox" name="maintenance.create_task" value="true" style="width:auto" <?= (bool)$cfg('maintenance.create_task', true) ? 'checked' : '' ?>>
+    <span style="margin:0"><?= $h($t('f_mt_task')) ?></span></label>
+  <div class="row">
+    <?php
+    ?>
+  </div>
   <div class="row">
     <?php
     fld($h, 'reminders.sign_before_due_days', $t('f_sign_before'), $list('reminders.sign_before_due_days', [10, 5]), $t('f_sign_before_h'));

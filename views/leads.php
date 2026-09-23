@@ -343,6 +343,19 @@ $focus = $openLeadId > 0;
           <div style="display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center">
             <b style="color:var(--green)">✓ <?= $h($t('lead_cust_h')) ?></b>
             <span><b><?= $h($r['ct_name']) ?></b><?= !empty($r['ct_code']) ? ' · ' . $h($t('cu_code')) . ' ' . $h($r['ct_code']) : '' ?><?= !empty($r['ct_vat']) ? ' · ' . $h($t('f_vat')) . ' ' . $h($r['ct_vat']) : '' ?></span>
+            <?php // What we are to this customer, on the lead itself: whoever is
+                  // working it should know before they pick up the phone whether
+                  // there is a contract behind it or every visit is billable.
+                  $lmt = \Glue\Crm\Maintenance::forContact((int)$r['contact_id']);
+                  $lOnD = $lmt['type'] === \Glue\Crm\Maintenance::ON_DEMAND; ?>
+            <span class="pill" style="color:<?= $lOnD ? 'var(--amber)' : 'var(--green)' ?>"
+                  title="<?= $h($t('mt_h')) ?>">
+              <?= $h($lmt['label'] !== '' ? $lmt['label'] : $t('mt_type_' . strtolower($lmt['type']))) ?>
+              <?php if ($lmt['fee_cents'] !== null): ?>
+                · <?= $h(($lmt['currency'] ?: 'EUR') . ' ' . number_format(((int)$lmt['fee_cents']) / 100, 2, ',', '.')) ?><?php
+                    if ($lmt['period']): ?>/<?= $h($t('mt_per_' . $lmt['period'])) ?><?php endif;
+                  endif; ?>
+            </span>
             <?php if (empty($isAgent)): ?>
               <a class="btn ghost tiny" href="?tab=customers&amp;id=<?= (int)$r['contact_id'] ?>"><?= $h($t('qt_open_customer')) ?></a>
               <?php if (($r['status'] ?? '') === 'open'): ?>

@@ -137,6 +137,17 @@ return [
         'escalate_max'       => 4,       // then stop asking for that day (hard cap 6)
     ],
 
+    // Customers with no periodic maintenance contract ("a chiamata"): three
+    // months after their last visit, invite them to book the next one, and keep
+    // asking every three months until somebody actually goes. OFF by default —
+    // it writes to real customers.
+    'maintenance' => [
+        'enabled'          => false,
+        'followup_months'  => 3,
+        'message_customer' => true,  // WhatsApp + email with a booking link
+        'create_task'      => true,  // and/or a follow-up task for the operator
+    ],
+
     // OPTIONAL Bitrix24 sync — OFF by default. The CRM is fully standalone; enable
     // this only to also mirror new leads/deals into a Bitrix24 portal. Toggle and
     // fill these from Settings → Bitrix24 sync.

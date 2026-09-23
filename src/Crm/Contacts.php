@@ -197,7 +197,9 @@ final class Contacts
         $allowed = ['name', 'first_name', 'last_name', 'company', 'phone', 'phone2', 'email', 'pec', 'lang', 'source', 'assigned_to', 'notes',
                     // customer-registry fields (migration 038, edited from the Customers page)
                     'customer_code', 'vat_number', 'is_customer', 'address', 'city', 'province', 'zip',
-                    'balance', 'contract_expiry', 'gestionale_agent'];
+                    'balance', 'contract_expiry', 'gestionale_agent',
+                    // the maintenance contract the office types in (migration 066)
+                    'maint_type', 'maint_fee_cents', 'maint_period', 'maint_note'];
         $set = [];
         $args = [];
         foreach ($fields as $k => $v) {

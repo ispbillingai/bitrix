@@ -111,6 +111,12 @@ return [
             . "Qui puoi seguire il tuo ordine e firmare il contratto: {link}",
 
         // Recupero password dello STAFF: il link vale {minutes} minuti ed è monouso.
+        // Manutenzione a chiamata: tre mesi dopo l’ultimo intervento.
+        'maintenance_due' =>
+            "Ciao {name}, sono passati circa {months} mesi dall'ultimo intervento di {company} "
+            . "sulla tua attrezzatura. Vuoi fissare una manutenzione? "
+            . "Richiedila qui e ti ricontattiamo per concordare giorno e ora: {link}",
+
         'password_reset' =>
             "Ciao {name}, hai chiesto di reimpostare la password del CRM {company}. "
             . "Apri questo link entro {minutes} minuti e scegli la nuova password: {link} "
@@ -441,6 +447,13 @@ return [
                 . 'seguire il tuo ordine e firmare il contratto.</p>'
                 . '<p><a href="{link}">Apri la mia area clienti</a></p>'
                 . '<p>Oppure incolla questo link nel browser:<br>{link}</p>',
+        ],
+        'maintenance_due' => [
+            'subject' => 'Manutenzione periodica — {company}',
+            'html'    => '<p>Ciao {name},</p><p>Sono passati circa <strong>{months} mesi</strong> '
+                . 'dall\x27ultimo intervento sulla tua attrezzatura.</p>'
+                . '<p><a href="{link}">Richiedi un appuntamento di manutenzione</a></p>'
+                . '<p>Ti ricontattiamo per concordare giorno e ora.</p>',
         ],
         'password_reset' => [
             'subject' => 'Reimposta la tua password — {company}',

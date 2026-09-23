@@ -70,6 +70,98 @@ if ($ov !== null):
   <?php stat_card($h, 'tickets', $t('cu_open_tickets'), (string)$openTickets, $openTickets === 0); ?>
 </div>
 
+<?php // ---- maintenance contract -------------------------------------------
+      // The one panel that answers "what are we to this customer?" — a periodic
+      // contract, or A CHIAMATA, which is an answer and not a blank.
+      $mt   = \Glue\Crm\Maintenance::forContact($custId);
+      $onD  = $mt['type'] === \Glue\Crm\Maintenance::ON_DEMAND;
+      $last = \Glue\Crm\Maintenance::lastServiceAt($custId);
+      $chases = \Glue\Crm\Maintenance::followUps($custId, 3);
+      $mtLabel = $mt['label'] !== '' ? $mt['label'] : $t('mt_type_' . strtolower($mt['type'])); ?>
+<div class="card" style="border-left:3px solid <?= $onD ? 'var(--amber)' : 'var(--green)' ?>">
+  <h3><?= svg('payments') ?> <?= $h($t('mt_h')) ?>
+    <span class="pill" style="color:<?= $onD ? 'var(--amber)' : 'var(--green)' ?>"><?= $h($mtLabel) ?></span>
+  </h3>
+  <dl class="cm-kv">
+    <dt><?= $h($t('mt_type')) ?></dt><dd><b><?= $h($mtLabel) ?></b>
+      <?php if ($mt['source'] !== 'none'): ?>
+        <span class="muted small">· <?= $h($t('mt_src_' . $mt['source'])) ?></span><?php endif; ?></dd>
+
+    <dt><?= $h($t('mt_fee')) ?></dt>
+    <dd><?= $mt['fee_cents'] !== null
+          ? $eurC($mt['fee_cents'], $mt['currency'])
+            . ($mt['period'] ? ' / ' . $h($t('mt_per_' . $mt['period'])) : '')
+          : ($onD ? $h($t('mt_fee_per_visit')) : $dash) ?></dd>
+
+    <?php if (!empty($mt['expires_at'])): ?>
+      <dt><?= $h($t('mt_expires')) ?></dt>
+      <dd><?= $h(date('d/m/Y', strtotime((string)$mt['expires_at']))) ?></dd>
+    <?php endif; ?>
+
+    <dt><?= $h($t('mt_last_service')) ?></dt>
+    <dd><?= $last ? $h(date('d/m/Y', strtotime($last))) : '<span class="muted">' . $h($t('mt_never')) . '</span>' ?></dd>
+
+    <?php if ($onD): ?>
+      <dt><?= $h($t('mt_next_chase')) ?></dt>
+      <dd><?php
+        // The clock runs from the later of the last visit and the last chase —
+        // the same rule the cron uses, so the record cannot disagree with it.
+        $anchor = $last;
+        if ($chases && (string)$chases[0]['sent_at'] > (string)$anchor) { $anchor = (string)$chases[0]['sent_at']; }
+        if (!$anchor) {
+          echo '<span class="muted">' . $h($t('mt_no_anchor')) . '</span>';
+        } else {
+          $next = strtotime($anchor . ' +' . \Glue\Crm\Maintenance::months() . ' months');
+          echo $h(date('d/m/Y', $next)) . ($next <= time()
+              ? ' <span class="pill" style="color:var(--amber)">' . $h($t('mt_due_now')) . '</span>' : '');
+        } ?></dd>
+    <?php endif; ?>
+    <?php if (!empty($mt['note'])): ?>
+      <dt><?= $h($t('f_notes')) ?></dt><dd><?= $h($mt['note']) ?></dd>
+    <?php endif; ?>
+  </dl>
+
+  <?php if ($chases): ?>
+    <p class="muted small" style="margin:8px 0 0"><?= $h($t('mt_chases')) ?>:
+      <?php foreach ($chases as $ch): ?>
+        <?= $h(date('d/m/Y', strtotime((string)$ch['sent_at']))) ?><?= (int)$ch['messaged'] ? ' 💬' : '' ?><?= !empty($ch['task_id']) ? ' 📋' : '' ?>&nbsp;
+      <?php endforeach; ?></p>
+  <?php endif; ?>
+
+  <?php // The office's own entry, for a contract the CRM cannot derive. ?>
+  <details class="drawer" style="margin-top:10px">
+    <summary class="btn ghost tiny"><?= $h($t('mt_edit')) ?></summary>
+    <form method="post" class="card" style="margin-top:10px">
+      <input type="hidden" name="do" value="maint_save">
+      <input type="hidden" name="id" value="<?= (int)$custId ?>">
+      <div class="row">
+        <label class="fld"><span><?= $h($t('mt_type')) ?></span>
+          <input name="maint_type" value="<?= $h($c['maint_type'] ?? '') ?>"
+                 placeholder="<?= $h($t('mt_type_ph')) ?>" list="mtTypes">
+          <datalist id="mtTypes">
+            <option value="ON_DEMAND"><option value="Contratto di manutenzione">
+            <option value="Contratto Helpdesk"><option value="Full service">
+          </datalist></label>
+        <label class="fld"><span><?= $h($t('mt_fee_eur')) ?></span>
+          <input name="maint_fee" type="number" step="0.01" min="0"
+                 value="<?= $c['maint_fee_cents'] !== null ? number_format(((int)$c['maint_fee_cents']) / 100, 2, '.', '') : '' ?>"></label>
+        <label class="fld"><span><?= $h($t('mt_period')) ?></span>
+          <select name="maint_period">
+            <option value=""><?= $h($t('unassigned')) ?></option>
+            <?php foreach (['monthly', 'quarterly', 'yearly'] as $pp): ?>
+              <option value="<?= $pp ?>" <?= ($c['maint_period'] ?? '') === $pp ? 'selected' : '' ?>>
+                <?= $h($t('mt_per_' . $pp)) ?></option>
+            <?php endforeach; ?>
+          </select></label>
+      </div>
+      <label class="fld"><span><?= $h($t('f_notes')) ?></span>
+        <input name="maint_note" value="<?= $h($c['maint_note'] ?? '') ?>"></label>
+      <p class="muted small" style="margin:0 0 10px"><?= $h($t('mt_edit_h')) ?></p>
+      <button class="btn tiny"><?= $h($t('save')) ?></button>
+    </form>
+  </details>
+</div>
+
 <div class="cu-cols">
 <div class="cu-main">
 

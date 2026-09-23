@@ -109,6 +109,12 @@ return [
             . "Here you can follow your order and sign your contract: {link}",
 
         // STAFF password recovery: the link is good for {minutes} minutes, once.
+        // On-demand maintenance: three months after the last visit.
+        'maintenance_due' =>
+            "Hi {name}, it has been about {months} months since {company} last serviced "
+            . "your equipment. Would you like to book a maintenance visit? "
+            . "Ask for one here and we will call you to agree a day and time: {link}",
+
         'password_reset' =>
             "Hi {name}, you asked to reset your {company} CRM password. "
             . "Open this link within {minutes} minutes and choose a new one: {link} "
@@ -437,6 +443,13 @@ return [
                 . 'follow your order and sign your contract.</p>'
                 . '<p><a href="{link}">Open my customer area</a></p>'
                 . '<p>Or paste this link into your browser:<br>{link}</p>',
+        ],
+        'maintenance_due' => [
+            'subject' => 'Scheduled maintenance — {company}',
+            'html'    => '<p>Hi {name},</p><p>It has been about <strong>{months} months</strong> '
+                . 'since your equipment was last serviced.</p>'
+                . '<p><a href="{link}">Ask for a maintenance visit</a></p>'
+                . '<p>We will call you to agree a day and time.</p>',
         ],
         'password_reset' => [
             'subject' => 'Reset your password — {company}',

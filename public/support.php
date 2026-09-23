@@ -110,7 +110,13 @@ function support_contact_by_vat(string $vat): ?array
 
 $step   = 'form';   // form | choice | pay | done
 $error  = null;
+// ?vat_number=… prefills the first field. The quarterly maintenance message
+// sends the customer here with their own VAT already in the link, so they are
+// not asked to look it up before they can ask for a visit.
 $old    = [];
+if (!empty($_GET['vat_number'])) {
+    $old['vat_number'] = mb_substr(trim((string)$_GET['vat_number']), 0, 32);
+}
 $okKey  = 'ok_priority';
 $payUrl = '';
 $offer  = AssistRequests::offer();

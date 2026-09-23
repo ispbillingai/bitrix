@@ -689,6 +689,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'reminders.intervention_day_before_at',
                     'planning.prompt_at', 'planning.escalate_from',
                     'planning.escalate_every_min', 'planning.escalate_max',
+                    'maintenance.followup_months',
                     'reminders.sign_before_due_days', 'reminders.offer_read_days',
                     'textmebot.api_key', 'mail.from_name', 'mail.from_email',
                     'mail.smtp.host', 'mail.smtp.port', 'mail.smtp.user', 'mail.smtp.pass', 'mail.smtp.secure',
@@ -734,6 +735,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pairs['ai.read_only'] = $post('ai.read_only') !== null ? 'true' : 'false';
                 $pairs['leads_mailbox.enabled'] = $post('leads_mailbox.enabled') !== null ? 'true' : 'false';
                 $pairs['planning.enabled'] = $post('planning.enabled') !== null ? 'true' : 'false';
+                $pairs['maintenance.enabled']         = $post('maintenance.enabled') !== null ? 'true' : 'false';
+                $pairs['maintenance.message_customer'] = $post('maintenance.message_customer') !== null ? 'true' : 'false';
+                $pairs['maintenance.create_task']     = $post('maintenance.create_task') !== null ? 'true' : 'false';
                 $pairs['smallpay.enabled'] = $post('smallpay.enabled') !== null ? 'true' : 'false';
                 $pairs['smallpay.modify_installments'] = $post('smallpay.modify_installments') !== null ? 'true' : 'false';
                 $pairs['smallpay.notify_customer_on_failure'] = $post('smallpay.notify_customer_on_failure') !== null ? 'true' : 'false';
@@ -1814,6 +1818,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
                 header('Location: ?tab=calendar');
                 exit;
+
+            // ---------- maintenance contract ----------
+            case 'maint_save': { // the office types in a contract the CRM cannot derive
+                $cid = (int)($_POST['id'] ?? 0);
+                $fee = trim((string)($_POST['maint_fee'] ?? ''));
+                Contacts::update($cid, [
+                    'maint_type'      => trim((string)($_POST['maint_type'] ?? '')) ?: null,
+                    // Money is stored in cents, like every other amount here.
+                    'maint_fee_cents' => $fee === '' ? null : (int)round(((float)str_replace(',', '.', $fee)) * 100),
+                    'maint_period'    => in_array($_POST['maint_period'] ?? '', ['monthly','quarterly','yearly'], true)
+                        ? (string)$_POST['maint_period'] : null,
+                    'maint_note'      => trim((string)($_POST['maint_note'] ?? '')) ?: null,
+                ]);
+                $_SESSION['dash_flash'] = [$t('mt_saved'), 'ok'];
+                header('Location: ?tab=customers&id=' . $cid);
+                exit;
+            }
 
             // ---------- contacts ----------
             case 'contact_create':

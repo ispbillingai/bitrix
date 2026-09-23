@@ -14,6 +14,7 @@ require __DIR__ . '/../src/Bootstrap.php';
 use Glue\Bootstrap;
 use Glue\Campaign\Sender;
 use Glue\Crm\DayPlanner;
+use Glue\Crm\Maintenance;
 use Glue\Event\Log;
 use Glue\Mail\LeadMailImporter;
 use Glue\Pay\Contracts as PayContracts;
@@ -65,6 +66,10 @@ try {
     // gateway's pace rather than in a sleeping loop here.
     $plan       = DayPlanner::runPrompt();
     $planChased = DayPlanner::runEscalation();
+    // Customers with no periodic contract, three months after their last
+    // visit: ask them to book the next one. Off until switched on, capped per
+    // pass, and it only QUEUES — runDue() above delivers on the next tick.
+    $maint = Maintenance::runFollowUps();
 
     Log::write('scheduler', 'tick', null, null, [
         'reminders' => $reminders,
@@ -73,14 +78,16 @@ try {
       + ($chase !== null ? ['chase' => $chase] : [])
       + ($mail !== null ? ['mail' => $mail] : [])
       + ($pay !== null ? ['pay' => $pay] : [])
-      + ($plan || $planChased ? ['planning' => ['asked' => $plan, 'chased' => $planChased]] : []));
+      + ($plan || $planChased ? ['planning' => ['asked' => $plan, 'chased' => $planChased]] : [])
+      + ($maint ? ['maintenance' => $maint] : []));
     fwrite(STDOUT, "[" . date('c') . "] reminders=" . json_encode($reminders)
         . " campaigns=" . json_encode($campaigns)
         . ($sibill !== null ? " sibill=" . json_encode($sibill) : "")
         . ($chase !== null ? " chase=" . json_encode($chase) : "")
         . ($mail !== null ? " mail=" . json_encode($mail) : "")
         . ($pay !== null ? " pay=" . json_encode($pay) : "")
-        . ($plan || $planChased ? " planning=" . json_encode(['asked' => $plan, 'chased' => $planChased]) : "") . "\n");
+        . ($plan || $planChased ? " planning=" . json_encode(['asked' => $plan, 'chased' => $planChased]) : "")
+        . ($maint ? " maintenance=" . $maint : "") . "\n");
 } catch (Throwable $e) {
     fwrite(STDERR, "[" . date('c') . "] scheduler error: " . $e->getMessage() . "\n");
     exit(1);
