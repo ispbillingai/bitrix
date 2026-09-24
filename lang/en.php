@@ -121,6 +121,18 @@ return [
             "💬 Hi {name}, {by} has messaged you on {company}{?chat} in the group '{chat}'{/chat}. "
             . "Sign in to the CRM to read it and reply: {link}",
 
+        // The technical group verdict after a signed survey.
+        'inspection_opinion' =>
+            "Hi {name}, we have reviewed the survey carried out on your system.
+
+"
+            . "Rating: {stars}  ({rating})
+
+{opinion}
+
+"
+            . "We are here for any questions. — {company}",
+
         'password_reset' =>
             "Hi {name}, you asked to reset your {company} CRM password. "
             . "Open this link within {minutes} minutes and choose a new one: {link} "
@@ -462,6 +474,14 @@ return [
             'html'    => '<p>Hi {name},</p><p><strong>{by}</strong> has messaged you in the internal chat'
                 . '{?chat}, in the group <strong>{chat}</strong>{/chat}.</p>'
                 . '<p><a href="{link}">Open the chat in the CRM</a></p>',
+        ],
+        'inspection_opinion' => [
+            'subject' => 'Opinion on the state of your system — {company}',
+            'html'    => '<p>Hi {name},</p><p>We have reviewed the survey carried out on your system.</p>'
+                . '<p style="font-size:20px;letter-spacing:2px">{stars}</p>'
+                . '<p><strong>Rating: {rating}</strong></p>'
+                . '<p style="white-space:pre-wrap">{opinion}</p>'
+                . '<p>We are here for any questions.</p>',
         ],
         'password_reset' => [
             'subject' => 'Reset your password — {company}',

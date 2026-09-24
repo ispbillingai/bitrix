@@ -31,6 +31,7 @@ use Glue\Crm\Tasks;
 use Glue\Crm\Tickets;
 use Glue\Db;
 use Glue\Event\Log;
+use Glue\Inspect\Inspections;
 use Glue\Install\Reports as InstallReports;
 use Glue\Notify\Notifier;
 use Glue\Notify\TextMeBot;
@@ -164,15 +165,19 @@ if ($filterAgentId !== null) {
 // brought in — entered in their own area or through their referral link.
 $filterPartnerId = (!$isAgent && !empty($_GET['partner'])) ? (int)$_GET['partner'] : null;
 $agentViews   = ['overview', 'calendar', 'leads', 'deals', 'quotes', 'articles', 'pricelists', 'appointments', 'tasks', 'messages', 'tickets', 'team', 'documents', 'instructions', 'my_commissions'];
-$techViews    = ['devices', 'network_areas', 'installations', 'support', 'calendar', 'tickets', 'team'];
+$techViews    = ['devices', 'network_areas', 'installations', 'inspections', 'support', 'calendar', 'tickets', 'team'];
 // The installation-report flow: open a draft, fill it in, attach the photos,
 // send it for signature. Deleting a report stays admin-only.
 $installActions = ['install_create', 'install_save', 'install_photos', 'install_photo_del', 'install_send'];
+// Surveys: the same shape as an installation report, plus the opinion the
+// technical group writes once the customer has signed it.
+$inspectActions = ['insp_create', 'insp_save', 'insp_photos', 'insp_photo_del', 'insp_send',
+                   'insp_claim', 'insp_opinion', 'insp_opinion_send'];
 // Technicians' POST whitelist: the installation-report flow, taking charge of
 // assistance requests, and replying on the tickets they claimed.
 // The team chat and the assistant: every role has them; membership is checked per chat.
 $teamActions  = ['team_new', 'team_send', 'team_add', 'team_leave', 'team_rename', 'ai_ask', 'ai_confirm', 'ai_cancel'];
-$techActions  = array_merge($installActions,
+$techActions  = array_merge($installActions, $inspectActions,
     ['assist_claim', 'ticket_reply', 'ticket_status',
      // booking, moving and closing the visit they took charge of, and the
      // address their own phone subscribes to
@@ -540,6 +545,22 @@ if (isset($_GET['ipf'])) {
     exit('Not found');
 }
 
+// ---- survey photo (?ispf=<photo_id>) ----
+// Same door as the installation report's. A technician sees their own survey's
+// photos, the one they took in charge, and any survey still waiting for an
+// opinion — the queue is the whole group's until somebody claims it.
+if (isset($_GET['ispf'])) {
+    $isp = Inspections::photoFile((int)$_GET['ispf']);
+    if ($isp && ((!$isAgent && !$isTech)
+        || (int)$isp['created_by'] === (int)$uid
+        || (int)($isp['claimed_by'] ?? 0) === (int)$uid
+        || (string)$isp['status'] === 'signed')) {
+        Inspections::streamPhoto($isp);
+    }
+    http_response_code(404);
+    exit('Not found');
+}
+
 // ---- leads export (?export=leads&m=YYYY-MM[&src=cashmatic]) — admin only ----
 // Excel-compatible CSV of the leads received in a month (optionally one source),
 // including each lead's full processing trail (stage moves + agent notes).
@@ -654,6 +675,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                      'doc_' => ['sign_documents', 'created_by'],
                      'quote_' => ['quote_requests', 'requested_by'],
                      'install_' => ['install_reports', 'created_by']];
+        // insp_ is NOT listed: a survey waiting for an opinion belongs to
+        // nobody until a technician claims it, which this guard would read as
+        // owner 0 and deny. Inspections::claim is atomic and each opinion
+        // action checks the claim itself.
         $needsOwner = null;
         foreach ($ownerCol as $prefix => $tc) {
             if (str_starts_with($do, $prefix)) { $needsOwner = $tc; break; }
@@ -1640,6 +1665,99 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: ?tab=installations&id=' . (int)$_POST['id']);
                 exit;
             }
+            // ---------- surveys (sopralluoghi) ----------
+            case 'insp_create': {
+                $ispId = Inspections::create((int)($_POST['contact_id'] ?? 0), $uid);
+                header('Location: ?tab=inspections&id=' . $ispId);
+                exit;
+            }
+            case 'insp_save': {
+                Inspections::update((int)$_POST['id'], $_POST);
+                $_SESSION['dash_flash'] = [$t('isp_saved'), 'ok'];
+                header('Location: ?tab=inspections&id=' . (int)$_POST['id']);
+                exit;
+            }
+            case 'insp_photos': {
+                $ispRes = Inspections::addPhotos((int)$_POST['id'], $_FILES['photos'] ?? null);
+                if (in_array('not_draft', $ispRes['errors'], true)) {
+                    $_SESSION['dash_flash'] = [$t('ir_locked'), 'err'];
+                } elseif ($ispRes['errors']) {
+                    $_SESSION['dash_flash'] = [sprintf($t('ir_photos_added'), $ispRes['saved'])
+                        . ' · ' . count($ispRes['errors']) . ' ' . $t('ir_photos_failed'), 'warn'];
+                } else {
+                    $_SESSION['dash_flash'] = [sprintf($t('ir_photos_added'), $ispRes['saved']),
+                        $ispRes['saved'] > 0 ? 'ok' : 'warn'];
+                }
+                header('Location: ?tab=inspections&id=' . (int)$_POST['id']);
+                exit;
+            }
+            case 'insp_photo_del': {
+                Inspections::deletePhoto((int)$_POST['id'], (int)($_POST['photo_id'] ?? 0));
+                header('Location: ?tab=inspections&id=' . (int)$_POST['id']);
+                exit;
+            }
+            case 'insp_send': {
+                $ispRes = Inspections::send((int)$_POST['id'], $uid);
+                $_SESSION['dash_flash'] = $ispRes['ok']
+                    ? [$t('isp_sent'), 'ok']
+                    : [match ($ispRes['error']) {
+                        'no_channel' => $t('ir_no_channel'),
+                        'not_draft'  => $t('ir_locked'),
+                        default      => $t('ir_send_failed') . ' (' . (string)$ispRes['error'] . ')',
+                      }, 'err'];
+                header('Location: ?tab=inspections&id=' . (int)$_POST['id']);
+                exit;
+            }
+            case 'insp_claim': { // a technician takes the opinion on — first press wins
+                if (!$uid) {
+                    $_SESSION['dash_flash'] = [$t('as_claim_needs_user'), 'warn'];
+                } else {
+                    $ok = Inspections::claim((int)$_POST['id'], (int)$uid);
+                    $_SESSION['dash_flash'] = [$ok ? $t('isp_claimed') : $t('isp_claim_lost'), $ok ? 'ok' : 'warn'];
+                }
+                header('Location: ?tab=inspections&id=' . (int)$_POST['id']);
+                exit;
+            }
+            case 'insp_opinion': { // save the opinion without sending it yet
+                $ispId = (int)$_POST['id'];
+                // Only whoever took it in charge writes it; the office may always
+                // step in, because somebody has to when a technician is away.
+                $ispRow = Inspections::find($ispId);
+                if ($isTech && $ispRow && (int)($ispRow['claimed_by'] ?? 0) !== (int)$uid) {
+                    $_SESSION['dash_flash'] = [$t('isp_not_yours'), 'err'];
+                } else {
+                    Inspections::saveOpinion($ispId, (string)($_POST['opinion_text'] ?? ''),
+                        (int)($_POST['opinion_stars'] ?? 0), $uid);
+                    $_SESSION['dash_flash'] = [$t('isp_opinion_saved'), 'ok'];
+                }
+                header('Location: ?tab=inspections&id=' . $ispId);
+                exit;
+            }
+            case 'insp_opinion_send': {
+                $ispId = (int)$_POST['id'];
+                $ispRow = Inspections::find($ispId);
+                if ($isTech && $ispRow && (int)($ispRow['claimed_by'] ?? 0) !== (int)$uid) {
+                    $_SESSION['dash_flash'] = [$t('isp_not_yours'), 'err'];
+                    header('Location: ?tab=inspections&id=' . $ispId);
+                    exit;
+                }
+                // Save whatever is in the boxes first, so pressing "send" never
+                // posts an older opinion than the one on screen.
+                Inspections::saveOpinion($ispId, (string)($_POST['opinion_text'] ?? ''),
+                    (int)($_POST['opinion_stars'] ?? 0), $uid);
+                $ispRes = Inspections::sendOpinion($ispId, $uid);
+                $_SESSION['dash_flash'] = $ispRes['ok']
+                    ? [$t('isp_opinion_sent'), 'ok']
+                    : [match ($ispRes['error']) {
+                        'no_text'    => $t('isp_err_text'),
+                        'no_stars'   => $t('isp_err_stars'),
+                        'no_channel' => $t('ir_no_channel'),
+                        default      => $t('isp_err_not_ready'),
+                      }, 'err'];
+                header('Location: ?tab=inspections&id=' . $ispId);
+                exit;
+            }
+
             case 'install_delete': // admin only (not in the tech/agent whitelists)
                 $ok = InstallReports::delete((int)$_POST['id'], $uid);
                 $_SESSION['dash_flash'] = [$ok ? $t('ir_deleted') : $t('not_allowed'), $ok ? 'ok' : 'err'];
@@ -2890,7 +3008,7 @@ $agents = Auth::agents();
 $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_format((float)$n, 0);
 
 $views = ['overview', 'calendar', 'leads', 'deals', 'quotes', 'customers', 'articles', 'pricelists', 'contacts', 'appointments', 'tasks', 'tickets', 'team', 'documents',
-          'installations', 'support',
+          'installations', 'inspections', 'support',
           'invoices', 'payments', 'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents',
           'partners', 'commissions', 'my_commissions', 'finance', 'devices', 'network_areas', 'settings', 'instructions'];
 $view = in_array($tab, $views, true) ? $tab : 'overview';
@@ -2994,7 +3112,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
         'quotes' => 'nav_quotes',
         'customers' => 'nav_customers', 'articles' => 'nav_articles', 'pricelists' => 'nav_pricelists',
         'contacts' => 'nav_contacts', 'appointments' => 'nav_appointments', 'calendar' => 'nav_calendar', 'tasks' => 'nav_tasks',
-        'tickets' => 'nav_tickets', 'team' => 'nav_team', 'documents' => 'nav_documents', 'installations' => 'nav_installations',
+        'tickets' => 'nav_tickets', 'team' => 'nav_team', 'documents' => 'nav_documents', 'installations' => 'nav_installations', 'inspections' => 'nav_inspections',
         'support' => 'nav_support',
         'invoices' => 'nav_invoices',
         'payments' => 'nav_payments',
@@ -3009,7 +3127,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
             $agentInstalls ? ['installations'] : []
         )));
     } elseif ($isTech) { // technical-area users: devices, install reports, support queue, own tickets
-        $nav = array_intersect_key($nav, array_flip(['devices', 'installations', 'support', 'calendar', 'tickets', 'team']));
+        $nav = array_intersect_key($nav, array_flip(['devices', 'installations', 'inspections', 'support', 'calendar', 'tickets', 'team']));
     } else { // the office files statements; it is not paid by them
         unset($nav['my_commissions']);
         // Amministrazione: the same menu as the Administrator, without the four

@@ -123,6 +123,18 @@ return [
             "💬 Ciao {name}, {by} ti ha scritto su {company}{?chat} nel gruppo «{chat}»{/chat}. "
             . "Accedi al CRM per leggere e rispondere: {link}",
 
+        // Il parere del gruppo tecnico dopo un sopralluogo firmato.
+        'inspection_opinion' =>
+            "Ciao {name}, abbiamo esaminato il sopralluogo effettuato sul tuo impianto.
+
+"
+            . "Valutazione: {stars}  ({rating})
+
+{opinion}
+
+"
+            . "Siamo a disposizione per qualsiasi chiarimento. — {company}",
+
         'password_reset' =>
             "Ciao {name}, hai chiesto di reimpostare la password del CRM {company}. "
             . "Apri questo link entro {minutes} minuti e scegli la nuova password: {link} "
@@ -466,6 +478,14 @@ return [
             'html'    => '<p>Ciao {name},</p><p><strong>{by}</strong> ti ha scritto nella chat interna'
                 . '{?chat}, nel gruppo <strong>{chat}</strong>{/chat}.</p>'
                 . '<p><a href="{link}">Apri la chat nel CRM</a></p>',
+        ],
+        'inspection_opinion' => [
+            'subject' => 'Parere sullo stato del tuo impianto — {company}',
+            'html'    => '<p>Ciao {name},</p><p>Abbiamo esaminato il sopralluogo effettuato sul tuo impianto.</p>'
+                . '<p style="font-size:20px;letter-spacing:2px">{stars}</p>'
+                . '<p><strong>Valutazione: {rating}</strong></p>'
+                . '<p style="white-space:pre-wrap">{opinion}</p>'
+                . '<p>Siamo a disposizione per qualsiasi chiarimento.</p>',
         ],
         'password_reset' => [
             'subject' => 'Reimposta la tua password — {company}',

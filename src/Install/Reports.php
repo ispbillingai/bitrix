@@ -438,6 +438,34 @@ final class Reports
 
     // ---- internals -------------------------------------------------------------------
 
+    /**
+     * Store a multi-file upload into $dir, normalising phone photos the same way
+     * an installation report's are.
+     *
+     * Public because the survey reports (Inspect\Inspections) take the same
+     * pictures with the same phones and hit the same problems — 5 MB HEIC
+     * refugees, portrait shots lying on their side. Duplicating the GD handling
+     * would mean fixing every one of those twice.
+     *
+     * @return array{saved:array<int,array{path:string,name:string,bytes:int}>, errors:array<int,string>}
+     */
+    public static function storeUploads(?array $files, string $dir): array
+    {
+        $out = ['saved' => [], 'errors' => []];
+        foreach (self::filesList($files) as $f) {
+            $err = null;
+            $stored = self::storePhoto($f, $err, $dir);
+            if ($stored === null) {
+                if ($err !== null) {
+                    $out['errors'][] = $err;
+                }
+                continue;
+            }
+            $out['saved'][] = $stored;
+        }
+        return $out;
+    }
+
     /** Flatten PHP's multi-file $_FILES shape into one array per file. */
     private static function filesList(?array $files): array
     {
@@ -464,7 +492,7 @@ final class Reports
     }
 
     /** @return array{path:string, name:string, bytes:int}|null */
-    private static function storePhoto(array $f, ?string &$err): ?array
+    private static function storePhoto(array $f, ?string &$err, ?string $dir = null): ?array
     {
         $err = null;
         if ((int)$f['error'] !== UPLOAD_ERR_OK) {
@@ -491,7 +519,7 @@ final class Reports
             return null;
         }
 
-        $dir = self::uploadDir();
+        $dir = $dir ?? self::uploadDir();
         $normalized = self::normalizeJpeg($tmp, $info);
         if ($normalized !== null) {
             $stored = bin2hex(random_bytes(16)) . '.jpg';

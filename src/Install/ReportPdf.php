@@ -12,21 +12,21 @@ use Glue\Sign\Pdf;
  * the photos. Built on Sign\Pdf, so the bytes are fully ours and the signing
  * flow can seal them without a conversion step in between.
  */
-final class ReportPdf
+class ReportPdf
 {
-    private const M      = 48.0;                 // page margin
-    private const LABEL_W = 168.0;               // label column
-    private const FOOT   = 40.0;                 // keep-clear at the page bottom
+    protected const M      = 48.0;                 // page margin
+    protected const LABEL_W = 168.0;               // label column
+    protected const FOOT   = 40.0;                 // keep-clear at the page bottom
     /** Photo cell: two per row, capped height, aspect kept. */
-    private const CELL_GAP  = 10.0;
-    private const CELL_MAX_H = 190.0;
+    protected const CELL_GAP  = 10.0;
+    protected const CELL_MAX_H = 190.0;
 
-    private Pdf $pdf;
-    private float $y = self::M;
+    protected Pdf $pdf;
+    protected float $y = self::M;
     /** @var array<string,string> */
-    private array $L;
+    protected array $L;
 
-    private function __construct(string $title, string $lang)
+    protected function __construct(string $title, string $lang)
     {
         $it = [
             'title'      => 'RAPPORTO DI INSTALLAZIONE',
@@ -182,7 +182,7 @@ final class ReportPdf
     // ---- layout helpers --------------------------------------------------------------
 
     /** Label left, wrapped value right, hairline underneath — skipped when empty. */
-    private function row(string $label, string $value): void
+    protected function row(string $label, string $value): void
     {
         $value = trim($value);
         if ($value === '') {
@@ -205,7 +205,7 @@ final class ReportPdf
     }
 
     /** A titled grid of photos, two per row; unembeddable files listed by name. */
-    private function photoSection(string $title, array $photos): void
+    protected function photoSection(string $title, array $photos): void
     {
         if ($photos === []) {
             return;
@@ -265,7 +265,7 @@ final class ReportPdf
     }
 
     /** Wrapped text that survives page breaks (Pdf::paragraph doesn't paginate). */
-    private function paragraphPaged(string $s, float $x, float $w, float $size, array $rgb = [0, 0, 0]): float
+    protected function paragraphPaged(string $s, float $x, float $w, float $size, array $rgb = [0, 0, 0]): float
     {
         $lead = $size * 1.35;
         foreach (Pdf::wrap($s, $w, Pdf::FONT_REGULAR, $size) as $line) {
@@ -276,7 +276,7 @@ final class ReportPdf
         return $this->y;
     }
 
-    private function ensure(float $need): void
+    protected function ensure(float $need): void
     {
         if ($this->y + $need > Pdf::A4_H - self::FOOT) {
             $this->pdf->addPage();

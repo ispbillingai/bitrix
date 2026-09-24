@@ -542,6 +542,20 @@ final class Documents
                 'dedupe_key'     => 'doc_signed_staff:' . $id,
             ]);
         }
+
+        // A survey is not finished when it is signed — it becomes a question for
+        // the technical group. A no-op for every other document.
+        //
+        // Guarded, because sealing is the legally significant act: a fault in a
+        // downstream module must never leave a customer having signed a document
+        // that the CRM then failed to record. The survey can be picked up by
+        // hand from its sign document's status; an unsealed signature cannot be
+        // recovered at all.
+        try {
+            \Glue\Inspect\Inspections::onSigned($id);
+        } catch (\Throwable $e) {
+            Log::write('sign', 'inspection_hook_failed', 'sign_document', $id, ['error' => $e->getMessage()]);
+        }
     }
 
     /** The customer refuses. A refusal is evidence too, so it is logged in full. */
