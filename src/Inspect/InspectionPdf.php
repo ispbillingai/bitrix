@@ -31,9 +31,9 @@ final class InspectionPdf extends ReportPdf
             'address'  => 'Indirizzo',
             'site'     => 'Luogo del sopralluogo',
             'date'     => 'Data del sopralluogo',
-            'system'   => 'Tipo di impianto',
-            'model'    => 'Modello macchina',
-            'serial'   => 'Numero di serie',
+            'items'    => 'Apparati rilevati',
+            'yes'      => 'presente',
+            'no'       => 'non presente',
             'tech'     => 'Tecnico',
             'findings' => 'Rilievi sullo stato dell\'impianto',
             'works'    => 'Interventi necessari',
@@ -50,9 +50,9 @@ final class InspectionPdf extends ReportPdf
             'address'  => 'Address',
             'site'     => 'Survey location',
             'date'     => 'Survey date',
-            'system'   => 'System type',
-            'model'    => 'Machine model',
-            'serial'   => 'Serial number',
+            'items'    => 'Equipment found',
+            'yes'      => 'present',
+            'no'       => 'not present',
             'tech'     => 'Technician',
             'findings' => 'Findings on the state of the system',
             'works'    => 'Work required',
@@ -69,8 +69,9 @@ final class InspectionPdf extends ReportPdf
      * @param array $r       the survey row
      * @param array $photos  photosWithBytes(): bytes + name per shot
      * @param array $contact the customer row
+     * @param array $items   Inspections::items(): code + present + note, in order
      */
-    public static function build(array $r, array $photos, array $contact, string $lang = 'it'): string
+    public static function build(array $r, array $photos, array $contact, string $lang = 'it', array $items = []): string
     {
         $company = (string)Config::get('app.company_name', 'CRM');
         $b = new self('Rapporto di sopralluogo #' . (int)$r['id'], $lang);
@@ -103,10 +104,24 @@ final class InspectionPdf extends ReportPdf
             $b->row($T['site'], $site);
         }
         $b->row($T['date'], !empty($r['inspected_at']) ? date('d/m/Y H:i', strtotime((string)$r['inspected_at'])) : '');
-        $b->row($T['system'], (string)($r['system_type'] ?? ''));
-        $b->row($T['model'], (string)($r['machine_model'] ?? ''));
-        $b->row($T['serial'], (string)($r['serial_number'] ?? ''));
         $b->row($T['tech'], (string)($r['technician_name'] ?? ''));
+
+        // ---- the checklist ----
+        // Every item is printed, present or not: "non presente" on the page the
+        // customer signs is a finding, and a row silently missing is not.
+        if ($items) {
+            $b->ensure(40);
+            $b->pdf->text(self::M, $b->y + 9, $T['items'], Pdf::FONT_BOLD, 9.5, [0.35, 0.35, 0.4]);
+            $b->y += 16;
+            foreach ($items as $it) {
+                $mark  = $it['present'] ? '[X] ' : '[ ] ';
+                $state = $it['present'] ? $T['yes'] : $T['no'];
+                $note  = trim((string)$it['note']);
+                $b->row($mark . ($b->itemLabel((string)$it['code'])),
+                    $note !== '' ? $state . ' — ' . $note : $state);
+            }
+            $b->y += 6;
+        }
 
         // ---- the body of the survey ----
         foreach (['findings' => 'findings', 'works_needed' => 'works', 'notes' => 'notes'] as $field => $key) {
@@ -123,6 +138,23 @@ final class InspectionPdf extends ReportPdf
         $b->y = $b->paragraphPaged($T['sign_note'], self::M, Pdf::A4_W - 2 * self::M, 8.5, [0.4, 0.4, 0.45]);
 
         return $b->pdf->render();
+    }
+
+    /**
+     * The printed name of a checklist item.
+     *
+     * Kept here rather than read from the UI language file: this PDF is built in
+     * the CUSTOMER's language, which is not the language whoever is looking at
+     * the dashboard chose, and $t() would give theirs.
+     */
+    private function itemLabel(string $code): string
+    {
+        $it = ['RACK' => 'Armadio rack', 'UPS' => 'UPS', 'ROUTER' => 'Router',
+               'SWITCH' => 'Switch', 'AP' => 'Access point'];
+        $en = ['RACK' => 'Rack cabinet', 'UPS' => 'UPS', 'ROUTER' => 'Router',
+               'SWITCH' => 'Switch', 'AP' => 'Access point'];
+        $table = $this->T['title'] === 'SITE SURVEY REPORT' ? $en : $it;
+        return $table[$code] ?? $code;
     }
 
     /** A headed paragraph — the survey is mostly prose, unlike an install sheet. */

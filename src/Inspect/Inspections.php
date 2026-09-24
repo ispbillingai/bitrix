@@ -33,6 +33,17 @@ final class Inspections
     public const STARS_MIN = 1;
     public const STARS_MAX = 5;
 
+    /**
+     * What the technician walks round and ticks off, in the order the sheet
+     * shows them. Each is a yes/no plus a line of description.
+     *
+     * The codes are stored; the labels are translated (isp_it_<lowercase code>
+     * in lang/ui.*.php). Adding a sixth item means one entry here and one label
+     * in each language — no migration, because the answers live in their own
+     * table keyed on the code.
+     */
+    public const ITEMS = ['RACK', 'UPS', 'ROUTER', 'SWITCH', 'AP'];
+
     // ---- lifecycle -------------------------------------------------------------------
 
     /** Open a draft on a customer. */
@@ -56,21 +67,70 @@ final class Inspections
         }
         Db::pdo()->prepare(
             'UPDATE inspections SET
-                inspected_at = ?, system_type = ?, machine_model = ?, serial_number = ?,
-                site_address = ?, findings = ?, works_needed = ?, notes = ?
+                inspected_at = ?, site_address = ?, findings = ?, works_needed = ?, notes = ?
              WHERE id = ?'
         )->execute([
             self::dt($d['inspected_at'] ?? ''),
-            self::s($d['system_type'] ?? '', 120),
-            self::s($d['machine_model'] ?? '', 80),
-            self::s($d['serial_number'] ?? '', 80),
             self::s($d['site_address'] ?? '', 190),
             trim((string)($d['findings'] ?? '')) ?: null,
             trim((string)($d['works_needed'] ?? '')) ?: null,
             trim((string)($d['notes'] ?? '')) ?: null,
             $id,
         ]);
+        self::saveItems($id, $d);
         return true;
+    }
+
+    /**
+     * The checklist: one row per item, written every save.
+     *
+     * A description is kept even when the box is unticked — "non presente, il
+     * cliente ne vuole uno" is exactly the kind of note a survey exists to
+     * carry, and clearing it because the tick is off would throw it away.
+     *
+     * @param array $d the posted form: items[CODE] (tick) and item_note[CODE]
+     */
+    public static function saveItems(int $id, array $d): void
+    {
+        $ticks = (array)($d['items'] ?? []);
+        $notes = (array)($d['item_note'] ?? []);
+        $stmt = Db::pdo()->prepare(
+            'INSERT INTO inspection_items (inspection_id, code, present, note) VALUES (?,?,?,?)
+             ON DUPLICATE KEY UPDATE present = VALUES(present), note = VALUES(note)'
+        );
+        foreach (self::ITEMS as $code) {
+            $stmt->execute([
+                $id,
+                $code,
+                !empty($ticks[$code]) ? 1 : 0,
+                self::s((string)($notes[$code] ?? ''), 190),
+            ]);
+        }
+    }
+
+    /**
+     * The checklist as the sheet and the PDF read it: every item, in order,
+     * whether or not it has been answered yet.
+     *
+     * @return array<int,array{code:string, present:bool, note:string}>
+     */
+    public static function items(int $id): array
+    {
+        $stmt = Db::pdo()->prepare('SELECT code, present, note FROM inspection_items WHERE inspection_id = ?');
+        $stmt->execute([$id]);
+        $have = [];
+        foreach ($stmt->fetchAll() ?: [] as $row) {
+            $have[(string)$row['code']] = $row;
+        }
+        $out = [];
+        foreach (self::ITEMS as $code) {
+            $out[] = [
+                'code'    => $code,
+                'present' => (int)($have[$code]['present'] ?? 0) === 1,
+                'note'    => (string)($have[$code]['note'] ?? ''),
+            ];
+        }
+        return $out;
     }
 
     /**
@@ -96,10 +156,9 @@ final class Inspections
         $r['technician_name'] = $tech;
 
         $lang  = in_array($contact['lang'] ?? '', ['en', 'it'], true) ? (string)$contact['lang'] : 'it';
-        $bytes = InspectionPdf::build($r, self::photosWithBytes($id), $contact, $lang);
+        $bytes = InspectionPdf::build($r, self::photosWithBytes($id), $contact, $lang, self::items($id));
 
-        $title = trim('Rapporto di sopralluogo — ' . (string)$contact['name']
-            . (trim((string)$r['system_type']) !== '' ? ' — ' . trim((string)$r['system_type']) : ''));
+        $title = trim('Rapporto di sopralluogo — ' . (string)$contact['name']);
 
         $res = SignDocs::createFromBytes(
             ['title' => $title, 'contact_id' => (int)$r['contact_id'], 'lang' => $lang],

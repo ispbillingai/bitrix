@@ -40,6 +40,7 @@ if ($r !== null):
     // ======================= one survey =======================
     $contact = \Glue\Crm\Contacts::find((int)$r['contact_id']) ?: [];
     $photos  = Inspections::photos((int)$r['id']);
+    $items   = Inspections::items((int)$r['id']);
     $status  = (string)$r['status'];
     $isDraft = $status === 'draft';
     $mine    = (int)($r['claimed_by'] ?? 0) === (int)$uid;
@@ -59,19 +60,25 @@ if ($r !== null):
     <input type="hidden" name="do" value="insp_save">
     <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
     <h3 style="margin-top:0"><?= svg('installations') ?> <?= $h($t('isp_data')) ?></h3>
-    <div class="row">
-      <label class="fld"><span><?= $h($t('isp_f_when')) ?></span>
-        <input type="datetime-local" name="inspected_at" value="<?= $h($dtLocal($r['inspected_at'])) ?>"></label>
-      <label class="fld"><span><?= $h($t('isp_f_system')) ?></span>
-        <input name="system_type" value="<?= $h($r['system_type'] ?? '') ?>" placeholder="<?= $h($t('isp_f_system_ph')) ?>"></label>
-    </div>
-    <div class="row">
-      <label class="fld"><span><?= $h($t('ir_f_model')) ?></span>
-        <input name="machine_model" value="<?= $h($r['machine_model'] ?? '') ?>" list="isp-models">
-        <datalist id="isp-models"><?php foreach (InstallReports::MODELS as $m): ?><option value="<?= $h($m) ?>"><?php endforeach; ?></datalist></label>
-      <label class="fld"><span><?= $h($t('ir_f_serial')) ?></span>
-        <input name="serial_number" value="<?= $h($r['serial_number'] ?? '') ?>"></label>
-    </div>
+    <label class="fld"><span><?= $h($t('isp_f_when')) ?></span>
+      <input type="datetime-local" name="inspected_at" value="<?= $h($dtLocal($r['inspected_at'])) ?>"></label>
+
+    <?php // The checklist: tick what is on site, describe it beside the tick.
+          // The description is kept either way — "non presente, ne vuole uno"
+          // is exactly what a survey is for. ?>
+    <fieldset class="isp-items">
+      <legend><?= $h($t('isp_items')) ?></legend>
+      <?php foreach ($items as $it): ?>
+        <div class="isp-item">
+          <label class="isp-tick">
+            <input type="checkbox" name="items[<?= $h($it['code']) ?>]" value="1" <?= $it['present'] ? 'checked' : '' ?>>
+            <span><?= $h($t('isp_it_' . strtolower($it['code']))) ?></span>
+          </label>
+          <input name="item_note[<?= $h($it['code']) ?>]" value="<?= $h($it['note']) ?>"
+                 placeholder="<?= $h($t('isp_it_ph')) ?>">
+        </div>
+      <?php endforeach; ?>
+    </fieldset>
     <label class="fld"><span><?= $h($t('isp_f_site')) ?></span>
       <input name="site_address" value="<?= $h($r['site_address'] ?? '') ?>" placeholder="<?= $h($t('isp_f_site_ph')) ?>"></label>
     <label class="fld"><span><?= $h($t('isp_f_findings')) ?></span>
@@ -120,8 +127,11 @@ if ($r !== null):
     <h3 style="margin-top:0"><?= $h($t('isp_data')) ?></h3>
     <dl class="cm-kv">
       <dt><?= $h($t('isp_f_when')) ?></dt><dd><?= $h($dtHuman($r['inspected_at'])) ?></dd>
-      <dt><?= $h($t('isp_f_system')) ?></dt><dd><?= $h($r['system_type'] ?: '—') ?></dd>
-      <dt><?= $h($t('ir_f_model')) ?></dt><dd><?= $h(trim(($r['machine_model'] ?? '') . ' ' . ($r['serial_number'] ?? '')) ?: '—') ?></dd>
+      <dt><?= $h($t('isp_items')) ?></dt>
+      <dd><?php foreach ($items as $it): ?>
+            <div><?= $it['present'] ? '☑' : '☐' ?> <?= $h($t('isp_it_' . strtolower($it['code']))) ?>
+              <?php if ($it['note'] !== ''): ?><span class="muted">— <?= $h($it['note']) ?></span><?php endif; ?></div>
+          <?php endforeach; ?></dd>
       <dt><?= $h($t('isp_f_site')) ?></dt><dd><?= $h($r['site_address'] ?: '—') ?></dd>
       <dt><?= $h($t('ir_f_tech')) ?></dt><dd><?= $h($r['technician_name'] ?: '—') ?></dd>
       <dt><?= $h($t('isp_f_findings')) ?></dt><dd style="white-space:pre-wrap"><?= $h($r['findings'] ?: '—') ?></dd>
@@ -256,7 +266,7 @@ if ($r !== null):
 
 <?php if (!$rows): ?><div class="empty"><?= $h($t('isp_none')) ?></div><?php else: ?>
 <table class="acts-pinned"><thead><tr>
-  <th>#</th><th><?= $h($t('th_customer')) ?></th><th><?= $h($t('isp_f_system')) ?></th>
+  <th>#</th><th><?= $h($t('th_customer')) ?></th><th><?= $h($t('isp_f_site')) ?></th>
   <th><?= $h($t('th_status')) ?></th><th><?= $h($t('isp_stars')) ?></th><th><?= $h($t('th_created')) ?></th><th></th>
 </tr></thead><tbody>
 <?php foreach ($rows as $row): $st = (string)$row['status']; ?>
@@ -264,7 +274,7 @@ if ($r !== null):
     <td class="muted"><?= (int)$row['id'] ?></td>
     <td><b><?= $h($row['customer_name']) ?></b>
       <?php if (!empty($row['company'])): ?><div class="muted small"><?= $h($row['company']) ?></div><?php endif; ?></td>
-    <td class="small"><?= $h($row['system_type'] ?: '—') ?></td>
+    <td class="small"><?= $h($row['site_address'] ?: '—') ?></td>
     <td><span class="pill" style="color:<?= $statusColor[$st] ?? 'var(--muted)' ?>"><?= $h($t('isp_st_' . $st)) ?></span>
       <?php if ($st === 'signed' && empty($row['claimed_by'])): ?>
         <div class="small" style="color:var(--amber)"><?= $h($t('isp_unclaimed_short')) ?></div>
@@ -287,5 +297,12 @@ if ($r !== null):
 .ir-pick-row:hover{border-color:var(--accent);}
 .ir-pick-who{flex:1;min-width:0;}
 .ir-pick-sub{display:block;}
+/* The checklist: a tick and its description on one line, stacking on a phone. */
+.isp-items{border:1px solid var(--line);border-radius:10px;padding:10px 14px 14px;margin:0 0 12px;}
+.isp-items legend{font-size:12px;color:var(--muted);padding:0 6px;}
+.isp-item{display:flex;gap:10px;align-items:center;margin-top:8px;flex-wrap:wrap;}
+.isp-tick{display:flex;align-items:center;gap:7px;min-width:150px;margin:0;cursor:pointer;}
+.isp-tick input{width:auto;margin:0;}
+.isp-item>input[type=text],.isp-item>input:not([type]){flex:1 1 220px;min-width:0;}
 </style>
 <?php endif; ?>
