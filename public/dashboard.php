@@ -1679,7 +1679,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             case 'insp_photos': {
                 $ispRes = Inspections::addPhotos((int)$_POST['id'], $_FILES['photos'] ?? null);
-                if (in_array('not_draft', $ispRes['errors'], true)) {
+                if (in_array('dir_unwritable', $ispRes['errors'], true)) {
+                    $_SESSION['dash_flash'] = [$t('ir_photo_dir'), 'err'];
+                } elseif (in_array('not_draft', $ispRes['errors'], true)) {
                     $_SESSION['dash_flash'] = [$t('ir_locked'), 'err'];
                 } elseif ($ispRes['errors']) {
                     $_SESSION['dash_flash'] = [sprintf($t('ir_photos_added'), $ispRes['saved'])

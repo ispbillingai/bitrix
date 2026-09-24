@@ -452,6 +452,16 @@ final class Reports
     public static function storeUploads(?array $files, string $dir): array
     {
         $out = ['saved' => [], 'errors' => []];
+        // Checked once, and named for what it is. An upload folder created by a
+        // script running as root is owned by root, and Apache then cannot write
+        // into it — every photo fails with a generic "save_failed" that reads
+        // like a broken file rather than a broken permission. That happened to
+        // storage/uploads/inspect on 2026-09-24.
+        if (!is_dir($dir) || !is_writable($dir)) {
+            Log::write('install', 'upload_dir_unwritable', null, null, ['dir' => $dir]);
+            $out['errors'][] = 'dir_unwritable';
+            return $out;
+        }
         foreach (self::filesList($files) as $f) {
             $err = null;
             $stored = self::storePhoto($f, $err, $dir);

@@ -1138,6 +1138,7 @@ return [
     'ir_photo_add'      => 'Upload photos',
     'ir_photo_del_confirm' => 'Delete this photo?',
     'ir_photos_added'   => '%d photos uploaded.',
+    'ir_photo_dir'      => 'The photo folder is not writable by the site, so images cannot be saved. This needs fixing on the server.',
     'ir_photos_failed'  => 'not uploaded (format or size).',
     'ir_send_title'     => 'Send to the customer for signature',
     'ir_send_help'      => 'The report becomes a PDF and the customer receives the signing link by WhatsApp and email. Once sent, the report can no longer be edited.',

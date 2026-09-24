@@ -1138,6 +1138,7 @@ return [
     'ir_photo_add'      => 'Carica foto',
     'ir_photo_del_confirm' => 'Eliminare questa foto?',
     'ir_photos_added'   => '%d foto caricate.',
+    'ir_photo_dir'      => 'La cartella delle foto non è scrivibile dal sito: le immagini non possono essere salvate. Serve un intervento sul server.',
     'ir_photos_failed'  => 'non caricate (formato o dimensione).',
     'ir_send_title'     => 'Invia al cliente per la firma',
     'ir_send_help'      => 'Il rapporto diventa un PDF e il cliente riceve il link di firma via WhatsApp ed email. Dopo l’invio il rapporto non è più modificabile.',
