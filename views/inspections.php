@@ -207,6 +207,31 @@ if ($r !== null):
             <?php endif; ?>
           </dl>
         <?php endif; ?>
+
+        <?php // Did the customer act on it? The link rides in the opinion message;
+              // this is where the answer comes back. ?>
+        <?php if ($status === 'reviewed'): ?>
+          <div style="border-top:1px solid var(--line);margin-top:12px;padding-top:12px">
+            <b>💶 <?= $h($t('isp_offer_h')) ?></b>
+            <?php if (empty($r['offer_requested_at'])): ?>
+              <p class="muted small" style="margin:6px 0 0"><?= $h($t('isp_offer_none')) ?></p>
+              <?php if (!empty($r['offer_token']) && $isAdminHere): ?>
+                <label class="fld" style="margin-top:8px"><span><?= $h($t('isp_offer_link')) ?></span>
+                  <input readonly onclick="this.select()" style="width:100%;font-family:monospace;font-size:12px"
+                         value="<?= $h(Inspections::offerLink((string)$r['offer_token'])) ?>"></label>
+              <?php endif; ?>
+            <?php else: ?>
+              <dl class="cm-kv">
+                <dt><?= $h($t('isp_offer_at')) ?></dt>
+                <dd style="color:var(--green)"><b><?= $h($dtHuman($r['offer_requested_at'])) ?></b></dd>
+                <?php if (!empty($r['offer_note'])): ?>
+                  <dt><?= $h($t('isp_offer_note')) ?></dt>
+                  <dd style="white-space:pre-wrap"><?= $h($r['offer_note']) ?></dd>
+                <?php endif; ?>
+              </dl>
+            <?php endif; ?>
+          </div>
+        <?php endif; ?>
       <?php endif; ?>
     </div>
   <?php endif; ?>

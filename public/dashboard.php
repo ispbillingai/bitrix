@@ -2660,6 +2660,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'phone' => $_POST['phone'] ?? '', 'title' => $_POST['title'] ?? '',
                     // Kept on agents only: techs and admins have Installations anyway.
                     'can_install' => ($_POST['role'] ?? 'agent') === 'agent' && ($_POST['can_install'] ?? '') === '1' ? 1 : 0,
+                    // The verification group is open to every role.
+                    'in_review_group' => ($_POST['in_review_group'] ?? '') === '1' ? 1 : 0,
                 ]);
                 // Send the new user their login details by email + WhatsApp, so the
                 // admin doesn't have to relay the username/password by hand.
@@ -2676,6 +2678,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'full_name' => $_POST['full_name'] ?? '', 'email' => $_POST['email'] ?? '',
                     'phone' => $_POST['phone'] ?? '', 'title' => $_POST['title'] ?? '', 'role' => $_POST['role'] ?? 'agent',
                     'can_install' => ($_POST['role'] ?? 'agent') === 'agent' && ($_POST['can_install'] ?? '') === '1' ? 1 : 0,
+                    // The verification group is open to every role.
+                    'in_review_group' => ($_POST['in_review_group'] ?? '') === '1' ? 1 : 0,
                 ]);
                 $flash = $t('saved');
                 $tab = 'agents';

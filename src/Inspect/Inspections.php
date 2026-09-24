@@ -288,6 +288,15 @@ final class Inspections
         $channel = $phone !== '' && $email !== '' ? 'both' : ($phone !== '' ? 'whatsapp' : 'email');
         $lang = Templates::lang($contact['lang'] ?? null);
 
+        // The customer reads what the system needs; this is how they say yes.
+        // Minted here and not at survey time: a survey with no opinion has
+        // nothing to quote for.
+        $token = (string)($r['offer_token'] ?? '');
+        if ($token === '') {
+            $token = bin2hex(random_bytes(24));
+            Db::pdo()->prepare('UPDATE inspections SET offer_token = ? WHERE id = ?')->execute([$token, $id]);
+        }
+
         (new Scheduler())->enqueue([
             'entity_type'    => 'contact',
             'entity_id'      => (int)$r['contact_id'],
@@ -301,6 +310,7 @@ final class Inspections
                 'rating'  => $stars . '/' . self::STARS_MAX,
                 'opinion' => $text,
                 'id'      => (string)$id,
+                'link'    => self::offerLink($token),
             ],
             'dedupe_key'     => 'inspection_opinion:' . $id,
         ]);
@@ -314,6 +324,97 @@ final class Inspections
         Log::write('inspect', 'opinion_sent', 'inspection', $id,
             ['stars' => $stars, 'channel' => $channel, 'by' => $userId]);
         return ['ok' => true, 'error' => null];
+    }
+
+    // ---- the offer request -----------------------------------------------------------
+
+    public static function offerLink(string $token): string
+    {
+        return rtrim((string)Config::appBaseUrl(), '/') . '/offerta.php?t=' . $token;
+    }
+
+    /** The survey a live offer token belongs to, with its customer. */
+    public static function byOfferToken(string $token): ?array
+    {
+        $token = trim($token);
+        if (!preg_match('/^[a-f0-9]{48}$/', $token)) {
+            return null;
+        }
+        $stmt = Db::pdo()->prepare(
+            'SELECT i.*, c.name AS customer_name, c.company
+               FROM inspections i JOIN contacts c ON c.id = i.contact_id
+              WHERE i.offer_token = ? AND i.status = "reviewed" LIMIT 1'
+        );
+        $stmt->execute([$token]);
+        return $stmt->fetch() ?: null;
+    }
+
+    /**
+     * The customer asks for a quote to put the system right.
+     *
+     * Idempotent: pressing the button twice — or opening the link again on a
+     * second phone — records the first ask and does not page the group again.
+     *
+     * @return array{ok:bool, already:bool}
+     */
+    public static function requestOffer(string $token, string $note): array
+    {
+        $r = self::byOfferToken($token);
+        if (!$r) {
+            return ['ok' => false, 'already' => false];
+        }
+        $id = (int)$r['id'];
+        if (!empty($r['offer_requested_at'])) {
+            return ['ok' => true, 'already' => true];
+        }
+        Db::pdo()->prepare('UPDATE inspections SET offer_requested_at = NOW(), offer_note = ? WHERE id = ?')
+            ->execute([trim($note) ?: null, $id]);
+
+        self::alertReviewGroup($r, trim($note));
+        Log::write('inspect', 'offer_requested', 'inspection', $id, ['contact_id' => (int)$r['contact_id']]);
+        return ['ok' => true, 'already' => false];
+    }
+
+    /**
+     * The verification group: accounts ticked "gruppo di verifica", whatever
+     * their role — verifying a system is a job, not a rank.
+     *
+     * Falls back to the office when nobody is ticked yet. A customer's request
+     * for work must never land nowhere because a checkbox has not been set.
+     *
+     * @return array<int,int> user ids
+     */
+    public static function reviewGroup(): array
+    {
+        $ids = Db::pdo()->query(
+            'SELECT id FROM users WHERE active = 1 AND in_review_group = 1 ORDER BY id'
+        )->fetchAll(\PDO::FETCH_COLUMN);
+        if ($ids) {
+            return array_map('intval', $ids);
+        }
+        return array_map('intval', Db::pdo()->query(
+            "SELECT id FROM users WHERE active = 1 AND role IN ('admin','office') ORDER BY id"
+        )->fetchAll(\PDO::FETCH_COLUMN));
+    }
+
+    private static function alertReviewGroup(array $r, string $note): void
+    {
+        $who  = (string)($r['customer_name'] ?? '');
+        $link = rtrim((string)Config::appBaseUrl(), '/') . '/dashboard.php?tab=inspections&id=' . (int)$r['id'];
+        $stars = self::starBar((int)($r['opinion_stars'] ?? 0));
+        $text = '💶 ' . (string)Config::get('app.company_name', 'CRM')
+            . " — {$who} chiede un'offerta per la sistemazione dell'impianto "
+            . "dopo il sopralluogo #" . (int)$r['id'] . " ({$stars})."
+            . ($note !== '' ? "\n«{$note}»" : '')
+            . "\nApri il sopralluogo: {$link}";
+        $html = '<p>💶 <b>' . htmlspecialchars($who, ENT_QUOTES) . '</b> chiede un\'offerta per la '
+            . 'sistemazione dell\'impianto dopo il sopralluogo #' . (int)$r['id']
+            . ' (' . htmlspecialchars($stars, ENT_QUOTES) . ').</p>'
+            . ($note !== '' ? '<blockquote>' . nl2br(htmlspecialchars($note, ENT_QUOTES)) . '</blockquote>' : '')
+            . '<p><a href="' . htmlspecialchars($link, ENT_QUOTES) . '">Apri il sopralluogo</a></p>';
+
+        StaffAlert::toUserIds(self::reviewGroup(), 'inspection_offer_request', $text,
+            'Richiesta di offerta — ' . $who, $html, 'inspection', (int)$r['id']);
     }
 
     // ---- photos ----------------------------------------------------------------------

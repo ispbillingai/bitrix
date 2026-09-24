@@ -98,6 +98,35 @@ final class StaffAlert
     }
 
     /**
+     * The same, to a named set of people — a group that is a flag on the
+     * account rather than a role, such as the survey verification group.
+     *
+     * @param array<int,int> $userIds
+     */
+    public static function toUserIds(array $userIds, string $ruleKey, string $text, string $subject, string $html,
+                                     string $entityType = '', int $entityId = 0, string $prefer = 'both'): int
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $userIds))));
+        if (!$ids) {
+            return 0;
+        }
+        try {
+            $in = implode(',', array_fill(0, count($ids), '?'));
+            $stmt = Db::pdo()->prepare(
+                "SELECT id, COALESCE(NULLIF(TRIM(full_name), ''), username) AS name, phone, email
+                   FROM users WHERE id IN ($in) AND active = 1 ORDER BY id"
+            );
+            $stmt->execute($ids);
+            $users = $stmt->fetchAll() ?: [];
+        } catch (Throwable $e) {
+            Log::write('notify', 'staff_alert_failed', $entityType !== '' ? $entityType : 'user', $entityId,
+                ['rule' => $ruleKey, 'error' => $e->getMessage()]);
+            return 0;
+        }
+        return self::queue($users, $ruleKey, $text, $subject, $html, $entityType, $entityId, $prefer);
+    }
+
+    /**
      * Which channels one alert actually uses. 'both' is the default because an
      * alert somebody must act on should be hard to miss; a preference narrows
      * it to one channel where the person has it, and falls back rather than

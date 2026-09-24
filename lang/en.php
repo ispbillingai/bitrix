@@ -131,6 +131,9 @@ return [
 {opinion}
 
 "
+            . "Would you like a quote to put the system right? Ask for one here: {link}
+
+"
             . "We are here for any questions. — {company}",
 
         'password_reset' =>
@@ -481,6 +484,7 @@ return [
                 . '<p style="font-size:20px;letter-spacing:2px">{stars}</p>'
                 . '<p><strong>Rating: {rating}</strong></p>'
                 . '<p style="white-space:pre-wrap">{opinion}</p>'
+                . '<p><a href="{link}">Request a quote to put the system right</a></p>'
                 . '<p>We are here for any questions.</p>',
         ],
         'password_reset' => [

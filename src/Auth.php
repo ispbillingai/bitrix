@@ -52,7 +52,7 @@ final class Auth
     public static function all(): array
     {
         $rows = Db::pdo()->query(
-            'SELECT id, username, full_name, email, phone, title, role, can_install, active, created_at
+            'SELECT id, username, full_name, email, phone, title, role, can_install, in_review_group, active, created_at
              FROM users ORDER BY id'
         )->fetchAll();
         return $rows ?: [];
@@ -88,7 +88,7 @@ final class Auth
     /** Update an agent's profile fields (name/email/phone/title, role, installs flag). */
     public static function updateProfile(int $id, array $fields): void
     {
-        $allowed = ['full_name', 'email', 'phone', 'title', 'role', 'lang', 'can_install'];
+        $allowed = ['full_name', 'email', 'phone', 'title', 'role', 'lang', 'can_install', 'in_review_group'];
         // Same reason as create(): an unknown role reads as the Administrator.
         if (array_key_exists('role', $fields)) {
             $fields['role'] = self::normalizeRole((string)$fields['role']);

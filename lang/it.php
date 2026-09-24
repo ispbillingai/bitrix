@@ -133,6 +133,9 @@ return [
 {opinion}
 
 "
+            . "Vuoi un preventivo per sistemare l'impianto? Richiedilo qui: {link}
+
+"
             . "Siamo a disposizione per qualsiasi chiarimento. — {company}",
 
         'password_reset' =>
@@ -485,6 +488,7 @@ return [
                 . '<p style="font-size:20px;letter-spacing:2px">{stars}</p>'
                 . '<p><strong>Valutazione: {rating}</strong></p>'
                 . '<p style="white-space:pre-wrap">{opinion}</p>'
+                . '<p><a href="{link}">Richiedi un\x27offerta per sistemare l\x27impianto</a></p>'
                 . '<p>Siamo a disposizione per qualsiasi chiarimento.</p>',
         ],
         'password_reset' => [

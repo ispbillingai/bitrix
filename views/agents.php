@@ -23,6 +23,13 @@ $meId = (int)($_SESSION['glue_user']['id'] ?? 0);
       <input type="checkbox" name="can_install" value="1" style="width:auto"> <?= $h($t('u_can_install')) ?></label>
     <div class="muted small"><?= $h($t('u_can_install_h')) ?></div>
   </div>
+  <?php // The verification group is a JOB, not a rank: any role may be in it, so
+        // this sits OUTSIDE the .ci-fld box that hides itself for non-agents. ?>
+  <div style="margin-bottom:10px">
+    <label style="display:inline-flex;gap:8px;align-items:center">
+      <input type="checkbox" name="in_review_group" value="1" style="width:auto"> <?= $h($t('u_review_group')) ?></label>
+    <div class="muted small"><?= $h($t('u_review_group_h')) ?></div>
+  </div>
   <div class="row">
     <label class="fld"><span><?= $h($t('u_fullname')) ?></span><input name="full_name"></label>
     <label class="fld"><span><?= $h($t('u_title')) ?></span><input name="title" placeholder="<?= $h($t('u_title_ph')) ?>"></label>
@@ -41,6 +48,7 @@ $meId = (int)($_SESSION['glue_user']['id'] ?? 0);
         <span class="muted small"> · @<?= $h($u['username']) ?> · <?= $h($u['title'] ?? '') ?></span></span>
       <span class="pill"><?= $h($u['role']) ?></span>
       <?php if ($u['role'] === 'agent' && (int)($u['can_install'] ?? 0) === 1): ?><span class="pill"><?= $h($t('u_installs_pill')) ?></span><?php endif; ?>
+      <?php if ((int)($u['in_review_group'] ?? 0) === 1): ?><span class="pill" style="color:var(--accent)"><?= $h($t('u_review_pill')) ?></span><?php endif; ?>
       <span class="badge <?= $u['active'] ? 'ok' : 'no' ?>"><span class="dot"></span><?= $u['active'] ? $h($t('u_active')) : $h($t('u_disabled')) ?></span>
     </summary>
     <div style="padding:6px 18px 18px;border-top:1px solid var(--line)">
@@ -104,6 +112,11 @@ $meId = (int)($_SESSION['glue_user']['id'] ?? 0);
           <label style="display:inline-flex;gap:8px;align-items:center">
             <input type="checkbox" name="can_install" value="1" style="width:auto"<?= (int)($u['can_install'] ?? 0) === 1 ? ' checked' : '' ?>> <?= $h($t('u_can_install')) ?></label>
           <div class="muted small"><?= $h($t('u_can_install_h')) ?></div>
+        </div>
+        <div style="margin-bottom:10px">
+          <label style="display:inline-flex;gap:8px;align-items:center">
+            <input type="checkbox" name="in_review_group" value="1" style="width:auto"<?= (int)($u['in_review_group'] ?? 0) === 1 ? ' checked' : '' ?>> <?= $h($t('u_review_group')) ?></label>
+          <div class="muted small"><?= $h($t('u_review_group_h')) ?></div>
         </div>
         <button class="btn tiny"><?= $h($t('save')) ?></button>
       </form>

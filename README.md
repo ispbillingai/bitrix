@@ -153,6 +153,8 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 | A visit booked with nobody on it waits in a "da assegnare" pool; a technician takes one, or hands their own to a colleague | `Crm\Booking::pool/assign` — `agent_id IS NULL` is the pool |
 | An INSTALLAZIONE carries its installation report from the moment it is booked | `Crm\Booking::ensureInstallReport` → `Install\Reports` |
 | Site surveys: the technician fills a sheet on site, it becomes a PDF the customer signs with an OTP, and a signed one goes to the technical group | `views/inspections.php` → `Inspect\Inspections` → `Inspect\InspectionPdf` → `Sign\Documents` (migration 067) |
+| The opinion carries a link the customer presses to ask for a quote to put the system right; the request pages the verification group | `public/offerta.php` → `Inspections::requestOffer` → `StaffAlert::toUserIds(Inspections::reviewGroup())` (migration 069) |
+| The verification group is a tick on the account (`users.in_review_group`), open to any role — verifying a system is a job, not a rank | Utenti → "Fa parte del gruppo di verifica" |
 | The technical group takes a signed survey in charge and writes an opinion — text plus 1–5 stars — which goes to the customer on WhatsApp and email | `Inspections::claim/saveOpinion/sendOpinion`; the hand-over fires from `Sign\Documents` when the document seals (`Inspections::onSigned`) |
 | A chat message WhatsApps the other side only when the thread has been quiet for 15 minutes — a new conversation, or somebody picking one back up — never on every line | `Notify\Quiet::breaks()`, gating `Team\Chat::post` and `Crm\Tickets::reply` |
 | Staff who forget their password get a one-time link on their own WhatsApp and email; never says whether an account exists, rate limited, single use, 1 hour | login page → `PasswordReset` → `public/reset-password.php` (migration 065) |
@@ -200,6 +202,7 @@ public/
   request.php              public customer request form
   calendar-feed.php        read-only .ics feed (/calendar.ics?k=<token>) a phone subscribes to
   reset-password.php       staff "forgotten password" — the one-time link from the WhatsApp/email
+  offerta.php              "richiedi un'offerta" — the link at the foot of a survey opinion
   plan-confirm.php         "tomorrow is planned" — the link in the technician evening reminder
   portal.php               customer portal (magic-link/password login; view
                            estimate + order status; sign the contract via OTP)
