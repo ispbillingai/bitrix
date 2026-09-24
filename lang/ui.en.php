@@ -803,7 +803,7 @@ return [
     'th_entity'      => 'Entity',
 
     // agents / users
-    'u_add'          => 'Add agent',
+    'u_add'          => 'Add user',
     'u_username'     => 'Username',
     'u_password'     => 'Password',
     'u_role'         => 'Role',
@@ -925,8 +925,8 @@ return [
     'u_fullname'     => 'Full name',
     'u_title'        => 'Job title',
     'u_title_ph'     => 'e.g. Sales consultant',
-    'u_create'       => 'Create agent',
-    'u_added'        => 'Agent added.',
+    'u_create'       => 'Create user',
+    'u_added'        => 'User added.',
     'u_username_taken' => 'The username "{u}" is already taken. Pick another one (e.g. "{u}.rossi").',
     'u_creds_sent'   => 'login details sent to them.',
     'u_creds_none'   => 'add an email or phone to send them the login automatically.',
@@ -934,7 +934,7 @@ return [
     'u_new_pw'       => 'New password',
     'u_set'          => 'Set',
     'u_delete'       => 'Delete',
-    'u_deleted'      => 'Agent deleted. Their leads, deals, tasks and tickets were unassigned.',
+    'u_deleted'      => 'User deleted. Their leads, deals, tasks and tickets were unassigned.',
     'u_delete_confirm'   => 'Delete {name}? Their assigned leads, deals, tasks and tickets will be unassigned. This cannot be undone.',
     'u_delete_self'      => "You can't delete the account you're logged in with.",
     'u_delete_last_admin'=> "Can't delete the last active admin — create or enable another admin first.",
@@ -945,7 +945,7 @@ return [
     'u_you'          => '(you)',
     'pw_changed'     => 'Password changed.',
     'change_pw_title'=> 'Change my password',
-    'pw_change_na'   => 'You are signed in with the master password (config.php). Create a real agent to manage passwords.',
+    'pw_change_na'   => 'You are signed in with the master password (config.php). Create a real user to manage passwords.',
 
     // settings
     'setup_title'    => 'Settings',

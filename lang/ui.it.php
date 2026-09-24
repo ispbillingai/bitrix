@@ -803,7 +803,7 @@ return [
     'th_entity'      => 'Entità',
 
     // agents / users
-    'u_add'          => 'Aggiungi agente',
+    'u_add'          => 'Aggiungi utente',
     'u_username'     => 'Nome utente',
     'u_password'     => 'Password',
     'u_role'         => 'Ruolo',
@@ -925,8 +925,8 @@ return [
     'u_fullname'     => 'Nome completo',
     'u_title'        => 'Qualifica',
     'u_title_ph'     => 'es. Consulente vendite',
-    'u_create'       => 'Crea agente',
-    'u_added'        => 'Agente aggiunto.',
+    'u_create'       => 'Crea utente',
+    'u_added'        => 'Utente aggiunto.',
     'u_username_taken' => 'Il nome utente "{u}" è già in uso. Scegline un altro (es. "{u}.rossi").',
     'u_creds_sent'   => 'credenziali di accesso inviate.',
     'u_creds_none'   => 'aggiungi email o telefono per inviare automaticamente le credenziali.',
@@ -934,7 +934,7 @@ return [
     'u_new_pw'       => 'Nuova password',
     'u_set'          => 'Imposta',
     'u_delete'       => 'Elimina',
-    'u_deleted'      => 'Agente eliminato. I suoi lead, trattative, attività e ticket sono stati riassegnati a "nessuno".',
+    'u_deleted'      => 'Utente eliminato. I suoi lead, trattative, attività e ticket sono stati riassegnati a "nessuno".',
     'u_delete_confirm'   => 'Eliminare {name}? I lead, le trattative, le attività e i ticket assegnati verranno rimossi dall\'assegnazione. Operazione irreversibile.',
     'u_delete_self'      => 'Non puoi eliminare l\'account con cui hai effettuato l\'accesso.',
     'u_delete_last_admin'=> 'Impossibile eliminare l\'ultimo amministratore attivo: crea o abilita prima un altro amministratore.',
@@ -945,7 +945,7 @@ return [
     'u_you'          => '(tu)',
     'pw_changed'     => 'Password aggiornata.',
     'change_pw_title'=> 'Cambia la mia password',
-    'pw_change_na'   => 'Hai effettuato l’accesso con la password master (config.php). Crea un agente reale per gestire le password.',
+    'pw_change_na'   => 'Hai effettuato l’accesso con la password master (config.php). Crea un utente reale per gestire le password.',
 
     // settings
     'setup_title'    => 'Impostazioni',
