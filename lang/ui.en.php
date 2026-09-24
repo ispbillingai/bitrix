@@ -1077,7 +1077,7 @@ return [
     // statuses
     'dc_st_draft'     => 'Draft',
     'dc_st_sent'      => 'Awaiting signature',
-    'dc_st_viewed'    => 'Opened',
+    'dc_st_viewed'    => 'Viewed',
     'dc_st_signed'    => 'Signed',
     'dc_st_declined'  => 'Declined',
     'dc_st_expired'   => 'Expired',
@@ -1098,7 +1098,7 @@ return [
     'dc_h_log'        => 'Operation log',
     'dc_ref'          => 'Reference',
     'dc_signed_at'    => 'Signed at',
-    'dc_viewed_at'    => 'Opened at',
+    'dc_viewed_at'    => 'Viewed at',
     'dc_otp_to'       => 'Code sent to',
     'dc_decline_reason' => 'Reason',
     'dc_dl_orig'      => 'Original',

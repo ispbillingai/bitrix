@@ -1077,7 +1077,7 @@ return [
     // stati
     'dc_st_draft'     => 'Bozza',
     'dc_st_sent'      => 'In attesa di firma',
-    'dc_st_viewed'    => 'Aperto',
+    'dc_st_viewed'    => 'Visualizzato',
     'dc_st_signed'    => 'Firmato',
     'dc_st_declined'  => 'Rifiutato',
     'dc_st_expired'   => 'Scaduto',
@@ -1098,7 +1098,7 @@ return [
     'dc_h_log'        => 'Registro delle operazioni',
     'dc_ref'          => 'Riferimento',
     'dc_signed_at'    => 'Firmato il',
-    'dc_viewed_at'    => 'Aperto il',
+    'dc_viewed_at'    => 'Visualizzato il',
     'dc_otp_to'       => 'Codice inviato a',
     'dc_decline_reason' => 'Motivo',
     'dc_dl_orig'      => 'Originale',
