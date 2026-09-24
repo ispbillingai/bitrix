@@ -164,15 +164,15 @@ if ($filterAgentId !== null) {
 // Admin-only too: ?partner=<id> narrows the Leads board to the leads one partner
 // brought in — entered in their own area or through their referral link.
 $filterPartnerId = (!$isAgent && !empty($_GET['partner'])) ? (int)$_GET['partner'] : null;
-$agentViews   = ['overview', 'calendar', 'leads', 'deals', 'quotes', 'articles', 'pricelists', 'appointments', 'tasks', 'messages', 'tickets', 'team', 'documents', 'inspections', 'instructions', 'my_commissions'];
-$techViews    = ['devices', 'network_areas', 'installations', 'inspections', 'offers', 'support', 'calendar', 'tickets', 'team'];
+$agentViews   = ['overview', 'calendar', 'leads', 'deals', 'quotes', 'articles', 'pricelists', 'appointments', 'tasks', 'messages', 'tickets', 'team', 'documents', 'inspections', 'inspections_archive', 'instructions', 'my_commissions'];
+$techViews    = ['devices', 'network_areas', 'installations', 'inspections', 'inspections_archive', 'offers', 'support', 'calendar', 'tickets', 'team'];
 // The installation-report flow: open a draft, fill it in, attach the photos,
 // send it for signature. Deleting a report stays admin-only.
 $installActions = ['install_create', 'install_save', 'install_photos', 'install_photo_del', 'install_send'];
 // Surveys: the same shape as an installation report, plus the opinion the
 // technical group writes once the customer has signed it.
 $inspectActions = ['insp_create', 'insp_save', 'insp_photos', 'insp_photo_del', 'insp_send',
-                   'insp_claim', 'insp_opinion', 'insp_opinion_send', 'offer_handled'];
+                   'insp_claim', 'insp_opinion', 'insp_opinion_send', 'insp_archive', 'offer_handled'];
 // Technicians' POST whitelist: the installation-report flow, taking charge of
 // assistance requests, and replying on the tickets they claimed.
 // The team chat and the assistant: every role has them; membership is checked per chat.
@@ -200,7 +200,9 @@ $agentActions = [
     // Surveys: a seller may open one on their own customer, fill it and send it
     // for signature. NOT insp_claim/insp_opinion* — the opinion on the state of
     // an installation is the technical group's to give.
-    'insp_create', 'insp_save', 'insp_photos', 'insp_photo_del', 'insp_send',
+    // Archiving is a tidy-up, not a judgement, so a seller may put their own
+    // surveys away — the handler checks whose they are.
+    'insp_create', 'insp_save', 'insp_photos', 'insp_photo_del', 'insp_send', 'insp_archive',
 ];
 $agentActions = array_merge($agentActions, $teamActions, ['cm_invoice', // an agent invoices their own statements
     'lead_docs_upload', 'fin_open', 'fin_save', 'fin_upload', 'fin_file_del', 'fin_submit']); // …and fills their customers' folders
@@ -1714,6 +1716,27 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: ?tab=inspections&id=' . (int)$_POST['id']);
                 exit;
             }
+            case 'insp_archive': { // put a finished survey away, or bring it back
+                $ispId = (int)($_POST['id'] ?? 0);
+                $ispOn = ($_POST['archived'] ?? '1') === '1';
+                // Whose survey is it? The office tidies anybody's; a technician or
+                // a seller only the ones they opened or took in charge. The insp_
+                // prefix is out of the generic owner guard (an unclaimed survey
+                // has no owner), so the check lives here.
+                $ispRow = Inspections::find($ispId);
+                if (!$ispRow) {
+                    $_SESSION['dash_flash'] = [$t('ispa_err_not_found'), 'err'];
+                } elseif (($isAgent || $isTech)
+                          && (int)$ispRow['created_by'] !== (int)$uid
+                          && (int)($ispRow['claimed_by'] ?? 0) !== (int)$uid) {
+                    $_SESSION['dash_flash'] = [$t('not_allowed'), 'err'];
+                } else {
+                    $ok = Inspections::setArchived($ispId, $uid, $ispOn);
+                    $_SESSION['dash_flash'] = [$t($ispOn ? 'ispa_done' : 'ispa_restored'), $ok ? 'ok' : 'warn'];
+                }
+                header('Location: ?tab=' . ($ispOn ? 'inspections' : 'inspections_archive'));
+                exit;
+            }
             case 'offer_handled': { // tick a request off the queue, or put it back
                 Inspections::markOfferHandled((int)$_POST['id'], $uid, ($_POST['handled'] ?? '1') === '1');
                 $_SESSION['dash_flash'] = [$t(($_POST['handled'] ?? '1') === '1' ? 'off_marked' : 'off_reopened'), 'ok'];
@@ -3024,7 +3047,7 @@ $agents = Auth::agents();
 $money = fn($n, $cur = 'EUR') => $cfg('crm.currency', $cur) . ' ' . number_format((float)$n, 0);
 
 $views = ['overview', 'calendar', 'leads', 'deals', 'quotes', 'customers', 'articles', 'pricelists', 'contacts', 'appointments', 'tasks', 'tickets', 'team', 'documents',
-          'installations', 'inspections', 'offers', 'support',
+          'installations', 'inspections', 'inspections_archive', 'offers', 'support',
           'invoices', 'payments', 'campaigns', 'messages', 'outbound', 'reminders', 'templates', 'events', 'agents',
           'partners', 'commissions', 'my_commissions', 'finance', 'devices', 'network_areas', 'settings', 'instructions'];
 $view = in_array($tab, $views, true) ? $tab : 'overview';
@@ -3135,7 +3158,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
         'quotes' => 'nav_quotes',
         'customers' => 'nav_customers', 'articles' => 'nav_articles', 'pricelists' => 'nav_pricelists',
         'contacts' => 'nav_contacts', 'appointments' => 'nav_appointments', 'calendar' => 'nav_calendar', 'tasks' => 'nav_tasks',
-        'tickets' => 'nav_tickets', 'team' => 'nav_team', 'documents' => 'nav_documents', 'installations' => 'nav_installations', 'inspections' => 'nav_inspections', 'offers' => 'nav_offers',
+        'tickets' => 'nav_tickets', 'team' => 'nav_team', 'documents' => 'nav_documents', 'installations' => 'nav_installations', 'inspections' => 'nav_inspections', 'inspections_archive' => 'nav_insp_archive', 'offers' => 'nav_offers',
         'support' => 'nav_support',
         'invoices' => 'nav_invoices',
         'payments' => 'nav_payments',
@@ -3146,11 +3169,11 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
     ];
     if ($isAgent) { // agents only see their own work — plus Installations when they also install
         $nav = array_intersect_key($nav, array_flip(array_merge(
-            ['overview', 'leads', 'deals', 'quotes', 'articles', 'pricelists', 'appointments', 'calendar', 'tasks', 'messages', 'team', 'documents', 'inspections', 'my_commissions', 'instructions'],
+            ['overview', 'leads', 'deals', 'quotes', 'articles', 'pricelists', 'appointments', 'calendar', 'tasks', 'messages', 'team', 'documents', 'inspections', 'inspections_archive', 'my_commissions', 'instructions'],
             $agentInstalls ? ['installations'] : []
         )));
     } elseif ($isTech) { // technical-area users: devices, install reports, support queue, own tickets
-        $nav = array_intersect_key($nav, array_flip(['devices', 'installations', 'inspections', 'offers', 'support', 'calendar', 'tickets', 'team']));
+        $nav = array_intersect_key($nav, array_flip(['devices', 'installations', 'inspections', 'inspections_archive', 'offers', 'support', 'calendar', 'tickets', 'team']));
     } else { // the office files statements; it is not paid by them
         unset($nav['my_commissions']);
         // Amministrazione: the same menu as the Administrator, without the four

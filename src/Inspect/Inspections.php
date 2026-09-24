@@ -596,7 +596,8 @@ final class Inspections
      *        state of an installation is not their job.
      * @return array<int,array>
      */
-    public static function all(int $limit = 200, ?int $ownerId = null, bool $withQueue = true): array
+    public static function all(int $limit = 200, ?int $ownerId = null, bool $withQueue = true,
+                              bool $archived = false): array
     {
         $limit = max(1, min(500, $limit));
         $sql =
@@ -607,11 +608,14 @@ final class Inspections
                JOIN contacts c ON c.id = i.contact_id
                LEFT JOIN users u ON u.id = i.claimed_by
                LEFT JOIN sign_documents d ON d.id = i.sign_document_id";
+        // One list or the other, never both: the working list is what is still
+        // live, the archive is what has been put away.
+        $sql .= $archived ? ' WHERE i.archived_at IS NOT NULL' : ' WHERE i.archived_at IS NULL';
         $args = [];
         if ($ownerId !== null) {
             $sql .= $withQueue
-                ? ' WHERE (i.created_by = ? OR i.claimed_by = ? OR i.status = "signed")'
-                : ' WHERE (i.created_by = ? OR i.claimed_by = ?)';
+                ? ' AND (i.created_by = ? OR i.claimed_by = ? OR i.status = "signed")'
+                : ' AND (i.created_by = ? OR i.claimed_by = ?)';
             $args = [$ownerId, $ownerId];
         }
         $sql .= " ORDER BY (i.status = 'signed') DESC, i.id DESC LIMIT $limit";
@@ -633,10 +637,36 @@ final class Inspections
         return $stmt->fetchAll() ?: [];
     }
 
+    /**
+     * Put a survey away, or bring it back. Nothing is destroyed — a signed
+     * survey is evidence — so this only ever moves it between two lists.
+     */
+    public static function setArchived(int $id, ?int $userId, bool $archived = true): bool
+    {
+        $stmt = Db::pdo()->prepare(
+            $archived
+                ? 'UPDATE inspections SET archived_at = NOW(), archived_by = ? WHERE id = ? AND archived_at IS NULL'
+                : 'UPDATE inspections SET archived_at = NULL, archived_by = NULL WHERE id = ? AND archived_at IS NOT NULL'
+        );
+        $stmt->execute($archived ? [$userId ?: null, $id] : [$id]);
+        if ($stmt->rowCount() === 0) {
+            return false;
+        }
+        Log::write('inspect', $archived ? 'archived' : 'unarchived', 'inspection', $id, ['by' => $userId]);
+        return true;
+    }
+
+    public static function archivedCount(): int
+    {
+        return (int)Db::pdo()->query('SELECT COUNT(*) FROM inspections WHERE archived_at IS NOT NULL')->fetchColumn();
+    }
+
     /** How many are waiting for an opinion — the badge on the tab. */
     public static function awaitingCount(): int
     {
-        return (int)Db::pdo()->query('SELECT COUNT(*) FROM inspections WHERE status = "signed"')->fetchColumn();
+        return (int)Db::pdo()->query(
+            'SELECT COUNT(*) FROM inspections WHERE status = "signed" AND archived_at IS NULL'
+        )->fetchColumn();
     }
 
     public static function clampStars(int $n): int

@@ -51,14 +51,33 @@ if ($r !== null):
     $mine    = (int)($r['claimed_by'] ?? 0) === (int)$uid;
     $mayJudge = $status === 'signed' && !$isAgent && ($isAdminHere || $mine);
     $hasChannel = trim((string)($contact['phone'] ?? '')) !== '' || trim((string)($contact['email'] ?? '')) !== '';
+    // Archiving is a tidy-up: whoever opened the survey, or took it in charge,
+    // may put it away; the office may put anybody's away.
+    $isArchived = !empty($r['archived_at']);
+    $mayArchive = $isAdminHere
+        || (int)$r['created_by'] === (int)$uid || (int)($r['claimed_by'] ?? 0) === (int)$uid;
 ?>
 <div class="cu-top">
-  <a class="btn ghost tiny" href="?tab=inspections">&larr; <?= $h($t('isp_back')) ?></a>
+  <a class="btn ghost tiny" href="?tab=<?= $isArchived ? 'inspections_archive' : 'inspections' ?>">&larr; <?= $h($t('isp_back')) ?></a>
   <h2 style="margin:0"><?= avatar($h, (string)($contact['name'] ?? '')) ?> <?= $h($contact['name'] ?? '') ?>
     <span class="pill" style="color:<?= $statusColor[$status] ?? 'var(--muted)' ?>"><?= $h($t('isp_st_' . $status)) ?></span>
+    <?php if ($isArchived): ?><span class="pill" style="color:var(--muted)">🗄 <?= $h($t('ispa_pill')) ?></span><?php endif; ?>
     <span class="muted small">#<?= (int)$r['id'] ?></span>
   </h2>
+  <?php if ($mayArchive): ?>
+    <form method="post" class="inline" style="margin-left:auto"
+          <?= $isArchived ? '' : 'onsubmit="return confirm(\'' . $h($t('ispa_confirm')) . '\')"' ?>>
+      <input type="hidden" name="do" value="insp_archive">
+      <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
+      <input type="hidden" name="archived" value="<?= $isArchived ? '0' : '1' ?>">
+      <button class="btn ghost tiny">🗄 <?= $h($t($isArchived ? 'ispa_restore' : 'ispa_do')) ?></button>
+    </form>
+  <?php endif; ?>
 </div>
+<?php // .cu-top has no styling of its own on this page — it is defined per view
+      // elsewhere — and the archive button needs a row to sit at the end of. ?>
+<style>.cu-top{display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap}
+.cu-top form{margin:0}</style>
 
 <?php if ($isDraft): ?>
   <form method="post" class="card" style="margin-bottom:14px">
@@ -251,9 +270,14 @@ if ($r !== null):
     $foundCustomers = array_values(array_filter($foundCustomers,
         static fn(array $c): bool => !in_array((int)$c['id'], $leadCids, true)));
     $rows = Inspections::all(200, $ownScope, $seesQueue);
+    // The count is the whole archive, so it is only shown to whoever can see the
+    // whole archive; a seller gets the link without a number that isn't theirs.
+    $archN = $isAdminHere ? Inspections::archivedCount() : 0;
 ?>
 <h2><?= $h($t('nav_inspections')) ?></h2>
 <p class="muted small" style="margin:-6px 0 14px"><?= $h($t('isp_sub')) ?></p>
+<p><a class="btn ghost tiny" href="?tab=inspections_archive">🗄 <?= $h($t('nav_insp_archive')) ?><?php
+  if ($archN > 0): ?> <span class="muted">(<?= $archN ?>)</span><?php endif; ?></a></p>
 
 <details class="drawer" <?= $nq !== '' ? 'open' : '' ?>>
   <summary class="btn ghost" style="margin-bottom:14px"><?= svg('installations') ?> <?= $h($t('isp_new')) ?></summary>
@@ -320,7 +344,19 @@ if ($r !== null):
       <?php endif; ?></td>
     <td class="small"><?= $h(Inspections::starBar((int)($row['opinion_stars'] ?? 0)) ?: '—') ?></td>
     <td class="small muted"><?= $h(short_time($row['created_at'])) ?></td>
-    <td style="text-align:right"><a class="btn ghost tiny" href="?tab=inspections&id=<?= (int)$row['id'] ?>"><?= $h($t('cu_open')) ?></a></td>
+    <td style="text-align:right;white-space:nowrap">
+      <a class="btn ghost tiny" href="?tab=inspections&id=<?= (int)$row['id'] ?>"><?= $h($t('cu_open')) ?></a>
+      <?php // Tidying a list is the job of whoever owns the row — plus the office. ?>
+      <?php if ($isAdminHere || (int)$row['created_by'] === (int)$uid
+                || (int)($row['claimed_by'] ?? 0) === (int)$uid): ?>
+        <form method="post" class="inline" onsubmit="return confirm('<?= $h($t('ispa_confirm')) ?>')">
+          <input type="hidden" name="do" value="insp_archive">
+          <input type="hidden" name="id" value="<?= (int)$row['id'] ?>">
+          <input type="hidden" name="archived" value="1">
+          <button class="btn ghost tiny" title="<?= $h($t('ispa_do')) ?>">🗄</button>
+        </form>
+      <?php endif; ?>
+    </td>
   </tr>
 <?php endforeach; ?>
 </tbody></table>
