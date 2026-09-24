@@ -397,6 +397,58 @@ final class Inspections
         )->fetchAll(\PDO::FETCH_COLUMN));
     }
 
+    /**
+     * The offer queue: every request a customer has sent, open ones first.
+     *
+     * @param bool $openOnly only the ones nobody has dealt with yet
+     * @return array<int,array>
+     */
+    public static function offerRequests(int $limit = 200, bool $openOnly = false): array
+    {
+        $limit = max(1, min(500, $limit));
+        $sql =
+            'SELECT i.*, c.name AS customer_name, c.company, c.phone, c.email, c.city,
+                    u.full_name AS handler_name, u.username AS handler_username
+               FROM inspections i
+               JOIN contacts c ON c.id = i.contact_id
+               LEFT JOIN users u ON u.id = i.offer_handled_by
+              WHERE i.offer_requested_at IS NOT NULL';
+        if ($openOnly) {
+            $sql .= ' AND i.offer_handled_at IS NULL';
+        }
+        // Open first, then oldest request first: the one that has been waiting
+        // longest is the one somebody should pick up.
+        $sql .= " ORDER BY (i.offer_handled_at IS NULL) DESC, i.offer_requested_at ASC LIMIT $limit";
+        return Db::pdo()->query($sql)->fetchAll() ?: [];
+    }
+
+    /** Outstanding requests — the number on the menu. */
+    public static function openOfferCount(): int
+    {
+        return (int)Db::pdo()->query(
+            'SELECT COUNT(*) FROM inspections
+              WHERE offer_requested_at IS NOT NULL AND offer_handled_at IS NULL'
+        )->fetchColumn();
+    }
+
+    /** Dealt with: a quote went out, or somebody spoke to them. Reversible. */
+    public static function markOfferHandled(int $id, ?int $userId, bool $handled = true): bool
+    {
+        $stmt = Db::pdo()->prepare(
+            $handled
+                ? 'UPDATE inspections SET offer_handled_at = NOW(), offer_handled_by = ?
+                    WHERE id = ? AND offer_requested_at IS NOT NULL'
+                : 'UPDATE inspections SET offer_handled_at = NULL, offer_handled_by = NULL
+                    WHERE id = ? AND offer_requested_at IS NOT NULL'
+        );
+        $stmt->execute($handled ? [$userId ?: null, $id] : [$id]);
+        if ($stmt->rowCount() > 0) {
+            Log::write('inspect', $handled ? 'offer_handled' : 'offer_reopened', 'inspection', $id, ['by' => $userId]);
+            return true;
+        }
+        return false;
+    }
+
     private static function alertReviewGroup(array $r, string $note): void
     {
         $who  = (string)($r['customer_name'] ?? '');

@@ -295,7 +295,9 @@ if ($r !== null):
   <th><?= $h($t('th_status')) ?></th><th><?= $h($t('isp_stars')) ?></th><th><?= $h($t('th_created')) ?></th><th></th>
 </tr></thead><tbody>
 <?php foreach ($rows as $row): $st = (string)$row['status']; ?>
-  <tr>
+  <?php $askedOffer = !empty($row['offer_requested_at']);
+        $offerOpen  = $askedOffer && empty($row['offer_handled_at']); ?>
+  <tr<?= $offerOpen ? ' style="background:color-mix(in srgb,var(--amber) 8%,transparent)"' : '' ?>>
     <td class="muted"><?= (int)$row['id'] ?></td>
     <td><b><?= $h($row['customer_name']) ?></b>
       <?php if (!empty($row['company'])): ?><div class="muted small"><?= $h($row['company']) ?></div><?php endif; ?></td>
@@ -305,6 +307,11 @@ if ($r !== null):
         <div class="small" style="color:var(--amber)"><?= $h($t('isp_unclaimed_short')) ?></div>
       <?php elseif (!empty($row['claimer_name']) || !empty($row['claimer_username'])): ?>
         <div class="muted small"><?= $h($row['claimer_name'] ?: $row['claimer_username']) ?></div>
+      <?php endif; ?>
+      <?php // The customer asked for a quote off the back of this survey. ?>
+      <?php if ($askedOffer): ?>
+        <div class="small" style="margin-top:3px;color:<?= $offerOpen ? 'var(--amber)' : 'var(--green)' ?>">
+          💶 <?= $h($t($offerOpen ? 'isp_offer_badge' : 'isp_offer_badge_done')) ?></div>
       <?php endif; ?></td>
     <td class="small"><?= $h(Inspections::starBar((int)($row['opinion_stars'] ?? 0)) ?: '—') ?></td>
     <td class="small muted"><?= $h(short_time($row['created_at'])) ?></td>
