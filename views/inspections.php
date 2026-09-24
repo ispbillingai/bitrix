@@ -18,7 +18,12 @@ use Glue\Install\Reports as InstallReports;
 $isAdminHere = !$isAgent && !$isTech;
 // A technician sees their own surveys AND every one waiting for an opinion:
 // that queue is the whole group's until somebody claims it.
-$ownScope = $isAdminHere ? null : (int)$uid;
+//
+// A SELLER sees only their own. They may survey a customer of theirs and send
+// it for signature, but judging the state of an installation — and reading
+// somebody else's survey to do it — is the technical group's job.
+$ownScope  = $isAdminHere ? null : (int)$uid;
+$seesQueue = !$isAgent;
 
 $statusColor = ['draft' => 'var(--muted)', 'sent' => 'var(--accent)',
                 'signed' => 'var(--amber)', 'reviewed' => 'var(--green)'];
@@ -29,7 +34,7 @@ $r = $ispId > 0 ? Inspections::find($ispId) : null;
 if ($r && $ownScope !== null
     && (int)$r['created_by'] !== $ownScope
     && (int)($r['claimed_by'] ?? 0) !== $ownScope
-    && (string)$r['status'] !== 'signed') {
+    && !($seesQueue && (string)$r['status'] === 'signed')) {
     $r = null;
 }
 
@@ -44,7 +49,7 @@ if ($r !== null):
     $status  = (string)$r['status'];
     $isDraft = $status === 'draft';
     $mine    = (int)($r['claimed_by'] ?? 0) === (int)$uid;
-    $mayJudge = $status === 'signed' && ($isAdminHere || $mine);
+    $mayJudge = $status === 'signed' && !$isAgent && ($isAdminHere || $mine);
     $hasChannel = trim((string)($contact['phone'] ?? '')) !== '' || trim((string)($contact['email'] ?? '')) !== '';
 ?>
 <div class="cu-top">
@@ -160,7 +165,7 @@ if ($r !== null):
     <div class="card" style="border-left:3px solid <?= $status === 'reviewed' ? 'var(--green)' : 'var(--amber)' ?>">
       <h3 style="margin-top:0">⭐ <?= $h($t('isp_opinion_h')) ?></h3>
 
-      <?php if ($status === 'signed' && empty($r['claimed_by'])): ?>
+      <?php if ($status === 'signed' && empty($r['claimed_by']) && $seesQueue): ?>
         <p class="muted small"><?= $h($t('isp_unclaimed')) ?></p>
         <form method="post">
           <input type="hidden" name="do" value="insp_claim">
@@ -245,7 +250,7 @@ if ($r !== null):
     $leadCids = array_map(static fn(array $l): int => (int)$l['id'], $foundLeads);
     $foundCustomers = array_values(array_filter($foundCustomers,
         static fn(array $c): bool => !in_array((int)$c['id'], $leadCids, true)));
-    $rows = Inspections::all(200, $ownScope);
+    $rows = Inspections::all(200, $ownScope, $seesQueue);
 ?>
 <h2><?= $h($t('nav_inspections')) ?></h2>
 <p class="muted small" style="margin:-6px 0 14px"><?= $h($t('isp_sub')) ?></p>

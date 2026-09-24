@@ -164,7 +164,7 @@ if ($filterAgentId !== null) {
 // Admin-only too: ?partner=<id> narrows the Leads board to the leads one partner
 // brought in — entered in their own area or through their referral link.
 $filterPartnerId = (!$isAgent && !empty($_GET['partner'])) ? (int)$_GET['partner'] : null;
-$agentViews   = ['overview', 'calendar', 'leads', 'deals', 'quotes', 'articles', 'pricelists', 'appointments', 'tasks', 'messages', 'tickets', 'team', 'documents', 'instructions', 'my_commissions'];
+$agentViews   = ['overview', 'calendar', 'leads', 'deals', 'quotes', 'articles', 'pricelists', 'appointments', 'tasks', 'messages', 'tickets', 'team', 'documents', 'inspections', 'instructions', 'my_commissions'];
 $techViews    = ['devices', 'network_areas', 'installations', 'inspections', 'offers', 'support', 'calendar', 'tickets', 'team'];
 // The installation-report flow: open a draft, fill it in, attach the photos,
 // send it for signature. Deleting a report stays admin-only.
@@ -197,6 +197,10 @@ $agentActions = [
     // Asking the office for a quote and sending back the answer is the seller's
     // job; uploading the quote and cancelling a request are the office's.
     'quote_scratch', 'quote_send', 'quote_revise',
+    // Surveys: a seller may open one on their own customer, fill it and send it
+    // for signature. NOT insp_claim/insp_opinion* — the opinion on the state of
+    // an installation is the technical group's to give.
+    'insp_create', 'insp_save', 'insp_photos', 'insp_photo_del', 'insp_send',
 ];
 $agentActions = array_merge($agentActions, $teamActions, ['cm_invoice', // an agent invoices their own statements
     'lead_docs_upload', 'fin_open', 'fin_save', 'fin_upload', 'fin_file_del', 'fin_submit']); // …and fills their customers' folders
@@ -554,7 +558,7 @@ if (isset($_GET['ispf'])) {
     if ($isp && ((!$isAgent && !$isTech)
         || (int)$isp['created_by'] === (int)$uid
         || (int)($isp['claimed_by'] ?? 0) === (int)$uid
-        || (string)$isp['status'] === 'signed')) {
+        || (!$isAgent && (string)$isp['status'] === 'signed'))) {
         Inspections::streamPhoto($isp);
     }
     http_response_code(404);
@@ -3142,7 +3146,7 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
     ];
     if ($isAgent) { // agents only see their own work — plus Installations when they also install
         $nav = array_intersect_key($nav, array_flip(array_merge(
-            ['overview', 'leads', 'deals', 'quotes', 'articles', 'pricelists', 'appointments', 'calendar', 'tasks', 'messages', 'team', 'documents', 'my_commissions', 'instructions'],
+            ['overview', 'leads', 'deals', 'quotes', 'articles', 'pricelists', 'appointments', 'calendar', 'tasks', 'messages', 'team', 'documents', 'inspections', 'my_commissions', 'instructions'],
             $agentInstalls ? ['installations'] : []
         )));
     } elseif ($isTech) { // technical-area users: devices, install reports, support queue, own tickets

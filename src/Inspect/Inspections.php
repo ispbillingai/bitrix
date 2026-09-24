@@ -588,11 +588,15 @@ final class Inspections
     }
 
     /**
-     * @param ?int $ownerId scope to one technician: the surveys they opened, and
-     *        the ones waiting for an opinion (which are everybody's until claimed)
+     * @param ?int $ownerId scope to one person: the surveys they opened, plus
+     *        the ones they took in charge
+     * @param bool $withQueue also the ones waiting for an opinion, which belong
+     *        to the whole technical group until somebody claims them. FALSE for
+     *        a seller: they may survey their own customers, but judging the
+     *        state of an installation is not their job.
      * @return array<int,array>
      */
-    public static function all(int $limit = 200, ?int $ownerId = null): array
+    public static function all(int $limit = 200, ?int $ownerId = null, bool $withQueue = true): array
     {
         $limit = max(1, min(500, $limit));
         $sql =
@@ -605,7 +609,9 @@ final class Inspections
                LEFT JOIN sign_documents d ON d.id = i.sign_document_id";
         $args = [];
         if ($ownerId !== null) {
-            $sql .= ' WHERE (i.created_by = ? OR i.claimed_by = ? OR i.status = "signed")';
+            $sql .= $withQueue
+                ? ' WHERE (i.created_by = ? OR i.claimed_by = ? OR i.status = "signed")'
+                : ' WHERE (i.created_by = ? OR i.claimed_by = ?)';
             $args = [$ownerId, $ownerId];
         }
         $sql .= " ORDER BY (i.status = 'signed') DESC, i.id DESC LIMIT $limit";
