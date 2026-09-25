@@ -381,6 +381,12 @@ final class Maintenance
      * record the office has typed A CHIAMATA on (a deliberate "no contract"
      * beats a leftover date).
      *
+     * Also skips anyone already warned at this step, by the same dedupe key the
+     * queue is keyed on. The UNIQUE key is what actually stops a second message,
+     * but reading it here is what makes the day's allowance and the count the
+     * scheduler logs mean what they say: without it a pass that queued nothing
+     * still reported work and still spent the cap.
+     *
      * @return array<int,array>
      */
     public static function expiringIn(int $days, int $limit = self::BATCH): array
@@ -399,6 +405,9 @@ final class Maintenance
                                    AND p.status IN ('active','past_due'))
                 AND (c.maint_type IS NULL OR c.maint_type = ''
                      OR UPPER(c.maint_type) <> '" . self::ON_DEMAND . "')
+                AND NOT EXISTS (SELECT 1 FROM reminders r
+                                 WHERE r.dedupe_key = CONCAT('maintexp:', c.id, ':',
+                                                             c.contract_expiry, ':', $days))
               ORDER BY c.id
               LIMIT $limit";
         return Db::pdo()->query($sql)->fetchAll() ?: [];
