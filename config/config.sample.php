@@ -155,6 +155,15 @@ return [
         'max_per_day'      => 50,    // a ceiling, not a rate: 25/pass x 1440 passes is not a limit
         'message_customer' => true,  // WhatsApp + email with a booking link
         'create_task'      => true,  // and/or a follow-up task for the operator
+
+        // The other end of the same question: the customers who DO have a
+        // contract, warned before it runs out. Also OFF by default. The wording
+        // is edited in Settings → Modelli messaggi ("Scadenza contratto
+        // manutenzione"), not here.
+        'expiry_enabled'     => false,
+        'expiry_days'        => [30, 7], // days of notice; each step sends once per contract
+        'expiry_at'          => '09:00', // no-op until this hour, then the day's run
+        'expiry_max_per_day' => 50,      // contracts cluster: 97 customers share one date
     ],
 
     // OPTIONAL Bitrix24 sync — OFF by default. The CRM is fully standalone; enable

@@ -117,6 +117,12 @@ return [
             . "sulla tua attrezzatura. Vuoi fissare una manutenzione? "
             . "Richiedila qui e ti ricontattiamo per concordare giorno e ora: {link}",
 
+        // Scadenza del contratto di manutenzione: {days} giorni prima della data.
+        'maintenance_expiry' =>
+            "Ciao {name}, ti ricordiamo che il tuo contratto di manutenzione {company} "
+            . "scade il {expiry}, tra {days} giorni. "
+            . "Vuoi rinnovarlo? Scrivici da qui e ti ricontattiamo: {link}",
+
         // Invito a una chat interna: il badge lo vede solo chi è già collegato,
         // quindi l’invito va sul telefono.
         'team_chat_invite' =>
@@ -475,6 +481,13 @@ return [
                 . 'dall\x27ultimo intervento sulla tua attrezzatura.</p>'
                 . '<p><a href="{link}">Richiedi un appuntamento di manutenzione</a></p>'
                 . '<p>Ti ricontattiamo per concordare giorno e ora.</p>',
+        ],
+        'maintenance_expiry' => [
+            'subject' => 'Il tuo contratto di manutenzione scade il {expiry} — {company}',
+            'html'    => '<p>Ciao {name},</p><p>Ti ricordiamo che il tuo contratto di manutenzione '
+                . 'scade il <strong>{expiry}</strong>, tra <strong>{days} giorni</strong>.</p>'
+                . '<p><a href="{link}">Richiedi il rinnovo</a></p>'
+                . '<p>Ti ricontattiamo per confermare le condizioni.</p>',
         ],
         'team_chat_invite' => [
             'subject' => '{by} ti ha scritto su {company}',

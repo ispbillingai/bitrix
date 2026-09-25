@@ -115,6 +115,12 @@ return [
             . "your equipment. Would you like to book a maintenance visit? "
             . "Ask for one here and we will call you to agree a day and time: {link}",
 
+        // The maintenance contract runs out: {days} days before the date.
+        'maintenance_expiry' =>
+            "Hi {name}, a reminder that your {company} maintenance contract expires on "
+            . "{expiry}, in {days} days. "
+            . "Would you like to renew it? Write to us here and we will call you back: {link}",
+
         // Invitation to an internal chat: only somebody already signed in sees
         // the badge, so the invitation goes to the phone.
         'team_chat_invite' =>
@@ -471,6 +477,13 @@ return [
                 . 'since your equipment was last serviced.</p>'
                 . '<p><a href="{link}">Ask for a maintenance visit</a></p>'
                 . '<p>We will call you to agree a day and time.</p>',
+        ],
+        'maintenance_expiry' => [
+            'subject' => 'Your maintenance contract expires on {expiry} — {company}',
+            'html'    => '<p>Hi {name},</p><p>A reminder that your maintenance contract expires on '
+                . '<strong>{expiry}</strong>, in <strong>{days} days</strong>.</p>'
+                . '<p><a href="{link}">Ask about renewing it</a></p>'
+                . '<p>We will call you back to confirm the terms.</p>',
         ],
         'team_chat_invite' => [
             'subject' => '{by} has messaged you on {company}',

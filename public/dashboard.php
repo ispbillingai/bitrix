@@ -731,6 +731,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'planning.escalate_every_min', 'planning.escalate_max',
                     'maintenance.followup_months',
                     'maintenance.max_per_day',
+                    'maintenance.expiry_days', 'maintenance.expiry_at',
+                    'maintenance.expiry_max_per_day',
                     'notify.quiet_minutes',
                     'reminders.sign_before_due_days', 'reminders.offer_read_days',
                     'textmebot.api_key', 'mail.from_name', 'mail.from_email',
@@ -780,6 +782,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pairs['maintenance.enabled']         = $post('maintenance.enabled') !== null ? 'true' : 'false';
                 $pairs['maintenance.message_customer'] = $post('maintenance.message_customer') !== null ? 'true' : 'false';
                 $pairs['maintenance.create_task']     = $post('maintenance.create_task') !== null ? 'true' : 'false';
+                $pairs['maintenance.expiry_enabled']  = $post('maintenance.expiry_enabled') !== null ? 'true' : 'false';
                 $pairs['smallpay.enabled'] = $post('smallpay.enabled') !== null ? 'true' : 'false';
                 $pairs['smallpay.modify_installments'] = $post('smallpay.modify_installments') !== null ? 'true' : 'false';
                 $pairs['smallpay.notify_customer_on_failure'] = $post('smallpay.notify_customer_on_failure') !== null ? 'true' : 'false';

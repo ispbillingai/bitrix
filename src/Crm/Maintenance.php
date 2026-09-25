@@ -24,6 +24,12 @@ use Glue\Reminder\Templates;
  * CRM asks them to book the next one, and keeps asking every three months until
  * somebody actually goes — the moment a visit happens the clock restarts from
  * it, so a booked customer is never chased.
+ *
+ * The other end of the same question is the customer who DOES have a contract:
+ * a set number of days before it runs out, at a set hour, they are told so and
+ * asked whether they want it renewed. Both runs are off until the office turns
+ * them on, both are capped per day, and both only queue — the scheduler
+ * delivers.
  */
 final class Maintenance
 {
@@ -37,6 +43,12 @@ final class Maintenance
 
     /** Never message more than this many customers in one cron pass. */
     private const BATCH = 25;
+
+    /** How many days before the expiry date the customer is warned, by default. */
+    private const DEFAULT_EXPIRY_DAYS = [30, 7];
+
+    /** The hour the expiry notices go out, when the office has not set one. */
+    private const DEFAULT_EXPIRY_AT = '09:00';
 
     /**
      * ...and never more than this many in a day.
@@ -324,6 +336,147 @@ final class Maintenance
             'task_id' => $taskId, 'messaged' => $messaged,
         ]);
         return true;
+    }
+
+    // ---- the contract is about to run out -----------------------------------------
+
+    public static function expiryEnabled(): bool
+    {
+        return (bool)Config::get('maintenance.expiry_enabled', false);
+    }
+
+    /**
+     * How many days before the expiry the customer hears about it. A list, so
+     * the office can warn once early and again close to the date: "30,7" sends
+     * a month out and again the week before.
+     *
+     * @return array<int,int> descending, deduplicated, 1…365
+     */
+    public static function expiryDays(): array
+    {
+        $raw = Config::get('maintenance.expiry_days', self::DEFAULT_EXPIRY_DAYS);
+        $raw = is_array($raw) ? $raw : (preg_split('/[^0-9]+/', (string)$raw) ?: []);
+        $days = [];
+        foreach ($raw as $d) {
+            $d = (int)$d;
+            if ($d >= 1 && $d <= 365) {
+                $days[$d] = $d;
+            }
+        }
+        rsort($days);
+        return $days ?: self::DEFAULT_EXPIRY_DAYS;
+    }
+
+    /**
+     * Customers whose contract runs out in exactly $days days.
+     *
+     * "Exactly" is what makes each step its own message: a customer 30 days out
+     * is warned today and is not warned again tomorrow at 29, and the second
+     * step catches them again at 7. The dedupe key carries the date and the
+     * step, so a cron pass that runs twice, or a server that was down at nine
+     * and catches up at half past, cannot send the same warning twice.
+     *
+     * Skips the ones the contract does not really cover: a live SmallPay
+     * subscription (they pay monthly, the gestionale's date is stale) and a
+     * record the office has typed A CHIAMATA on (a deliberate "no contract"
+     * beats a leftover date).
+     *
+     * @return array<int,array>
+     */
+    public static function expiringIn(int $days, int $limit = self::BATCH): array
+    {
+        $days  = max(1, min(365, $days));
+        $limit = max(1, min(200, $limit));
+        $sql =
+            "SELECT c.id, c.name, c.company, c.phone, c.email, c.lang, c.vat_number,
+                    c.contract_expiry, c.maint_type
+               FROM contacts c
+              WHERE c.is_customer = 1
+                AND c.contract_expiry = DATE_ADD(CURDATE(), INTERVAL $days DAY)
+                AND (COALESCE(c.phone,'') <> '' OR COALESCE(c.email,'') <> '')
+                AND NOT EXISTS (SELECT 1 FROM payment_contracts p
+                                 WHERE p.contact_id = c.id AND p.kind = 'subscription'
+                                   AND p.status IN ('active','past_due'))
+                AND (c.maint_type IS NULL OR c.maint_type = ''
+                     OR UPPER(c.maint_type) <> '" . self::ON_DEMAND . "')
+              ORDER BY c.id
+              LIMIT $limit";
+        return Db::pdo()->query($sql)->fetchAll() ?: [];
+    }
+
+    /**
+     * The cron pass for expiring contracts. Does nothing until the configured
+     * hour, then warns whoever is due today at each configured step.
+     *
+     * Capped per day for the same reason the chase is: contracts do not expire
+     * evenly. Ninety-seven of the customers in the registry share a single
+     * expiry date, so one step landing on that date is one day's whole run.
+     *
+     * Only QUEUES — the scheduler's own runDue() delivers on the next tick, at
+     * the WhatsApp gateway's pace rather than in a sleeping loop here.
+     *
+     * @return int how many customers were warned
+     */
+    public static function runExpiryNotices(): int
+    {
+        if (!self::expiryEnabled() || !self::pastTime((string)Config::get('maintenance.expiry_at', self::DEFAULT_EXPIRY_AT))) {
+            return 0;
+        }
+        $maxDay = max(1, min(2000, (int)Config::get('maintenance.expiry_max_per_day', self::DEFAULT_MAX_PER_DAY)));
+        $today  = (int)Db::pdo()->query(
+            "SELECT COUNT(*) FROM reminders
+              WHERE rule_key = 'maintenance_expiry' AND created_at >= CURDATE()"
+        )->fetchColumn();
+        $room = $maxDay - $today;
+        if ($room <= 0) {
+            return 0;
+        }
+
+        $sched = new Scheduler();
+        $n = 0;
+        foreach (self::expiryDays() as $days) {
+            if ($room <= 0) {
+                break;
+            }
+            foreach (self::expiringIn($days, min(self::BATCH, $room)) as $c) {
+                $contactId = (int)$c['id'];
+                $expiry = (string)$c['contract_expiry'];
+                $phone = trim((string)($c['phone'] ?? ''));
+                $email = trim((string)($c['email'] ?? ''));
+                $sched->enqueue([
+                    'entity_type'    => 'contact',
+                    'entity_id'      => $contactId,
+                    'rule_key'       => 'maintenance_expiry',
+                    'recipient_type' => 'customer',
+                    'channel'        => $phone !== '' && $email !== '' ? 'both' : ($phone !== '' ? 'whatsapp' : 'email'),
+                    'due_at'         => date('Y-m-d H:i:s'),
+                    'lang'           => Templates::lang($c['lang'] ?? null),
+                    'payload'        => [
+                        'expiry' => date('d/m/Y', strtotime($expiry)),
+                        'days'   => (string)$days,
+                        'link'   => self::bookingLink($c),
+                    ],
+                    // Contact + the date it runs out + which step: one warning
+                    // per customer per step, whatever the cron does.
+                    'dedupe_key'     => 'maintexp:' . $contactId . ':' . $expiry . ':' . $days,
+                ], false); // queue only — this is a cron batch, not a web request
+                $room--;
+                $n++;
+            }
+        }
+        if ($n > 0) {
+            Log::write('crm', 'maintenance_expiry_notices', null, null, ['count' => $n]);
+        }
+        return $n;
+    }
+
+    /** True once today has passed "HH:MM". An unreadable time never fires. */
+    private static function pastTime(string $hhmm): bool
+    {
+        if (!preg_match('/^([01]?\d|2[0-3]):([0-5]\d)$/', trim($hhmm), $m)) {
+            return false;
+        }
+        return time() >= mktime((int)$m[1], (int)$m[2], 0);
     }
 
     /**

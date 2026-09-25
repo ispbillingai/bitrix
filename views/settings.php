@@ -186,10 +186,21 @@ $pipelines = \Glue\Crm\Pipelines::all();
   <label class="fld" style="display:flex;flex-direction:row;align-items:center;gap:10px">
     <input type="checkbox" name="maintenance.create_task" value="true" style="width:auto" <?= (bool)$cfg('maintenance.create_task', true) ? 'checked' : '' ?>>
     <span style="margin:0"><?= $h($t('f_mt_task')) ?></span></label>
+
+  <h3><?= $h($t('f_me_h')) ?></h3>
+  <label class="fld" style="display:flex;flex-direction:row;align-items:flex-start;gap:10px">
+    <input type="checkbox" name="maintenance.expiry_enabled" value="true" style="width:auto;margin-top:3px" <?= (bool)$cfg('maintenance.expiry_enabled', false) ? 'checked' : '' ?>>
+    <span style="margin:0"><?= $h($t('f_me_on')) ?>
+      <small class="muted" style="display:block;margin-top:4px;font-weight:400"><?= $h($t('f_me_on_h')) ?></small></span>
+  </label>
   <div class="row">
     <?php
+    fld($h, 'maintenance.expiry_days', $t('f_me_days'), $list('maintenance.expiry_days', [30, 7]), $t('f_me_days_h'));
+    fld($h, 'maintenance.expiry_at', $t('f_me_at'), $cfg('maintenance.expiry_at', '09:00'), $t('f_me_at_h'));
+    fld($h, 'maintenance.expiry_max_per_day', $t('f_me_cap'), $cfg('maintenance.expiry_max_per_day', 50), $t('f_me_cap_h'));
     ?>
   </div>
+  <p class="muted small" style="margin:-4px 0 0"><?= $h($t('f_me_tpl')) ?></p>
   <div class="row">
     <?php
     fld($h, 'reminders.sign_before_due_days', $t('f_sign_before'), $list('reminders.sign_before_due_days', [10, 5]), $t('f_sign_before_h'));

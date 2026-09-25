@@ -70,6 +70,9 @@ try {
     // visit: ask them to book the next one. Off until switched on, capped per
     // pass, and it only QUEUES — runDue() above delivers on the next tick.
     $maint = Maintenance::runFollowUps();
+    // …and the other end of the same question: the customers who DO have a
+    // contract, warned before it runs out. No-op until its configured hour.
+    $maintExp = Maintenance::runExpiryNotices();
 
     Log::write('scheduler', 'tick', null, null, [
         'reminders' => $reminders,
@@ -79,7 +82,8 @@ try {
       + ($mail !== null ? ['mail' => $mail] : [])
       + ($pay !== null ? ['pay' => $pay] : [])
       + ($plan || $planChased ? ['planning' => ['asked' => $plan, 'chased' => $planChased]] : [])
-      + ($maint ? ['maintenance' => $maint] : []));
+      + ($maint ? ['maintenance' => $maint] : [])
+      + ($maintExp ? ['maint_expiry' => $maintExp] : []));
     fwrite(STDOUT, "[" . date('c') . "] reminders=" . json_encode($reminders)
         . " campaigns=" . json_encode($campaigns)
         . ($sibill !== null ? " sibill=" . json_encode($sibill) : "")
@@ -87,7 +91,8 @@ try {
         . ($mail !== null ? " mail=" . json_encode($mail) : "")
         . ($pay !== null ? " pay=" . json_encode($pay) : "")
         . ($plan || $planChased ? " planning=" . json_encode(['asked' => $plan, 'chased' => $planChased]) : "")
-        . ($maint ? " maintenance=" . $maint : "") . "\n");
+        . ($maint ? " maintenance=" . $maint : "")
+        . ($maintExp ? " maint_expiry=" . $maintExp : "") . "\n");
 } catch (Throwable $e) {
     fwrite(STDERR, "[" . date('c') . "] scheduler error: " . $e->getMessage() . "\n");
     exit(1);
