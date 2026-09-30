@@ -125,7 +125,12 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
   still paying?"* and says so the moment a charge is refused. Off until
   configured. Full detail: [docs/smallpay.md](docs/smallpay.md).
 - **Campaigns / Messages / Reminders / Activity log**: mass WhatsApp/email, full
-  delivery outbox, the reminder queue, and an audit trail.
+  delivery outbox, the reminder queue, and an audit trail. Recipients are picked
+  from the customer registry — searched one by one, or a whole group of the
+  Clienti tab (all customers, with a support contract, expired, owing, came in
+  as leads) — and anything not in the registry can still be typed. A campaign
+  can carry a **photo or a document**: WhatsApp gets it by URL (a photo in the
+  chat, a PDF as a document), email as an attachment.
 
 ## Requirements → where each lives
 
@@ -144,6 +149,7 @@ optional: Sync\BitrixSync ──► mirror new leads/deals into a Bitrix24 porta
 | A printed quote says when it was printed, which printing it is and which price list version it was priced from | `views/quote_builder.php` (the list to price from) → `Crm\QuoteRequests::generateDocument` (revision + snapshot) → `Crm\QuotePdf` header and footer; versions in `Crm\PriceLists::touchVersion` (migration 062) |
 | Manual interrupt / silence any automation | move the record's stage; pending reminders auto-cancel |
 | Mass WhatsApp/email marketing | `campaign.php` + `Campaign\Sender` (throttled) |
+| Campaign recipients chosen from the customer list, with a photo or document attached | `views/campaigns.php` → `Campaign\Audience` (picked, groups, typed) + `Campaign\Media` (public/uploads/campaigns, fetched by WhatsApp) → `Notify\TextMeBot` (`file=` / `document=`) and `Notify\Mailer` (MIME attachment), migration 072 |
 | Sign a document with an OTP, in-house | `views/documents.php` → `Sign\Documents` → `Sign\Signer` (CAdES) → `public/sign.php` / `public/verify.php` |
 | Charge a card / monthly support contract | `views/payments.php` → `Pay\Contracts` → `Pay\SmallPay` → `webhooks/smallpay-status.php` |
 | Warehouse: the gestionale catalogue plus CRM products, editable stock, restock alerts | `bin/import-articoli.php` (cron) → `Crm\ArticleImport` → `Crm\Articles` → `views/articles.php` |

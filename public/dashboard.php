@@ -456,6 +456,10 @@ if (($_GET['find'] ?? '') === 'contacts') {
             'label' => trim(implode(' · ', array_filter([
                 (string)($c['company'] ?? ''), (string)($c['email'] ?? ''), (string)($c['phone'] ?? ''),
             ], 'strlen'))),
+            // The campaign picker needs to know whether this customer can be
+            // reached on the channel being sent, before they are ticked.
+            'phone' => trim((string)($c['phone'] ?? '')) ?: trim((string)($c['phone2'] ?? '')),
+            'email' => trim((string)($c['email'] ?? '')),
         ],
         Tickets::searchCustomersForStaff($isAgent ? $scopeId : null, $fq, 25)
     ), JSON_UNESCAPED_UNICODE);
@@ -2451,15 +2455,34 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 (new Sender())->runBatch();
                 $flash = $t('ov_ran') . ' ' . json_encode($r);
                 break;
-            case 'create_campaign':
-                $recips = array_filter(array_map('trim', preg_split('/\r\n|\r|\n/', (string)$_POST['recipients'])));
+            case 'create_campaign': {
+                // Recipients are resolved server-side from what the page posted:
+                // customers ticked in the picker, whole groups of the Clienti
+                // tab, and anything still typed by hand (Campaign\Audience).
+                $campCh = ($_POST['channel'] ?? '') === 'email' ? 'email' : 'whatsapp';
+                $campMedia = \Glue\Campaign\Media::store($_FILES['media'] ?? null, $campErr);
+                if ($campErr !== null) {
+                    $_SESSION['dash_flash'] = [$t('camp_err_media_' . $campErr), 'err'];
+                    header('Location: ?tab=campaigns');
+                    exit;
+                }
+                $campAud = \Glue\Campaign\Audience::resolve($_POST, $campCh);
+                if (!$campAud['recipients']) {
+                    \Glue\Campaign\Media::remove($campMedia['path'] ?? null);
+                    $_SESSION['dash_flash'] = [$t('camp_err_no_recipients'), 'err'];
+                    header('Location: ?tab=campaigns');
+                    exit;
+                }
                 (new Sender())->create(
-                    trim((string)$_POST['name']) ?: 'Campaign', (string)$_POST['channel'],
-                    (string)$_POST['body'], $_POST['subject'] ?? null, array_values($recips), $lang
+                    trim((string)($_POST['name'] ?? '')) ?: 'Campaign', $campCh,
+                    (string)($_POST['body'] ?? ''), $_POST['subject'] ?? null,
+                    $campAud['recipients'], $lang, $campMedia
                 );
-                $flash = $t('camp_created');
-                $tab = 'campaigns';
-                break;
+                $_SESSION['dash_flash'] = [sprintf($t('camp_created_n'), count($campAud['recipients']))
+                    . ($campAud['skipped'] > 0 ? ' ' . sprintf($t('camp_skipped_n'), $campAud['skipped']) : ''), 'ok'];
+                header('Location: ?tab=campaigns');
+                exit;
+            }
 
             // ---------- connection tests ----------
             case 'test_bitrix':

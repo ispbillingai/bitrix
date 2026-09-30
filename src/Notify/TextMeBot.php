@@ -38,11 +38,12 @@ final class TextMeBot
     }
 
     /**
-     * $phoneE164 like +254712345678. $mediaUrl (optional) is a public URL of an
-     * image TextMeBot attaches to the message (its `file` parameter; PDFs would
-     * use `document` instead). Returns ['ok'=>bool, 'http'=>int, ...].
+     * $phoneE164 like +254712345678. $mediaUrl (optional) is a PUBLIC URL of the
+     * file TextMeBot attaches; $mediaKind says how: an 'image' rides on its
+     * `file` parameter and shows in the chat, anything else on `document`, which
+     * is what makes a PDF arrive as a file. Returns ['ok'=>bool, 'http'=>int, ...].
      */
-    public function sendWhatsapp(string $phoneE164, string $text, ?string $mediaUrl = null): array
+    public function sendWhatsapp(string $phoneE164, string $text, ?string $mediaUrl = null, string $mediaKind = 'image'): array
     {
         // TextMeBot bans on "1 message per 5 seconds"; keep a safe margin over 5s.
         $gap = max(0, (int)($this->cfg['min_gap_seconds'] ?? 6));
@@ -50,7 +51,7 @@ final class TextMeBot
         $res = [];
         for ($attempt = 0; $attempt <= self::RETRIES; $attempt++) {
             $this->waitForSlot($gap);
-            $res = $this->callApi($phoneE164, $text, $mediaUrl);
+            $res = $this->callApi($phoneE164, $text, $mediaUrl, $mediaKind);
             $this->recordSend();
             if ($res['ok'] || !self::looksRateLimited($res)) {
                 return $res;
@@ -121,7 +122,7 @@ final class TextMeBot
             || str_contains($body, 'too many');
     }
 
-    private function callApi(string $phoneE164, string $text, ?string $mediaUrl = null): array
+    private function callApi(string $phoneE164, string $text, ?string $mediaUrl = null, string $mediaKind = 'image'): array
     {
         $params = [
             'recipient' => $phoneE164,
@@ -129,7 +130,9 @@ final class TextMeBot
             'text'      => $text,
         ];
         if ($mediaUrl !== null && $mediaUrl !== '') {
-            $params['file'] = $mediaUrl;
+            // A photo goes on `file`; a PDF or any other document on `document`,
+            // or TextMeBot answers success and the customer receives nothing.
+            $params[$mediaKind === 'document' ? 'document' : 'file'] = $mediaUrl;
         }
         $url = ($this->cfg['endpoint'] ?? '') . '?' . http_build_query($params);
 

@@ -1,0 +1,6 @@
+# Campaign attachments are PUBLIC on purpose, overriding the deny in the parent
+# directory: WhatsApp (TextMeBot) does not receive an upload, it fetches the
+# file by URL, so it must be readable without a session. Names are random
+# 32-character strings, so an address cannot be guessed, and only marketing
+# material the office is sending to customers anyway is put here.
+Require all granted

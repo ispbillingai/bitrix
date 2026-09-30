@@ -19,26 +19,90 @@ final class Mailer
         $this->cfg = $cfg ?? Config::section('mail');
     }
 
-    /** Returns ['ok'=>bool, 'error'=>?string]. */
-    public function send(string $to, string $subject, string $htmlBody): array
+    /** An attachment bigger than this travels as a link instead of as bytes. */
+    private const MAX_ATTACH_BYTES = 12 * 1024 * 1024;
+
+    /**
+     * Returns ['ok'=>bool, 'error'=>?string].
+     *
+     * @param array $attachments [['path'=>, 'name'=>, 'mime'=>, 'url'=>?], …]
+     *                           — a campaign's photo or document.
+     */
+    public function send(string $to, string $subject, string $htmlBody, array $attachments = []): array
     {
         $fromEmail = $this->cfg['from_email'] ?? 'noreply@localhost';
         $fromName  = $this->cfg['from_name'] ?? 'Bitrix24';
+        $part      = $this->compose($htmlBody, $attachments);
 
         if (!empty($this->cfg['smtp'])) {
-            return $this->sendSmtp($this->cfg['smtp'], $fromEmail, $fromName, $to, $subject, $htmlBody);
+            return $this->sendSmtp($this->cfg['smtp'], $fromEmail, $fromName, $to, $subject, $part);
         }
 
-        $headers = [
-            'MIME-Version: 1.0',
-            'Content-Type: text/html; charset=UTF-8',
-            'From: ' . $this->encodeName($fromName) . " <$fromEmail>",
-        ];
-        $ok = @mail($to, $this->encodeSubject($subject), $htmlBody, implode("\r\n", $headers));
+        $headers = array_merge(['MIME-Version: 1.0'], $part['headers'],
+            ['From: ' . $this->encodeName($fromName) . " <$fromEmail>"]);
+        $ok = @mail($to, $this->encodeSubject($subject), $part['body'], implode("\r\n", $headers));
         return ['ok' => $ok, 'error' => $ok ? null : 'mail() returned false'];
     }
 
-    private function sendSmtp(array $s, string $fromEmail, string $fromName, string $to, string $subject, string $html): array
+    /**
+     * The message body and its content headers: plain HTML when there is nothing
+     * attached (byte-for-byte what this class always sent), multipart/mixed when
+     * there is. A file too large to post is linked in the text instead of
+     * silently dropped or bounced by the far end.
+     *
+     * @return array{headers:string[], body:string}
+     */
+    private function compose(string $html, array $attachments): array
+    {
+        $files = [];
+        $links = [];
+        foreach ($attachments as $a) {
+            $path = (string)($a['path'] ?? '');
+            $name = self::safeName((string)($a['name'] ?? basename($path)));
+            if ($path === '' || !is_file($path)) {
+                continue;
+            }
+            if (filesize($path) > self::MAX_ATTACH_BYTES) {
+                if (trim((string)($a['url'] ?? '')) !== '') {
+                    $links[] = ['name' => $name, 'url' => (string)$a['url']];
+                }
+                continue;
+            }
+            $files[] = ['path' => $path, 'name' => $name,
+                        'mime' => (string)($a['mime'] ?? 'application/octet-stream')];
+        }
+        foreach ($links as $l) {
+            $html .= '<p><a href="' . htmlspecialchars($l['url'], ENT_QUOTES) . '">'
+                   . htmlspecialchars($l['name'], ENT_QUOTES) . '</a></p>';
+        }
+        if (!$files) {
+            return ['headers' => ['Content-Type: text/html; charset=UTF-8'], 'body' => $html];
+        }
+
+        $b = 'b' . bin2hex(random_bytes(12));
+        $body = "--$b\r\nContent-Type: text/html; charset=UTF-8\r\nContent-Transfer-Encoding: 8bit\r\n\r\n"
+              . $html . "\r\n";
+        foreach ($files as $f) {
+            $body .= "--$b\r\nContent-Type: " . $f['mime'] . "; name=\"" . $f['name'] . "\"\r\n"
+                   . "Content-Transfer-Encoding: base64\r\n"
+                   . "Content-Disposition: attachment; filename=\"" . $f['name'] . "\"\r\n\r\n"
+                   . chunk_split(base64_encode((string)file_get_contents($f['path'])), 76, "\r\n");
+        }
+        $body .= "--$b--\r\n";
+        return ['headers' => ["Content-Type: multipart/mixed; boundary=\"$b\""], 'body' => $body];
+    }
+
+    /** A filename that cannot break out of the MIME header it sits in. */
+    private static function safeName(string $name): string
+    {
+        $name = str_replace(['"', '\\', "\r", "\n"], '', $name);
+        $name = mb_substr(trim($name), 0, 120) ?: 'allegato';
+        // Non-ASCII names are encoded, so accents survive instead of arriving as mojibake.
+        return preg_match('/[^\x20-\x7e]/', $name) ? '=?UTF-8?B?' . base64_encode($name) . '?=' : $name;
+    }
+
+    /** @param array{headers:string[], body:string} $part from compose() */
+    private function sendSmtp(array $s, string $fromEmail, string $fromName, string $to, string $subject, array $part): array
     {
         $host   = $s['host'] ?? '';
         $port   = (int)($s['port'] ?? 587);
@@ -126,12 +190,12 @@ final class Mailer
             . "To: <$to>\r\n"
             . "Subject: " . $this->encodeSubject($subject) . "\r\n"
             . "MIME-Version: 1.0\r\n"
-            . "Content-Type: text/html; charset=UTF-8\r\n\r\n";
+            . implode("\r\n", $part['headers']) . "\r\n\r\n";
 
         // Normalise the body to CRLF and dot-stuff it (RFC 5321 §4.5.2): a line
         // that starts with '.' must be sent as '..', else a body line of "." would
         // prematurely end the message. Then terminate with a lone "." line.
-        $body = preg_replace('/\r\n|\r|\n/', "\r\n", $headers . $html);
+        $body = preg_replace('/\r\n|\r|\n/', "\r\n", $headers . $part['body']);
         $body = preg_replace('/^\./m', '..', (string)$body);
         fwrite($fp, $body . "\r\n.\r\n");
         $resp = $read();

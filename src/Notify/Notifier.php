@@ -22,14 +22,15 @@ final class Notifier
         $this->mail = new Mailer();
     }
 
-    public function whatsapp(string $phone, string $text, ?int $reminderId = null, ?int $campaignId = null, ?string $documentUrl = null): bool
+    public function whatsapp(string $phone, string $text, ?int $reminderId = null, ?int $campaignId = null, ?string $documentUrl = null, string $mediaKind = 'image'): bool
     {
-        return (bool)$this->whatsappResult($phone, $text, $reminderId, $campaignId, $documentUrl)['ok'];
+        return (bool)$this->whatsappResult($phone, $text, $reminderId, $campaignId, $documentUrl, $mediaKind)['ok'];
     }
 
-    public function email(string $to, string $subject, string $html, ?int $reminderId = null, ?int $campaignId = null): bool
+    /** $attachments: [['path'=>, 'name'=>, 'mime'=>], …] — a campaign's photo or document. */
+    public function email(string $to, string $subject, string $html, ?int $reminderId = null, ?int $campaignId = null, array $attachments = []): bool
     {
-        return (bool)$this->emailResult($to, $subject, $html, $reminderId, $campaignId)['ok'];
+        return (bool)$this->emailResult($to, $subject, $html, $reminderId, $campaignId, $attachments)['ok'];
     }
 
     /**
@@ -37,7 +38,7 @@ final class Notifier
      * 'error'=>?string, 'http'=>int, 'body'=>..]. Use this when the caller wants
      * to show the user *why* a send failed (e.g. the Settings test buttons).
      */
-    public function whatsappResult(string $phone, string $text, ?int $reminderId = null, ?int $campaignId = null, ?string $documentUrl = null): array
+    public function whatsappResult(string $phone, string $text, ?int $reminderId = null, ?int $campaignId = null, ?string $documentUrl = null, string $mediaKind = 'image'): array
     {
         $phone = self::normalizePhone($phone);
         if ($phone === '' || !$this->wa->enabled()) {
@@ -46,20 +47,20 @@ final class Notifier
             $this->record('whatsapp', $phone, null, $text, false, $res, $reminderId, $campaignId);
             return $res;
         }
-        $res = $this->wa->sendWhatsapp($phone, $text, $documentUrl);
+        $res = $this->wa->sendWhatsapp($phone, $text, $documentUrl, $mediaKind);
         $this->record('whatsapp', $phone, null, $text, (bool)$res['ok'], $res, $reminderId, $campaignId);
         return $res;
     }
 
     /** Same as email() but returns the full provider response — ['ok'=>bool, 'error'=>?string]. */
-    public function emailResult(string $to, string $subject, string $html, ?int $reminderId = null, ?int $campaignId = null): array
+    public function emailResult(string $to, string $subject, string $html, ?int $reminderId = null, ?int $campaignId = null, array $attachments = []): array
     {
         if (trim($to) === '') {
             $res = ['ok' => false, 'error' => 'no_email', 'skipped' => 'no_email'];
             $this->record('email', $to, $subject, $html, false, $res, $reminderId, $campaignId);
             return $res;
         }
-        $res = $this->mail->send($to, $subject, $html);
+        $res = $this->mail->send($to, $subject, $html, $attachments);
         $this->record('email', $to, $subject, $html, (bool)$res['ok'], $res, $reminderId, $campaignId);
         return $res;
     }

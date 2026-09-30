@@ -502,11 +502,13 @@ final class Tickets
         }
         $q = trim($q);
         if ($q !== '') {
-            $where[] = '(c.name LIKE ? OR c.company LIKE ? OR c.email LIKE ? OR c.phone LIKE ?)';
+            // The second number counts too: it is the one plenty of customers
+            // actually answer, and the campaign picker offers it as the phone.
+            $where[] = '(c.name LIKE ? OR c.company LIKE ? OR c.email LIKE ? OR c.phone LIKE ? OR c.phone2 LIKE ?)';
             $like = '%' . $q . '%';
-            array_push($args, $like, $like, $like, $like);
+            array_push($args, $like, $like, $like, $like, $like);
         }
-        $sql = 'SELECT DISTINCT c.id, c.name, c.company, c.email, c.phone FROM contacts c'
+        $sql = 'SELECT DISTINCT c.id, c.name, c.company, c.email, c.phone, c.phone2 FROM contacts c'
              . ($where ? ' WHERE ' . implode(' AND ', $where) : '')
              . " ORDER BY c.name ASC LIMIT $limit";
         $stmt = Db::pdo()->prepare($sql);

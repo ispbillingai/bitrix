@@ -8,6 +8,11 @@
 /storage/uploads/
 /public/uploads/*
 !/public/uploads/.htaccess
+# The campaign attachments folder is deployed (its .htaccess makes the files
+# public so WhatsApp can fetch them); the uploaded files themselves are not.
+!/public/uploads/campaigns/
+/public/uploads/campaigns/*
+!/public/uploads/campaigns/.htaccess
 
 # Gestionale exports: 10,000 people's personal data (CLIENTI) and the whole
 # catalog with its cost prices (ARTICO). The FTP drop directory and any export
