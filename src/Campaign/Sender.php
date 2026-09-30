@@ -43,16 +43,18 @@ final class Sender
      * @param array|null $media      Campaign\Media::store() — the photo or document
      */
     public function create(string $name, string $channel, string $body, ?string $subject, array $recipients,
-                           string $lang = 'it', ?array $media = null): int
+                           string $lang = 'it', ?array $media = null, ?int $throttle = null): int
     {
         $channel = $channel === 'email' ? 'email' : 'whatsapp';
         $lang = Templates::lang($lang);
         $stmt = $this->db->prepare(
-            'INSERT INTO campaigns (name, channel, lang, subject, body, media_path, media_name, media_mime, media_kind, status, total)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, "running", ?)'
+            'INSERT INTO campaigns (name, channel, lang, subject, body, media_path, media_name, media_mime, media_kind,
+                                    throttle_seconds, status, total)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, "running", ?)'
         );
         $stmt->execute([$name, $channel, $lang, $subject, $body,
             $media['path'] ?? null, $media['name'] ?? null, $media['mime'] ?? null, $media['kind'] ?? null,
+            $throttle !== null ? self::clampThrottle($throttle) : null,
             count($recipients)]);
         $id = (int)$this->db->lastInsertId();
 
@@ -72,13 +74,34 @@ final class Sender
         return $id;
     }
 
+    /** What the office may set as the pace: 0 (only the gateway's own gap) to an hour. */
+    public static function clampThrottle(int $seconds): int
+    {
+        return max(0, min(3600, $seconds));
+    }
+
+    /** The pace a campaign sends at: its own if it has one, otherwise the setting. */
+    public static function throttleFor(?array $campaign = null): int
+    {
+        if ($campaign !== null && ($campaign['throttle_seconds'] ?? null) !== null) {
+            return self::clampThrottle((int)$campaign['throttle_seconds']);
+        }
+        return self::clampThrottle((int)Config::get('textmebot.campaign_throttle_seconds', 8));
+    }
+
     /**
      * Send one throttled batch for every running campaign. Call from cron each
      * minute; $batch limits how many go out per invocation (× cron frequency).
+     *
+     * $maxSeconds stops the run once that much wall clock has gone — for the
+     * "run now" button, which is a web request and must not sit sleeping
+     * through a long campaign. 0 = no limit, which is what cron uses (its own
+     * flock keeps the next minute's run from overlapping).
      */
-    public function runBatch(int $batch = 30): array
+    public function runBatch(int $batch = 30, int $maxSeconds = 0): array
     {
-        $throttle = (int)Config::get('textmebot.campaign_throttle_seconds', 8);
+        $started = time();
+        $outOfTime = false;
         $stmt = $this->db->query("SELECT * FROM campaigns WHERE status='running' ORDER BY id ASC");
         $summary = [];
 
@@ -103,8 +126,12 @@ final class Sender
                     'url'  => $mediaUrl]]   // too big to post? then it goes as a link
                 : [];
 
+            // This campaign's own pace, or the one set in Impostazioni.
+            $throttle = self::throttleFor($c);
+
             $sent = $failed = 0;
-            foreach ($rows as $r) {
+            $last = count($rows) - 1;
+            foreach ($rows as $i => $r) {
                 $vars = ['name' => $r['name'] ?: 'there', 'company' => Config::get('mail.from_name', '')];
                 $body = Templates::render((string)$c['body'], $vars);
 
@@ -117,8 +144,21 @@ final class Sender
                 )->execute([$ok ? 'sent' : 'failed', $r['id']]);
                 $ok ? $sent++ : $failed++;
 
-                if ($c['channel'] === 'whatsapp' && $throttle > 0) {
-                    sleep($throttle);
+                // Waiting AFTER the last message of the batch buys nothing: the
+                // gateway's own gap already spaces whatever comes next.
+                if ($i === $last) {
+                    break;
+                }
+                $wait = $c['channel'] === 'whatsapp' ? $throttle : 0;
+                // Count the wait we are about to take, not only the time already
+                // spent: a 5-minute pace must not hold the "send now" request
+                // open for five minutes. The rest stays pending for the next run.
+                if ($maxSeconds > 0 && (time() - $started) + $wait >= $maxSeconds) {
+                    $outOfTime = true;
+                    break;
+                }
+                if ($wait > 0) {
+                    sleep($wait);
                 }
             }
 
@@ -134,7 +174,10 @@ final class Sender
             if ((int)$left->fetchColumn() === 0) {
                 $this->db->prepare("UPDATE campaigns SET status='done' WHERE id=?")->execute([$cid]);
             }
-            $summary[$cid] = ['sent' => $sent, 'failed' => $failed];
+            $summary[$cid] = ['sent' => $sent, 'failed' => $failed, 'throttle' => $throttle];
+            if ($outOfTime || ($maxSeconds > 0 && time() - $started >= $maxSeconds)) {
+                break;   // out of time: the other campaigns wait for the next run
+            }
         }
         return $summary;
     }

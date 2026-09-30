@@ -2665,4 +2665,18 @@ mario@example.it',
     'camp_err_media_too_big' => 'L’allegato è troppo grande (massimo 15 MB).',
     'camp_err_media_bad_type' => 'Tipo di allegato non ammesso: usa una foto (JPG, PNG, WEBP) o un documento (PDF, Word, Excel, TXT, CSV, ZIP).',
     'camp_err_media_save_failed' => 'L’allegato non è stato salvato. Riprova.',
+
+    // ---- the wait between one campaign message and the next (073) ----
+    'camp_throttle' => 'Attesa tra un messaggio e l’altro',
+    'camp_throttle_h' => 'Secondi. Vuoto = quella delle impostazioni (%d s).',
+    'camp_throttle_col' => 'Attesa',
+    'camp_throttle_v' => '%d s',
+    'camp_eta' => 'circa %s per inviarli tutti',
+    'unit_h' => 'h',
+    'unit_min' => 'min',
+    'unit_s' => 's',
+    'f_tmb_gap' => 'Attesa minima tra due messaggi (secondi)',
+    'f_tmb_gap_h' => 'Vale per ogni invio WhatsApp. Il gateway ne accetta uno ogni 5 secondi: sotto i 5 il secondo messaggio si perde.',
+    'f_tmb_camp_gap' => 'Attesa tra un messaggio e l’altro nelle campagne (secondi)',
+    'f_tmb_camp_gap_h' => 'Il ritmo delle campagne, che non scende mai sotto l’attesa minima qui sopra. Più alto = invio più lento ma più sicuro: WhatsApp blocca i numeri che inviano troppo in fretta. Ogni campagna può avere il suo.',
 ];

@@ -80,6 +80,15 @@ $pipelines = \Glue\Crm\Pipelines::all();
 
   <h3><?= $h($t('sec_whatsapp')) ?></h3>
   <?php secret_fld($h, 'textmebot.api_key', $t('f_tmb_key'), $cfg('textmebot.api_key'), $t('f_tmb_key_h')); ?>
+  <?php // How fast messages may leave. The first applies to every WhatsApp the
+        // CRM sends, the second only to campaigns, on top of it. ?>
+  <div class="row">
+    <?php
+    fld($h, 'textmebot.min_gap_seconds', $t('f_tmb_gap'), $cfg('textmebot.min_gap_seconds', 6), $t('f_tmb_gap_h'));
+    fld($h, 'textmebot.campaign_throttle_seconds', $t('f_tmb_camp_gap'),
+        $cfg('textmebot.campaign_throttle_seconds', 8), $t('f_tmb_camp_gap_h'));
+    ?>
+  </div>
 
   <h3><?= $h($t('sec_mail')) ?></h3>
   <div class="row">

@@ -15,6 +15,8 @@
 
 use Glue\Campaign\Audience;
 use Glue\Campaign\Media;
+use Glue\Campaign\Sender;
+use Glue\Config;
 use Glue\Crm\Customers;
 
 $rows = $pdo->query('SELECT * FROM campaigns ORDER BY id DESC LIMIT 100')->fetchAll();
@@ -30,6 +32,11 @@ $groups = [
     'leads'   => [$t('camp_g_leads'), $cnt['leads']],
 ];
 $fmt = fn($n): string => number_format((float)$n, 0, ',', '.');
+// The wait between one message and the next, as Impostazioni has it: the
+// placeholder of the per-campaign field, and what a campaign uses when left blank.
+$defThrottle = Sender::throttleFor();
+// Below the gateway's own minimum gap nothing goes faster, so the estimate says so.
+$minGap = max(0, (int)Config::get('textmebot.min_gap_seconds', 6));
 ?>
 <h2><?= $h($t('camp_title')) ?></h2>
 <div class="warn"><?= $h($t('camp_warn')) ?></div>
@@ -47,10 +54,17 @@ $fmt = fn($n): string => number_format((float)$n, 0, ',', '.');
     <textarea name="body" rows="4" required placeholder="<?= $h($t('camp_body_ph')) ?>"></textarea>
     <small class="muted"><?= $h($t('camp_body_h')) ?></small></label>
 
-  <label class="fld"><span><?= $h($t('camp_media')) ?></span>
-    <input type="file" name="media" id="camp-media"
-           accept="<?= $h('.' . implode(',.', array_merge(Media::IMAGE_EXT, Media::DOC_EXT))) ?>">
-    <small class="muted"><?= $h($t('camp_media_h')) ?></small></label>
+  <div class="row">
+    <label class="fld"><span><?= $h($t('camp_media')) ?></span>
+      <input type="file" name="media" id="camp-media"
+             accept="<?= $h('.' . implode(',.', array_merge(Media::IMAGE_EXT, Media::DOC_EXT))) ?>">
+      <small class="muted"><?= $h($t('camp_media_h')) ?></small></label>
+    <?php // The pace this campaign sends at. Empty = the one in Impostazioni. ?>
+    <label class="fld" id="camp-throttle-fld" style="max-width:220px"><span><?= $h($t('camp_throttle')) ?></span>
+      <input name="throttle_seconds" id="camp-throttle" type="number" min="0" max="3600" inputmode="numeric"
+             placeholder="<?= (int)$defThrottle ?>">
+      <small class="muted"><?= $h(sprintf($t('camp_throttle_h'), $defThrottle)) ?></small></label>
+  </div>
 
   <b class="small"><?= $h($t('camp_recipients')) ?></b>
   <div class="camp-pick">
@@ -84,16 +98,17 @@ $fmt = fn($n): string => number_format((float)$n, 0, ',', '.');
 
 <table><thead><tr>
   <th><?= $h($t('camp_name')) ?></th><th><?= $h($t('th_channel')) ?></th><th><?= $h($t('camp_media')) ?></th>
-  <th><?= $h($t('th_total')) ?></th>
+  <th><?= $h($t('camp_throttle_col')) ?></th><th><?= $h($t('th_total')) ?></th>
   <th><?= $h($t('th_sent')) ?></th><th><?= $h($t('th_failed')) ?></th><th><?= $h($t('th_status')) ?></th>
 </tr></thead><tbody>
-<?php if (!$rows): ?><tr><td colspan="7" class="muted"><?= $h($t('none_yet')) ?></td></tr><?php endif; ?>
+<?php if (!$rows): ?><tr><td colspan="8" class="muted"><?= $h($t('none_yet')) ?></td></tr><?php endif; ?>
 <?php foreach ($rows as $r): ?>
   <tr><td><?= $h($r['name']) ?></td><td><?= $h(code_label($t, 'chan_', $r['channel'])) ?></td>
     <td class="small"><?php if (!empty($r['media_path'])): ?>
         <a href="<?= $h(Media::url((string)$r['media_path'])) ?>" target="_blank" rel="noopener">
           <?= $r['media_kind'] === 'document' ? '📎' : '🖼' ?> <?= $h($r['media_name'] ?: '') ?></a>
       <?php else: ?><span class="muted">—</span><?php endif; ?></td>
+    <td class="small"><?= $h($r['channel'] === 'email' ? '—' : sprintf($t('camp_throttle_v'), Sender::throttleFor($r))) ?></td>
     <td><?= $h($r['total']) ?></td>
     <td><?= $h($r['sent']) ?></td><td><?= $h($r['failed']) ?></td><td><?= pill($h, $r['status'], $t) ?></td></tr>
 <?php endforeach; ?>
@@ -138,11 +153,14 @@ $fmt = fn($n): string => number_format((float)$n, 0, ',', '.');
       'noemail'=> $t('camp_no_email'),
       'confirm'=> $t('camp_confirm'),
       'empty'  => $t('camp_err_no_recipients'),
+      'eta'    => $t('camp_eta'), 'h' => $t('unit_h'), 'min' => $t('unit_min'), 'sec' => $t('unit_s'),
+      'gap'    => $minGap,
   ], JSON_UNESCAPED_UNICODE) ?>;
   var picked = {};   // contact id => {name, phone, email}
   var chips = document.getElementById('camp-chips'), totalEl = document.getElementById('camp-total'),
       noneEl = document.getElementById('camp-none'), chan = document.getElementById('camp-channel'),
-      typed = document.getElementById('camp-typed');
+      typed = document.getElementById('camp-typed'),
+      thr = document.getElementById('camp-throttle');
 
   function isWa() { return chan.value !== 'email'; }
   function reachable(c) { return isWa() ? !!c.phone : !!c.email; }
@@ -170,12 +188,25 @@ $fmt = fn($n): string => number_format((float)$n, 0, ',', '.');
     count();
   }
 
+  function human(sec) {
+    var out = [], hr = Math.floor(sec / 3600), mi = Math.floor(sec % 3600 / 60);
+    if (hr) out.push(hr + ' ' + L.h);
+    if (mi) out.push(mi + ' ' + L.min);
+    if (!out.length) out.push(Math.max(1, Math.round(sec)) + ' ' + L.sec);
+    return out.join(' ');
+  }
+
   function count() {
     var n = 0, warn = 0;
     Object.keys(picked).forEach(function (id) { reachable(picked[id]) ? n++ : warn++; });
     form.querySelectorAll('input[name="groups[]"]:checked').forEach(function (g) { n += parseInt(g.dataset.n, 10) || 0; });
     (typed.value || '').split(/[\n,;]+/).forEach(function (l) { if (l.trim() !== '') n++; });
-    totalEl.textContent = n > 0 ? L.total.replace('%d', n) : '';
+    var txt = n > 0 ? L.total.replace('%d', n) : '';
+    // At this pace the list takes this long — the reason the pace is worth setting.
+    var gap = thr.value.trim() === '' ? parseInt(thr.placeholder, 10) : parseInt(thr.value, 10);
+    if (gap > 0) { gap = Math.max(gap, L.gap); }   // the gateway never goes faster than its own gap
+    if (txt && isWa() && gap > 0 && n > 1) txt += ' · ' + L.eta.replace('%s', human((n - 1) * gap));
+    totalEl.textContent = txt;
     totalEl.style.color = n > 0 ? 'var(--txt)' : '';
     return n;
   }
@@ -224,11 +255,13 @@ $fmt = fn($n): string => number_format((float)$n, 0, ',', '.');
   // The subject only belongs to email; the chips re-read as the channel changes.
   function channelChanged() {
     document.getElementById('camp-subject-fld').hidden = isWa();
+    document.getElementById('camp-throttle-fld').hidden = !isWa();   // email has no such limit
     draw();
   }
   chan.addEventListener('change', channelChanged);
   form.addEventListener('change', count);
   typed.addEventListener('input', count);
+  thr.addEventListener('input', count);
   form.addEventListener('submit', function (e) {
     var n = count();
     if (n === 0) { e.preventDefault(); e.stopImmediatePropagation(); alert(L.empty); return; }

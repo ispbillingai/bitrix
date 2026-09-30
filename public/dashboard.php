@@ -739,7 +739,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'maintenance.expiry_max_per_day',
                     'notify.quiet_minutes',
                     'reminders.sign_before_due_days', 'reminders.offer_read_days',
-                    'textmebot.api_key', 'mail.from_name', 'mail.from_email',
+                    'textmebot.api_key', 'textmebot.min_gap_seconds', 'textmebot.campaign_throttle_seconds',
+                    'mail.from_name', 'mail.from_email',
                     'mail.smtp.host', 'mail.smtp.port', 'mail.smtp.user', 'mail.smtp.pass', 'mail.smtp.secure',
                     'logistics.email', 'logistics.phone',
                     'bitrix.sync_enabled', 'bitrix.base_url', 'bitrix.outbound_secret',
@@ -774,6 +775,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     if ($v !== null) {
                         $pairs[$k] = trim((string)$v);
                     }
+                }
+                // The WhatsApp pacing is kept inside what the gateway tolerates:
+                // TextMeBot drops a message sent less than 5 s after the last one,
+                // so the minimum gap never goes below that however it is typed.
+                if (isset($pairs['textmebot.min_gap_seconds'])) {
+                    $pairs['textmebot.min_gap_seconds'] = (string)max(5, min(300, (int)$pairs['textmebot.min_gap_seconds']));
+                }
+                if (isset($pairs['textmebot.campaign_throttle_seconds'])) {
+                    $pairs['textmebot.campaign_throttle_seconds'] =
+                        (string)\Glue\Campaign\Sender::clampThrottle((int)$pairs['textmebot.campaign_throttle_seconds']);
                 }
                 // checkbox: present only when ticked
                 $pairs['bitrix.sync_enabled'] = $post('bitrix.sync_enabled') !== null ? 'true' : 'false';
@@ -2452,7 +2463,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
             case 'run_scheduler':
                 $r = (new Scheduler())->runDue();
-                (new Sender())->runBatch();
+                // "Run now" is a web request: give the campaign batch a budget so
+                // a slow pace (the delay between messages) cannot hang the page.
+                // Whatever is left over goes out on the next cron minute.
+                (new Sender())->runBatch(30, 20);
                 $flash = $t('ov_ran') . ' ' . json_encode($r);
                 break;
             case 'create_campaign': {
@@ -2476,7 +2490,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 (new Sender())->create(
                     trim((string)($_POST['name'] ?? '')) ?: 'Campaign', $campCh,
                     (string)($_POST['body'] ?? ''), $_POST['subject'] ?? null,
-                    $campAud['recipients'], $lang, $campMedia
+                    $campAud['recipients'], $lang, $campMedia,
+                    trim((string)($_POST['throttle_seconds'] ?? '')) === '' ? null : (int)$_POST['throttle_seconds']
                 );
                 $_SESSION['dash_flash'] = [sprintf($t('camp_created_n'), count($campAud['recipients']))
                     . ($campAud['skipped'] > 0 ? ' ' . sprintf($t('camp_skipped_n'), $campAud['skipped']) : ''), 'ok'];

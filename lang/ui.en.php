@@ -2667,4 +2667,18 @@ mario@example.it',
     'camp_err_media_too_big' => 'The attachment is too large (15 MB at most).',
     'camp_err_media_bad_type' => 'Attachment type not allowed: use a photo (JPG, PNG, WEBP) or a document (PDF, Word, Excel, TXT, CSV, ZIP).',
     'camp_err_media_save_failed' => 'The attachment was not saved. Try again.',
+
+    // ---- the wait between one campaign message and the next (073) ----
+    'camp_throttle' => 'Wait between messages',
+    'camp_throttle_h' => 'Seconds. Empty = the one in settings (%d s).',
+    'camp_throttle_col' => 'Wait',
+    'camp_throttle_v' => '%d s',
+    'camp_eta' => 'about %s to send them all',
+    'unit_h' => 'h',
+    'unit_min' => 'min',
+    'unit_s' => 's',
+    'f_tmb_gap' => 'Least wait between two messages (seconds)',
+    'f_tmb_gap_h' => 'Applies to every WhatsApp send. The gateway takes one message every 5 seconds: below 5 the second one is lost.',
+    'f_tmb_camp_gap' => 'Wait between campaign messages (seconds)',
+    'f_tmb_camp_gap_h' => 'The pace of campaigns, never below the least wait above. Higher = slower but safer: WhatsApp blocks numbers that send too fast. Each campaign can have its own.',
 ];
