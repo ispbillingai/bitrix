@@ -2499,6 +2499,87 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
 
+            // Editing a campaign that has already gone out cannot recall a single
+            // message: it renames it, and changes what the ones still queued will
+            // say. The view says so on the card.
+            case 'campaign_edit': {
+                $campId = (int)($_POST['id'] ?? 0);
+                $cSt = $pdo->prepare('SELECT * FROM campaigns WHERE id = ?');
+                $cSt->execute([$campId]);
+                $camp = $cSt->fetch();
+                if (!$camp) {
+                    $_SESSION['dash_flash'] = [$t('camp_not_found'), 'err'];
+                    header('Location: ?tab=campaigns');
+                    exit;
+                }
+                $campMedia = \Glue\Campaign\Media::store($_FILES['media'] ?? null, $campErr);
+                if ($campErr !== null) {
+                    $_SESSION['dash_flash'] = [$t('camp_err_media_' . $campErr), 'err'];
+                    header('Location: ?tab=campaigns&camp=' . $campId);
+                    exit;
+                }
+                // A new file replaces the old one; the tick removes it. Either way
+                // the file that stops being used is deleted, not left behind.
+                $dropOld = $campMedia !== null || !empty($_POST['remove_media']);
+                $cols = ['name = ?', 'subject = ?', 'body = ?', 'throttle_seconds = ?'];
+                $vals = [
+                    trim((string)($_POST['name'] ?? '')) ?: (string)$camp['name'],
+                    $camp['channel'] === 'email' ? trim((string)($_POST['subject'] ?? '')) : $camp['subject'],
+                    trim((string)($_POST['body'] ?? '')) !== '' ? (string)$_POST['body'] : (string)$camp['body'],
+                    trim((string)($_POST['throttle_seconds'] ?? '')) === ''
+                        ? null : \Glue\Campaign\Sender::clampThrottle((int)$_POST['throttle_seconds']),
+                ];
+                if ($dropOld) {
+                    array_push($cols, 'media_path = ?', 'media_name = ?', 'media_mime = ?', 'media_kind = ?');
+                    array_push($vals, $campMedia['path'] ?? null, $campMedia['name'] ?? null,
+                        $campMedia['mime'] ?? null, $campMedia['kind'] ?? null);
+                }
+                $vals[] = $campId;
+                $pdo->prepare('UPDATE campaigns SET ' . implode(', ', $cols) . ' WHERE id = ?')->execute($vals);
+                if ($dropOld) {
+                    \Glue\Campaign\Media::remove($camp['media_path'] ?? null);
+                }
+                \Glue\Event\Log::write('campaign', 'campaign_updated', null, $campId,
+                    ['name' => $vals[0], 'media' => $dropOld ? ($campMedia['kind'] ?? 'removed') : 'kept']);
+                $_SESSION['dash_flash'] = [$t('camp_saved'), 'ok'];
+                header('Location: ?tab=campaigns&camp=' . $campId);
+                exit;
+            }
+
+            case 'campaign_status': {
+                $campId = (int)($_POST['id'] ?? 0);
+                $want = ($_POST['status'] ?? '') === 'running' ? 'running' : 'paused';
+                // 'done' is a fact, not a choice: nothing is left to send.
+                $pdo->prepare("UPDATE campaigns SET status = ? WHERE id = ? AND status <> 'done'")
+                    ->execute([$want, $campId]);
+                \Glue\Event\Log::write('campaign', 'campaign_' . $want, null, $campId, []);
+                $_SESSION['dash_flash'] = [$t($want === 'running' ? 'camp_resumed' : 'camp_paused'), 'ok'];
+                header('Location: ?tab=campaigns&camp=' . $campId);
+                exit;
+            }
+
+            case 'campaign_delete': {
+                $campId = (int)($_POST['id'] ?? 0);
+                $cSt = $pdo->prepare('SELECT * FROM campaigns WHERE id = ?');
+                $cSt->execute([$campId]);
+                $camp = $cSt->fetch();
+                if (!$camp) {
+                    $_SESSION['dash_flash'] = [$t('camp_not_found'), 'err'];
+                    header('Location: ?tab=campaigns');
+                    exit;
+                }
+                // The campaign and its queue go; what was actually sent stays in
+                // the Messaggi outbox, because it really did leave.
+                $pdo->prepare('DELETE FROM campaign_recipients WHERE campaign_id = ?')->execute([$campId]);
+                $pdo->prepare('DELETE FROM campaigns WHERE id = ?')->execute([$campId]);
+                \Glue\Campaign\Media::remove($camp['media_path'] ?? null);
+                \Glue\Event\Log::write('campaign', 'campaign_deleted', null, $campId,
+                    ['name' => $camp['name'], 'sent' => (int)$camp['sent'], 'total' => (int)$camp['total']]);
+                $_SESSION['dash_flash'] = [sprintf($t('camp_deleted'), $camp['name']), 'ok'];
+                header('Location: ?tab=campaigns');
+                exit;
+            }
+
             // ---------- connection tests ----------
             case 'test_bitrix':
                 $me = (new Client())->call('profile');

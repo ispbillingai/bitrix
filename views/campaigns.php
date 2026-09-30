@@ -37,10 +37,101 @@ $fmt = fn($n): string => number_format((float)$n, 0, ',', '.');
 $defThrottle = Sender::throttleFor();
 // Below the gateway's own minimum gap nothing goes faster, so the estimate says so.
 $minGap = max(0, (int)Config::get('textmebot.min_gap_seconds', 6));
+
+// ?camp=<id> opens one campaign for editing, in place of the new-campaign form.
+// What has already left cannot be taken back: editing reaches only the messages
+// still queued, which the card says out loud.
+$edit = null;
+$pending = 0;
+if (($editId = (int)($_GET['camp'] ?? 0)) > 0) {
+    $st = $pdo->prepare('SELECT * FROM campaigns WHERE id = ?');
+    $st->execute([$editId]);
+    $edit = $st->fetch() ?: null;
+    if ($edit) {
+        $st = $pdo->prepare("SELECT COUNT(*) FROM campaign_recipients WHERE campaign_id = ? AND status = 'pending'");
+        $st->execute([$editId]);
+        $pending = (int)$st->fetchColumn();
+    }
+}
 ?>
 <h2><?= $h($t('camp_title')) ?></h2>
 <div class="warn"><?= $h($t('camp_warn')) ?></div>
 
+<?php if ($edit): $eid = (int)$edit['id']; $isMail = $edit['channel'] === 'email'; ?>
+<div class="card">
+  <div class="camp-edit-head">
+    <h3 style="margin:0"><?= svg('pen') ?> <?= $h($edit['name']) ?></h3>
+    <a class="btn ghost tiny" href="?tab=campaigns"><?= $h($t('camp_back')) ?></a>
+  </div>
+  <p class="muted small" style="margin:6px 0 14px">
+    <?= $h($pending > 0
+        ? sprintf($t('camp_edit_note'), (int)$edit['sent'], $pending)
+        : sprintf($t('camp_edit_note_done'), (int)$edit['sent'])) ?>
+  </p>
+
+  <form method="post" enctype="multipart/form-data">
+    <input type="hidden" name="do" value="campaign_edit">
+    <input type="hidden" name="id" value="<?= $eid ?>">
+    <div class="row">
+      <label class="fld"><span><?= $h($t('camp_name')) ?></span>
+        <input name="name" value="<?= $h($edit['name']) ?>"></label>
+      <?php if ($isMail): ?>
+        <label class="fld"><span><?= $h($t('camp_subject')) ?></span>
+          <input name="subject" value="<?= $h((string)$edit['subject']) ?>"></label>
+      <?php else: ?>
+        <label class="fld" style="max-width:220px"><span><?= $h($t('camp_throttle')) ?></span>
+          <input name="throttle_seconds" type="number" min="0" max="3600" inputmode="numeric"
+                 value="<?= $edit['throttle_seconds'] === null ? '' : (int)$edit['throttle_seconds'] ?>"
+                 placeholder="<?= (int)$defThrottle ?>">
+          <small class="muted"><?= $h(sprintf($t('camp_throttle_h'), $defThrottle)) ?></small></label>
+      <?php endif; ?>
+    </div>
+    <label class="fld"><span><?= $h($t('camp_body')) ?></span>
+      <textarea name="body" rows="4" required><?= $h($edit['body']) ?></textarea>
+      <small class="muted"><?= $h($t('camp_body_h')) ?></small></label>
+
+    <label class="fld"><span><?= $h($t('camp_media')) ?></span>
+      <input type="file" name="media"
+             accept="<?= $h('.' . implode(',.', array_merge(Media::IMAGE_EXT, Media::DOC_EXT))) ?>">
+      <?php if (!empty($edit['media_path'])): ?>
+        <small class="muted"><?= $h($t('camp_media_now')) ?>
+          <a href="<?= $h(Media::url((string)$edit['media_path'])) ?>" target="_blank" rel="noopener">
+            <?= $edit['media_kind'] === 'document' ? '📎' : '🖼' ?> <?= $h($edit['media_name'] ?: '') ?></a>
+          · <?= $h($t('camp_media_replace_h')) ?></small>
+      <?php else: ?>
+        <small class="muted"><?= $h($t('camp_media_h')) ?></small>
+      <?php endif; ?></label>
+    <?php if (!empty($edit['media_path'])): ?>
+      <div style="margin:0 0 12px">
+        <label class="camp-group">
+          <input type="checkbox" name="remove_media" value="1">
+          <span><?= $h($t('camp_media_remove')) ?></span></label>
+      </div>
+    <?php endif; ?>
+
+    <button class="btn"><?= svg('check') ?> <?= $h($t('save')) ?></button>
+  </form>
+
+  <div class="camp-edit-acts">
+    <?php if ($edit['status'] === 'running'): ?>
+      <form method="post" class="inline">
+        <input type="hidden" name="do" value="campaign_status"><input type="hidden" name="id" value="<?= $eid ?>">
+        <input type="hidden" name="status" value="paused">
+        <button class="btn ghost tiny"><?= $h($t('camp_pause')) ?></button></form>
+    <?php elseif ($edit['status'] !== 'done' && $pending > 0): ?>
+      <form method="post" class="inline">
+        <input type="hidden" name="do" value="campaign_status"><input type="hidden" name="id" value="<?= $eid ?>">
+        <input type="hidden" name="status" value="running">
+        <button class="btn ghost tiny"><?= svg('send') ?> <?= $h($t('camp_resume')) ?></button></form>
+    <?php endif; ?>
+    <form method="post" class="inline"
+          onsubmit="return confirm(<?= $h(json_encode(sprintf($t($pending > 0 ? 'camp_del_confirm_pending' : 'camp_del_confirm'),
+                                                              $edit['name'], $pending), JSON_UNESCAPED_UNICODE)) ?>)">
+      <input type="hidden" name="do" value="campaign_delete"><input type="hidden" name="id" value="<?= $eid ?>">
+      <button class="btn danger tiny"><?= $h($t('camp_delete')) ?></button></form>
+  </div>
+</div>
+<?php else: ?>
 <form method="post" class="card" enctype="multipart/form-data" id="camp-form">
   <input type="hidden" name="do" value="create_campaign">
   <h3><?= $h($t('camp_new')) ?></h3>
@@ -95,6 +186,7 @@ $minGap = max(0, (int)Config::get('textmebot.min_gap_seconds', 6));
   <p class="camp-total" id="camp-total"></p>
   <button class="btn" id="camp-send"><?= svg('send') ?> <?= $h($t('camp_create')) ?></button>
 </form>
+<?php endif; ?>
 
 <table><thead><tr>
   <th><?= $h($t('camp_name')) ?></th><th><?= $h($t('th_channel')) ?></th><th><?= $h($t('camp_media')) ?></th>
@@ -103,7 +195,12 @@ $minGap = max(0, (int)Config::get('textmebot.min_gap_seconds', 6));
 </tr></thead><tbody>
 <?php if (!$rows): ?><tr><td colspan="8" class="muted"><?= $h($t('none_yet')) ?></td></tr><?php endif; ?>
 <?php foreach ($rows as $r): ?>
-  <tr><td><?= $h($r['name']) ?></td><td><?= $h(code_label($t, 'chan_', $r['channel'])) ?></td>
+  <?php // The name is the way in: a button in the last column would sit off-screen
+        // on a phone, where every table scrolls sideways. ?>
+  <tr<?= $edit && (int)$edit['id'] === (int)$r['id'] ? ' class="camp-on"' : '' ?>>
+    <td><a class="camp-open" href="?tab=campaigns&amp;camp=<?= (int)$r['id'] ?>" title="<?= $h($t('camp_edit_open')) ?>">
+      <?= svg('pen') ?> <?= $h($r['name']) ?></a></td>
+    <td><?= $h(code_label($t, 'chan_', $r['channel'])) ?></td>
     <td class="small"><?php if (!empty($r['media_path'])): ?>
         <a href="<?= $h(Media::url((string)$r['media_path'])) ?>" target="_blank" rel="noopener">
           <?= $r['media_kind'] === 'document' ? '📎' : '🖼' ?> <?= $h($r['media_name'] ?: '') ?></a>
@@ -117,6 +214,11 @@ $minGap = max(0, (int)Config::get('textmebot.min_gap_seconds', 6));
 <style>
 /* .fld sets display:block, which beats the [hidden] attribute on its own */
 #camp-form [hidden]{display:none!important}
+.camp-edit-head{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+.camp-edit-acts{display:flex;gap:8px;flex-wrap:wrap;margin-top:14px;padding-top:12px;border-top:1px solid var(--line)}
+.camp-on td{background:var(--surface2)}
+.camp-on td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
+.camp-open svg{width:14px;height:14px;vertical-align:-2px;opacity:.5}
 .camp-pick{border:1px solid var(--line);border-radius:10px;padding:12px;margin:6px 0 14px}
 .camp-search{position:relative}
 .camp-search input{width:100%}
