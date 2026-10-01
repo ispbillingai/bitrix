@@ -4,7 +4,9 @@ declare(strict_types=1);
 namespace Glue\Crm;
 
 use Glue\Db;
+use Glue\Event\Log;
 use Glue\Reminder\Templates;
+use Glue\Sign\Documents as SignDocs;
 use PDO;
 
 /**
@@ -222,9 +224,18 @@ final class Contacts
     /**
      * Edit a contact. A caller touching any name field re-derives all three, so
      * name can never drift out of step with the two parts it is built from.
+     *
+     * A phone or an address corrected here is also corrected on the copies the
+     * CRM made of it — the leads raised against this contact, and the documents
+     * still waiting for their signature. Without that, the office changes a
+     * customer's mobile on the card and the quote request keeps showing, and
+     * the signing code keeps going to, the number the customer has just left.
+     * Only copies still holding exactly the old value follow; a lead or a
+     * document deliberately pointed somewhere else is left alone.
      */
     public static function update(int $id, array $fields): void
     {
+        $before = self::find($id);
         if (isset($fields['first_name']) || isset($fields['last_name']) || isset($fields['name'])) {
             $fields = array_merge($fields, self::nameParts($fields));
         }
@@ -247,6 +258,19 @@ final class Contacts
         }
         $args[] = $id;
         Db::pdo()->prepare('UPDATE contacts SET ' . implode(', ', $set) . ' WHERE id = ?')->execute($args);
+
+        if ($before !== null && (array_key_exists('phone', $fields) || array_key_exists('email', $fields))) {
+            $after = [
+                'phone' => array_key_exists('phone', $fields) ? $fields['phone'] : $before['phone'],
+                'email' => array_key_exists('email', $fields) ? $fields['email'] : $before['email'],
+            ];
+            $leads = Leads::followContact($id, $before, $after);
+            $docs  = SignDocs::followContact($id, $before, $after);
+            if ($leads > 0 || $docs > 0) {
+                Log::write('crm', 'contact_details_synced', 'contact', $id,
+                    ['leads' => $leads, 'documents' => $docs]);
+            }
+        }
     }
 
     /**

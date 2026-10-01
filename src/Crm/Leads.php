@@ -850,6 +850,48 @@ final class Leads
         return $stmt->fetch() ?: null;
     }
 
+    /**
+     * A number or an address corrected on the customer's card, carried to the
+     * leads that were only ever a copy of it.
+     *
+     * A lead keeps its own detail when it differs: one that came in with the
+     * person's mobile while the card holds the switchboard is not a stale copy,
+     * it is a second number somebody meant to write. Only the leads still
+     * carrying exactly what the card carried follow the correction — and the
+     * ones carrying nothing, which were never a choice.
+     *
+     * This matters beyond the lead screen: a quote request hangs off a lead and
+     * the signing link is addressed from it, so a lead left behind sends the
+     * code to the number the customer has just stopped using.
+     *
+     * @return int how many leads moved
+     */
+    public static function followContact(int $contactId, array $old, array $new): int
+    {
+        $moved = 0;
+
+        $phoneOld = Notifier::normalizePhone((string)($old['phone'] ?? ''));
+        $phoneNew = Notifier::normalizePhone((string)($new['phone'] ?? ''));
+        if ($phoneNew !== '' && $phoneNew !== $phoneOld) {
+            $stmt = Db::pdo()->prepare(
+                "UPDATE leads SET customer_phone = ? WHERE contact_id = ? AND COALESCE(customer_phone, '') = ?"
+            );
+            $stmt->execute([$phoneNew, $contactId, $phoneOld]);
+            $moved += $stmt->rowCount();
+        }
+
+        $mailOld = mb_strtolower(trim((string)($old['email'] ?? '')));
+        $mailNew = trim((string)($new['email'] ?? ''));
+        if ($mailNew !== '' && mb_strtolower($mailNew) !== $mailOld) {
+            $stmt = Db::pdo()->prepare(
+                "UPDATE leads SET customer_email = ? WHERE contact_id = ? AND LOWER(COALESCE(customer_email, '')) = ?"
+            );
+            $stmt->execute([$mailNew, $contactId, $mailOld]);
+            $moved += $stmt->rowCount();
+        }
+        return $moved;
+    }
+
     /** Push to Bitrix only if the optional sync is enabled; never fatal. */
     public static function pushSync(int $leadId): void
     {

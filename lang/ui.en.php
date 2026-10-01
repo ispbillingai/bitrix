@@ -2707,4 +2707,5 @@ mario@example.it',
     'evt_campaign_running' => 'Campaign resumed',
     'camp_typed_bad' => '%d lines do not look valid and will be skipped',
     'camp_typed_bad1' => 'one line does not look valid and will be skipped',
+    'evt_contact_details_synced' => 'Contact details carried to leads and documents',
 ];

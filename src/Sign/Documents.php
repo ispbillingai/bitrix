@@ -7,6 +7,7 @@ use Glue\Config;
 use Glue\Crm\Contacts;
 use Glue\Db;
 use Glue\Event\Log;
+use Glue\Notify\Notifier;
 use Glue\Reminder\Scheduler;
 
 /**
@@ -636,6 +637,57 @@ final class Documents
             'to_phone' => self::mask((string)$s['phone']),
         ], ['type' => 'staff', 'id' => $userId, 'label' => self::staffLabel($userId)]);
         return true;
+    }
+
+    /**
+     * The same correction the customer's card has just had, carried to the
+     * documents still waiting on that customer.
+     *
+     * Only the ones addressed to exactly what the card used to say move: a
+     * document deliberately pointed at somebody else keeps its signer. A
+     * finished document never moves at all — setSigner refuses it, because a
+     * signed, declined or void record is evidence.
+     *
+     * @return int how many documents were re-addressed
+     */
+    public static function followContact(int $contactId, array $old, array $new, ?int $userId = null): int
+    {
+        $phoneOld = Notifier::normalizePhone((string)($old['phone'] ?? ''));
+        $phoneNew = Notifier::normalizePhone((string)($new['phone'] ?? ''));
+        $mailOld  = mb_strtolower(trim((string)($old['email'] ?? '')));
+        $mailNew  = trim((string)($new['email'] ?? ''));
+        $phoneMoved = $phoneNew !== '' && $phoneNew !== $phoneOld;
+        $mailMoved  = $mailNew !== '' && mb_strtolower($mailNew) !== $mailOld;
+        if (!$phoneMoved && !$mailMoved) {
+            return 0;
+        }
+
+        $stmt = Db::pdo()->prepare(
+            "SELECT id, signer_name, signer_email, signer_phone FROM sign_documents
+              WHERE contact_id = ? AND status IN ('draft', 'sent', 'viewed')"
+        );
+        $stmt->execute([$contactId]);
+        $moved = 0;
+        foreach ($stmt->fetchAll() as $doc) {
+            $in = [
+                'signer_name'  => (string)($doc['signer_name'] ?? ''),
+                'signer_email' => (string)($doc['signer_email'] ?? ''),
+                'signer_phone' => (string)($doc['signer_phone'] ?? ''),
+            ];
+            $hit = false;
+            if ($phoneMoved && Notifier::normalizePhone($in['signer_phone']) === $phoneOld) {
+                $in['signer_phone'] = $phoneNew;
+                $hit = true;
+            }
+            if ($mailMoved && mb_strtolower($in['signer_email']) === $mailOld) {
+                $in['signer_email'] = $mailNew;
+                $hit = true;
+            }
+            if ($hit && self::setSigner((int)$doc['id'], $in, $userId)) {
+                $moved++;
+            }
+        }
+        return $moved;
     }
 
     /**
