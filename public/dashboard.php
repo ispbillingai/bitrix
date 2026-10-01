@@ -1285,11 +1285,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
             case 'article_photos':
+            case 'article_installs':
             case 'article_files': {
                 $amId = (int)($_POST['id'] ?? 0);
-                $amR  = $do === 'article_photos'
-                    ? \Glue\Crm\ArticleMedia::addPhotos($amId, $_FILES['photos'] ?? null, $uid)
-                    : \Glue\Crm\ArticleMedia::addFiles($amId, $_FILES['files'] ?? null, $uid);
+                $amR  = match ($do) {
+                    'article_photos'   => \Glue\Crm\ArticleMedia::addPhotos($amId, $_FILES['photos'] ?? null, $uid),
+                    'article_installs' => \Glue\Crm\ArticleMedia::addInstalls($amId, $_FILES['photos'] ?? null, $uid),
+                    default            => \Glue\Crm\ArticleMedia::addFiles($amId, $_FILES['files'] ?? null, $uid),
+                };
                 $amWhy = ['too_big' => $t('pl_err_too_big'), 'bad_type' => $t('pl_err_bad_type'),
                           'save_failed' => $t('pl_err_save_failed'), 'not_found' => $t('ar_err_not_found')];
                 $amErr = array_map(static function (string $e) use ($amWhy): string {
@@ -1297,7 +1300,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     return $p === false ? ($amWhy[$e] ?? $e) : substr($e, 0, $p) . ': ' . ($amWhy[substr($e, $p + 2)] ?? substr($e, $p + 2));
                 }, $amR['errors']);
                 $amMsg = $amR['count'] > 0
-                    ? sprintf($t($do === 'article_photos' ? 'pl_photos_ok' : 'pl_files_ok'), $amR['count']) : '';
+                    ? sprintf($t($do === 'article_files' ? 'pl_files_ok' : 'pl_photos_ok'), $amR['count']) : '';
                 if (!$amR['count'] && !$amErr) {
                     $amMsg = $t('pl_err_no_file');
                 }
@@ -1305,9 +1308,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $amMsg = trim($amMsg . ' ' . $t('pl_err_upload') . ' ' . implode('; ', $amErr));
                 }
                 $_SESSION['dash_flash'] = [$amMsg, $amErr || !$amR['count'] ? ($amR['count'] ? 'warn' : 'err') : 'ok'];
-                header('Location: ?tab=articles&id=' . $amId . '#pl-sheet');
+                header('Location: ?tab=articles&id=' . $amId . ($do === 'article_installs' ? '#pl-gal' : '#pl-sheet'));
                 exit;
             }
+
+            // The public link to this product's installation gallery: made, made
+            // again (the address that travelled too far stops working), or taken
+            // away. The photos themselves are not touched by any of it.
+            case 'article_gallery':
+            case 'article_gallery_off': {
+                $amId = (int)($_POST['id'] ?? 0);
+                if ($do === 'article_gallery_off') {
+                    $amOk = \Glue\Crm\ArticleMedia::revokeGallery($amId);
+                    $_SESSION['dash_flash'] = [$t($amOk ? 'pl_gal_closed' : 'ar_err_not_found'), $amOk ? 'ok' : 'err'];
+                } else {
+                    $amFresh = !empty($_POST['fresh']);
+                    $amTok   = \Glue\Crm\ArticleMedia::galleryToken($amId, $amFresh);
+                    $_SESSION['dash_flash'] = $amTok !== ''
+                        ? [$t($amFresh ? 'pl_gal_renewed' : 'pl_gal_opened'), 'ok']
+                        : [$t('ar_err_not_found'), 'err'];
+                }
+                header('Location: ?tab=articles&id=' . $amId . '#pl-gal');
+                exit;
+            }
+
             case 'article_media_del':
             case 'article_media_cover': {
                 $amId = (int)($_POST['id'] ?? 0);

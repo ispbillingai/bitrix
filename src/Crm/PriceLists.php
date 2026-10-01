@@ -129,7 +129,7 @@ final class PriceLists
     }
 
     /** Columns a catalogue row needs; never the cost price. */
-    private const COLS = 'a.id, a.code, a.barcode, a.description, a.web_description, a.info_url, a.category,
+    private const COLS = 'a.id, a.code, a.barcode, a.description, a.web_description, a.info_url, a.gallery_token, a.category,
                           a.subcategory, a.list_price, a.sale_price4, a.vat_rate, a.stock, a.stock_available,
                           a.stock_ordered, i.price AS pl_price,
                           (SELECT m.id FROM article_media m WHERE m.article_id = a.id AND m.kind = \'photo\'

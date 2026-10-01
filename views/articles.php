@@ -200,6 +200,11 @@ if ($a !== null):
     $plLists  = PriceLists::forArticle((int)$a['id'], !$isAdminHere);
     $amPhotos = ArticleMedia::photos((int)$a['id']);
     $amFiles  = ArticleMedia::files((int)$a['id']);
+    // The installation photos and the public address that shows them. Read only
+    // here: the token is minted by a button or by the first upload, never by
+    // somebody merely opening the page.
+    $amInstalls = ArticleMedia::installs((int)$a['id']);
+    $amGalUrl   = ArticleMedia::galleryUrl(trim((string)($a['gallery_token'] ?? '')));
     $amLink   = trim((string)($a['info_url'] ?? ''));
     $euro     = fn(float $n): string => '€ ' . number_format($n, 2, ',', '.');
   ?>
@@ -342,6 +347,66 @@ if ($a !== null):
       <?php elseif ($amLink === ''): ?>
         <p class="muted small" style="margin:0"><?= $h($t('pl_no_text')) ?></p>
       <?php endif; ?>
+    <?php endif; ?>
+  </div>
+
+  <?php // ---- the installation photos, and the link that shows them ----
+        // Separate from the sheet above on purpose: those are the product as the
+        // maker photographs it, these are the product on a real counter. ?>
+  <div class="card" id="pl-gal">
+    <h3><?= svg('image') ?> <?= $h($t('pl_gal')) ?>
+      <?php if ($amInstalls): ?><span class="muted small">· <?= count($amInstalls) ?></span><?php endif; ?></h3>
+    <p class="muted small" style="margin:-4px 0 12px"><?= $h($t('pl_gal_h')) ?></p>
+
+    <?php if ($amGalUrl !== ''): ?>
+      <div class="pl-gal-link">
+        <input type="text" readonly value="<?= $h($amGalUrl) ?>" onclick="this.select()" aria-label="<?= $h($t('pl_gal_link')) ?>">
+        <a class="btn ghost tiny" href="<?= $h($amGalUrl) ?>" target="_blank" rel="noopener"><?= svg('eye') ?> <?= $h($t('pl_gal_open')) ?></a>
+        <button type="button" class="btn ghost tiny" data-copy="<?= $h($amGalUrl) ?>"><?= $h($t('pl_gal_copy')) ?></button>
+      </div>
+      <?php if ($isAdminHere): ?>
+        <div class="pl-gal-acts">
+          <form method="post" class="inline" onsubmit="return confirm(<?= $h(json_encode($t('pl_gal_renew_confirm'), JSON_UNESCAPED_UNICODE)) ?>)">
+            <input type="hidden" name="do" value="article_gallery"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
+            <input type="hidden" name="fresh" value="1">
+            <button class="btn ghost tiny"><?= $h($t('pl_gal_renew')) ?></button></form>
+          <form method="post" class="inline" onsubmit="return confirm(<?= $h(json_encode($t('pl_gal_close_confirm'), JSON_UNESCAPED_UNICODE)) ?>)">
+            <input type="hidden" name="do" value="article_gallery_off"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
+            <button class="btn ghost tiny" style="color:var(--red)"><?= $h($t('pl_gal_close')) ?></button></form>
+        </div>
+      <?php endif; ?>
+    <?php elseif ($isAdminHere): ?>
+      <form method="post" style="margin:0 0 12px">
+        <input type="hidden" name="do" value="article_gallery"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
+        <button class="btn tiny"><?= svg('link') ?> <?= $h($t('pl_gal_make')) ?></button>
+      </form>
+    <?php endif; ?>
+
+    <?php if ($amInstalls): ?>
+      <div class="pl-photos">
+        <?php foreach ($amInstalls as $p): ?>
+          <div class="pl-photo">
+            <a href="?amf=<?= (int)$p['id'] ?>" target="_blank" rel="noopener"><img src="?amf=<?= (int)$p['id'] ?>&s=t" alt="<?= $h($p['name']) ?>" loading="lazy"></a>
+            <?php if ($isAdminHere): ?>
+              <div class="pl-photo-acts">
+                <form method="post" onsubmit="return confirm(<?= $h(json_encode($t('pl_media_del_confirm'), JSON_UNESCAPED_UNICODE)) ?>)"><input type="hidden" name="do" value="article_media_del">
+                  <input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="media" value="<?= (int)$p['id'] ?>">
+                  <button class="btn ghost tiny" style="color:var(--red)" title="<?= $h($t('delete')) ?>">✕</button></form>
+              </div>
+            <?php endif; ?>
+          </div>
+        <?php endforeach; ?>
+      </div>
+    <?php else: ?>
+      <p class="muted small" style="margin:0 0 10px"><?= $h($t('pl_gal_none')) ?></p>
+    <?php endif; ?>
+
+    <?php if ($isAdminHere): ?>
+      <form method="post" enctype="multipart/form-data" class="pl-up">
+        <input type="hidden" name="do" value="article_installs"><input type="hidden" name="id" value="<?= (int)$a['id'] ?>">
+        <input type="file" name="photos[]" multiple required accept="image/jpeg,image/png,image/webp,image/gif">
+        <button class="btn tiny"><?= $h($t('pl_gal_add')) ?></button>
+      </form>
     <?php endif; ?>
   </div>
 </div>
@@ -602,6 +667,19 @@ if ($a !== null):
 <?php endif; ?>
 <?php endif; ?>
 
+<script>
+// Copy the gallery link: the office pastes it into a chat, not into a form.
+document.querySelectorAll('[data-copy]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var said = b.textContent;
+    var done = function () { b.textContent = '✓'; setTimeout(function () { b.textContent = said; }, 1200); };
+    if (navigator.clipboard) { navigator.clipboard.writeText(b.dataset.copy).then(done, done); return; }
+    var i = b.closest('.pl-gal-link').querySelector('input');
+    i.select(); document.execCommand('copy'); done();
+  });
+});
+</script>
+
 <style>
 .cu-top{display:flex;align-items:center;gap:14px;margin-bottom:14px;flex-wrap:wrap}
 .cu-cols{display:flex;gap:16px;align-items:flex-start}
@@ -625,6 +703,10 @@ if ($a !== null):
 .pl-up{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .pl-up input[type=file]{flex:1;min-width:200px}
 .pl-flag-go{width:40px;flex:0 0 auto;text-align:right}
+.pl-gal-link{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:0 0 10px}
+.pl-gal-link input{flex:1;min-width:220px;font-size:12.5px}
+.pl-gal-acts{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px}
+.pl-gal-acts form{margin:0}
 /* Stacked, the columns must STRETCH to the screen: left at flex-start they size
    to their content, and a table's 520px phone minimum widened the whole page. */
 @media (max-width:1000px){.cu-cols{flex-direction:column;align-items:stretch}.cu-side{width:100%}}

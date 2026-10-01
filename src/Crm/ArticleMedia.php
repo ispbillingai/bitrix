@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Glue\Crm;
 
+use Glue\Config;
 use Glue\Db;
 use Glue\Event\Log;
 
@@ -67,6 +68,36 @@ final class ArticleMedia
     public static function files(int $articleId): array
     {
         return self::ofKind($articleId, 'file');
+    }
+
+    /**
+     * The installation photos — this product as it ended up at customers'
+     * premises, which is a different argument from the catalogue shot the
+     * manufacturer supplies. Same pipeline, its own folder.
+     */
+    public static function installs(int $articleId): array
+    {
+        return self::ofKind($articleId, 'install');
+    }
+
+    /** How many installation photos each of these products has. @return array<int,int> */
+    public static function installCounts(array $articleIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $articleIds))));
+        if (!$ids) {
+            return [];
+        }
+        $out = [];
+        foreach (array_chunk($ids, 500) as $chunk) {
+            $rows = Db::pdo()->query(
+                "SELECT article_id, COUNT(*) n FROM article_media
+                  WHERE kind = 'install' AND article_id IN (" . implode(',', $chunk) . ') GROUP BY article_id'
+            )->fetchAll() ?: [];
+            foreach ($rows as $r) {
+                $out[(int)$r['article_id']] = (int)$r['n'];
+            }
+        }
+        return $out;
     }
 
     private static function ofKind(int $articleId, string $kind): array
@@ -137,6 +168,24 @@ final class ArticleMedia
         return self::addMany($articleId, 'file', $files, $userId);
     }
 
+    /**
+     * Installation photos go through the photo pipeline — these come straight
+     * off a technician's phone, so being made upright and bounded matters more
+     * here than anywhere else. Minting the link on the first upload saves the
+     * office a second step: by the time there is something to show, there is a
+     * way to show it.
+     *
+     * @return array{count:int, errors:string[]}
+     */
+    public static function addInstalls(int $articleId, ?array $files, ?int $userId): array
+    {
+        $res = self::addMany($articleId, 'install', $files, $userId);
+        if ($res['count'] > 0) {
+            self::galleryToken($articleId);
+        }
+        return $res;
+    }
+
     private static function addMany(int $articleId, string $kind, ?array $files, ?int $userId): array
     {
         $out = ['count' => 0, 'errors' => []];
@@ -150,7 +199,7 @@ final class ArticleMedia
 
         foreach (self::filesList($files) as $f) {
             $err    = null;
-            $stored = $kind === 'photo' ? self::storePhoto($f, $err) : self::storeFile($f, $err);
+            $stored = $kind === 'file' ? self::storeFile($f, $err) : self::storePhoto($f, $err);
             if ($stored === null) {
                 $out['errors'][] = $f['name'] . ': ' . $err;
                 continue;
@@ -200,7 +249,7 @@ final class ArticleMedia
     /** Everything filed on an article, gone with it (a CRM product deleted for real). */
     public static function deleteAllFor(int $articleId): void
     {
-        foreach (array_merge(self::photos($articleId), self::files($articleId)) as $m) {
+        foreach (array_merge(self::photos($articleId), self::files($articleId), self::installs($articleId)) as $m) {
             self::unlinkFiles($m);
         }
         Db::pdo()->prepare('DELETE FROM article_media WHERE article_id = ?')->execute([$articleId]);
@@ -277,6 +326,61 @@ final class ArticleMedia
             ->execute([$desc !== '' ? mb_substr($desc, 0, 5000) : null, $url !== '' ? $url : null, $articleId]);
         Log::write('crm', 'article_sheet_saved', 'article', $articleId, ['url' => $url !== '', 'by' => $userId]);
         return ['ok' => true];
+    }
+
+    /**
+     * The product's gallery link, minted if it has none.
+     *
+     * The token is the whole credential, like the signing and survey links: the
+     * office pastes it to a customer who wants to see the thing installed
+     * somewhere real, and nobody has to be given a CRM login for that. $fresh
+     * mints a new one, which is how a link that has travelled too far is taken
+     * out of circulation.
+     */
+    public static function galleryToken(int $articleId, bool $fresh = false): string
+    {
+        $a = Articles::find($articleId);
+        if (!$a) {
+            return '';
+        }
+        $token = trim((string)($a['gallery_token'] ?? ''));
+        if ($token !== '' && !$fresh) {
+            return $token;
+        }
+        $token = bin2hex(random_bytes(16));
+        Db::pdo()->prepare('UPDATE articles SET gallery_token = ? WHERE id = ?')->execute([$token, $articleId]);
+        Log::write('crm', $fresh ? 'article_gallery_renewed' : 'article_gallery_opened', 'article', $articleId, []);
+        return $token;
+    }
+
+    /** Take the link away: the photos stay, the public page stops answering. */
+    public static function revokeGallery(int $articleId): bool
+    {
+        $s = Db::pdo()->prepare('UPDATE articles SET gallery_token = NULL WHERE id = ? AND gallery_token IS NOT NULL');
+        $s->execute([$articleId]);
+        if ($s->rowCount() === 0) {
+            return false;
+        }
+        Log::write('crm', 'article_gallery_closed', 'article', $articleId, []);
+        return true;
+    }
+
+    /** The product a gallery link belongs to, or null — the public page's only door. */
+    public static function byGalleryToken(string $token): ?array
+    {
+        $token = trim($token);
+        if (!preg_match('/^[0-9a-f]{32}$/', $token)) {
+            return null;
+        }
+        $s = Db::pdo()->prepare('SELECT * FROM articles WHERE gallery_token = ? LIMIT 1');
+        $s->execute([$token]);
+        return $s->fetch() ?: null;
+    }
+
+    /** The address to give somebody. Absolute: it is meant to leave the CRM. */
+    public static function galleryUrl(string $token): string
+    {
+        return $token === '' ? '' : Config::appBaseUrl() . '/galleria.php?t=' . $token;
     }
 
     /** Lift the request's memory limit to $to — never lower it (the CLI runs unlimited). */

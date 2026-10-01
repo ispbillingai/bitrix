@@ -98,6 +98,10 @@ if ($listId > 0 && !$list): ?>
         $price  = PriceLists::shownPrice($it, $list);
         $av     = PriceLists::availability($it);
         $link   = trim((string)($it['info_url'] ?? ''));
+        // The installation gallery: a public page, so an agent can send it to a
+        // customer from their phone without the customer needing a login.
+        $gal    = ArticleMedia::installs($itemId);
+        $galUrl = $gal ? ArticleMedia::galleryUrl(trim((string)($it['gallery_token'] ?? ''))) : '';
     ?>
     <div class="cu-top">
       <a class="btn ghost tiny" href="?tab=pricelists&list=<?= $listId ?>">&larr; <?= $h($list['name']) ?></a>
@@ -139,8 +143,16 @@ if ($listId > 0 && !$list): ?>
         <?php endif; ?>
         <div class="pl-av av-<?= $h($av) ?>" style="margin:10px 0 16px"><?= $h($t('pl_av_' . $av)) ?></div>
 
-        <?php if ($link !== ''): ?>
-          <p style="margin:0 0 16px"><a class="btn" href="<?= $h($link) ?>" target="_blank" rel="noopener"><?= svg('external') ?> <?= $h($t('pl_open_link')) ?></a></p>
+        <?php if ($link !== '' || $galUrl !== ''): ?>
+          <p class="pl-links" style="margin:0 0 16px">
+            <?php if ($link !== ''): ?>
+              <a class="btn" href="<?= $h($link) ?>" target="_blank" rel="noopener"><?= svg('external') ?> <?= $h($t('pl_open_link')) ?></a>
+            <?php endif; ?>
+            <?php if ($galUrl !== ''): ?>
+              <a class="btn ghost" href="<?= $h($galUrl) ?>" target="_blank" rel="noopener"><?= svg('image') ?>
+                <?= $h(sprintf($t('pl_gal_see'), count($gal))) ?></a>
+            <?php endif; ?>
+          </p>
         <?php endif; ?>
 
         <?php // a definition list, not a table: tables scroll sideways on a phone ?>
@@ -502,6 +514,7 @@ if ($listId > 0 && !$list): ?>
 .pl-gal-thumbs button.on{border-color:var(--accent)}
 .pl-gal-thumbs img{width:100%;height:100%;object-fit:contain;display:block}
 .pl-info{min-width:0}
+.pl-links{display:flex;gap:8px;flex-wrap:wrap}
 .pl-docs{display:flex;flex-direction:column;gap:6px}
 .pl-docs a{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface)}
 .pl-docs a:hover{border-color:var(--accent)}
