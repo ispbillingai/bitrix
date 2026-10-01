@@ -129,6 +129,24 @@ final class Sender
             // This campaign's own pace, or the one set in Impostazioni.
             $throttle = self::throttleFor($c);
 
+            // The pace has to hold ACROSS runs too, not only inside one batch.
+            // Cron calls this every minute with a budget, so a batch that ends
+            // on a message would otherwise be followed a minute later by the
+            // next one — a campaign set to two minutes would send two of them
+            // sixty seconds apart, which is the kind of burst that gets the
+            // number blocked. Too soon: leave this campaign for a later tick.
+            if ($throttle > 0 && $c['channel'] === 'whatsapp' && $rows) {
+                $since = $this->db->prepare(
+                    "SELECT UNIX_TIMESTAMP(MAX(sent_at)) FROM campaign_recipients
+                      WHERE campaign_id = ? AND sent_at IS NOT NULL"
+                );
+                $since->execute([$cid]);
+                $lastAt = (int)($since->fetchColumn() ?: 0);
+                if ($lastAt > 0 && time() - $lastAt < $throttle) {
+                    continue;
+                }
+            }
+
             $sent = $failed = 0;
             $last = count($rows) - 1;
             foreach ($rows as $i => $r) {
