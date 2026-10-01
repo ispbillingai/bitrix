@@ -2706,4 +2706,5 @@ mario@example.it',
     'camp_typed_bad' => '%d righe non sembrano valide e verranno scartate',
     'camp_typed_bad1' => 'una riga non sembra valida e verrà scartata',
     'evt_contact_details_synced' => 'Recapiti aggiornati anche su lead e documenti',
+    'evt_campaign_requeued' => 'Campagna rimessa in coda',
 ];

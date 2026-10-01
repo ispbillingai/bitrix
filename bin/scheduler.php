@@ -43,7 +43,14 @@ try {
     Scheduler::markCronRun();
 
     $reminders = (new Scheduler())->runDue();
-    $campaigns = (new Sender())->runBatch();
+    // A campaign sends at its own pace, and the office sets that pace in minutes
+    // now, not seconds — 26 messages two minutes apart is nearly an hour of
+    // sleeping. This runner holds the single-instance lock while it sleeps, so
+    // without a budget the whole minute-by-minute schedule (a signature code a
+    // customer is waiting for, an alert to the office) would wait for the
+    // campaign to finish. Three minutes in, it stops and leaves the rest
+    // pending; the next tick carries on where it left off.
+    $campaigns = (new Sender())->runBatch(30, 180);
     // Refresh the Sibill invoice mirror on its own slower cadence. Self-throttling
     // and never throws, so a Sibill outage can't hold up the messages above.
     $sibill = Invoices::syncIfDue();

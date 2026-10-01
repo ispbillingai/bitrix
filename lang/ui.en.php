@@ -2708,4 +2708,5 @@ mario@example.it',
     'camp_typed_bad' => '%d lines do not look valid and will be skipped',
     'camp_typed_bad1' => 'one line does not look valid and will be skipped',
     'evt_contact_details_synced' => 'Contact details carried to leads and documents',
+    'evt_campaign_requeued' => 'Campaign put back in the queue',
 ];
