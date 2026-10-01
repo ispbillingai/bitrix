@@ -80,13 +80,16 @@ final class Sender
         return max(0, min(3600, $seconds));
     }
 
+    /** What a campaign waits between messages when nobody has said otherwise. */
+    public const DEFAULT_THROTTLE = 120;
+
     /** The pace a campaign sends at: its own if it has one, otherwise the setting. */
     public static function throttleFor(?array $campaign = null): int
     {
         if ($campaign !== null && ($campaign['throttle_seconds'] ?? null) !== null) {
             return self::clampThrottle((int)$campaign['throttle_seconds']);
         }
-        return self::clampThrottle((int)Config::get('textmebot.campaign_throttle_seconds', 8));
+        return self::clampThrottle((int)Config::get('textmebot.campaign_throttle_seconds', self::DEFAULT_THROTTLE));
     }
 
     /**

@@ -783,8 +783,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $pairs['textmebot.min_gap_seconds'] = (string)max(5, min(300, (int)$pairs['textmebot.min_gap_seconds']));
                 }
                 if (isset($pairs['textmebot.campaign_throttle_seconds'])) {
-                    $pairs['textmebot.campaign_throttle_seconds'] =
-                        (string)\Glue\Campaign\Sender::clampThrottle((int)$pairs['textmebot.campaign_throttle_seconds']);
+                    // An EMPTY box must not read as "no wait at all": that is how a
+                    // number gets banned. Clearing the field leaves the pace as it
+                    // was; only a typed 0 means no wait.
+                    if (trim((string)$pairs['textmebot.campaign_throttle_seconds']) === '') {
+                        unset($pairs['textmebot.campaign_throttle_seconds']);
+                    } else {
+                        $pairs['textmebot.campaign_throttle_seconds'] =
+                            (string)\Glue\Campaign\Sender::clampThrottle((int)$pairs['textmebot.campaign_throttle_seconds']);
+                    }
                 }
                 // checkbox: present only when ticked
                 $pairs['bitrix.sync_enabled'] = $post('bitrix.sync_enabled') !== null ? 'true' : 'false';

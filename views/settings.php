@@ -86,7 +86,7 @@ $pipelines = \Glue\Crm\Pipelines::all();
     <?php
     fld($h, 'textmebot.min_gap_seconds', $t('f_tmb_gap'), $cfg('textmebot.min_gap_seconds', 6), $t('f_tmb_gap_h'));
     fld($h, 'textmebot.campaign_throttle_seconds', $t('f_tmb_camp_gap'),
-        $cfg('textmebot.campaign_throttle_seconds', 8), $t('f_tmb_camp_gap_h'));
+        $cfg('textmebot.campaign_throttle_seconds', \Glue\Campaign\Sender::DEFAULT_THROTTLE), $t('f_tmb_camp_gap_h'));
     ?>
   </div>
 

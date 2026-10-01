@@ -48,8 +48,12 @@ return [
         // TextMeBot rejects messages sent too close together. Minimum seconds
         // between ANY two WhatsApp sends, app-wide (reminders, alerts, tests).
         'min_gap_seconds' => 8,
-        // Seconds to wait between messages in a bulk campaign (rate limit).
-        'campaign_throttle_seconds' => 8,
+        // Seconds to wait between messages in a bulk campaign. Two minutes, not
+        // the gateway's bare minimum: on 2026-10-01 a campaign that sent 33
+        // messages in seven minutes had the number cut off by WhatsApp mid-run.
+        // The office can change it in Impostazioni, and a campaign can carry its
+        // own pace, but a slow default is the one that does not get you banned.
+        'campaign_throttle_seconds' => 120,
     ],
 
     // Outbound email. Uses PHP mail() by default; set 'smtp' to use SMTP instead.
