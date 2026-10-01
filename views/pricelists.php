@@ -339,6 +339,56 @@ if ($listId > 0 && !$list): ?>
   <p class="muted" style="margin:-6px 0 12px;max-width:860px;white-space:pre-line"><?= $h($list['description']) ?></p>
 <?php endif; ?>
 
+<?php // ---- the two public addresses of this list ----
+      // One carries photos only, the other carries prices: separate links, each
+      // created, renewed and withdrawn on its own. Agents see them (they are the
+      // ones who send them); only the office can make or unmake them.
+      $plShare = [
+          'gallery' => PriceLists::linkUrl('gallery', trim((string)($list['gallery_token'] ?? ''))),
+          'catalog' => PriceLists::linkUrl('catalog', trim((string)($list['catalog_token'] ?? ''))),
+      ];
+      if ($isAdminHere || $plShare['gallery'] !== '' || $plShare['catalog'] !== ''): ?>
+  <details class="drawer pl-share">
+    <summary class="btn ghost tiny"><?= svg('link') ?> <?= $h($t('pl_share')) ?></summary>
+    <div class="card" style="margin-top:10px">
+      <?php foreach (['gallery', 'catalog'] as $kind): $url = $plShare[$kind]; ?>
+        <div class="pl-share-row">
+          <div>
+            <strong class="small"><?= $h($t('pl_share_' . $kind)) ?></strong>
+            <div class="muted small"><?= $h($t('pl_share_' . $kind . '_h')) ?></div>
+          </div>
+          <?php if ($url !== ''): ?>
+            <div class="pl-gal-link">
+              <input type="text" readonly value="<?= $h($url) ?>" onclick="this.select()">
+              <a class="btn ghost tiny" href="<?= $h($url) ?>" target="_blank" rel="noopener"><?= svg('eye') ?> <?= $h($t('pl_gal_open')) ?></a>
+              <button type="button" class="btn ghost tiny" data-copy="<?= $h($url) ?>"><?= $h($t('pl_gal_copy')) ?></button>
+            </div>
+            <?php if ($isAdminHere): ?>
+              <div class="pl-gal-acts">
+                <form method="post" class="inline" onsubmit="return confirm(<?= $h(json_encode($t('pl_gal_renew_confirm'), JSON_UNESCAPED_UNICODE)) ?>)">
+                  <input type="hidden" name="do" value="pricelist_link"><input type="hidden" name="id" value="<?= $listId ?>">
+                  <input type="hidden" name="kind" value="<?= $h($kind) ?>"><input type="hidden" name="fresh" value="1">
+                  <button class="btn ghost tiny"><?= $h($t('pl_gal_renew')) ?></button></form>
+                <form method="post" class="inline" onsubmit="return confirm(<?= $h(json_encode($t('pl_gal_close_confirm'), JSON_UNESCAPED_UNICODE)) ?>)">
+                  <input type="hidden" name="do" value="pricelist_link_off"><input type="hidden" name="id" value="<?= $listId ?>">
+                  <input type="hidden" name="kind" value="<?= $h($kind) ?>">
+                  <button class="btn ghost tiny" style="color:var(--red)"><?= $h($t('pl_gal_close')) ?></button></form>
+              </div>
+            <?php endif; ?>
+          <?php elseif ($isAdminHere): ?>
+            <form method="post" style="margin:0">
+              <input type="hidden" name="do" value="pricelist_link"><input type="hidden" name="id" value="<?= $listId ?>">
+              <input type="hidden" name="kind" value="<?= $h($kind) ?>">
+              <button class="btn tiny"><?= svg('link') ?> <?= $h($t('pl_share_make')) ?></button>
+            </form>
+          <?php endif; ?>
+        </div>
+      <?php endforeach; ?>
+      <p class="muted small" style="margin:12px 0 0"><?= $h($t('pl_share_warn')) ?></p>
+    </div>
+  </details>
+<?php endif; ?>
+
 <form method="get" class="pl-filter">
   <input type="hidden" name="tab" value="pricelists"><input type="hidden" name="list" value="<?= $listId ?>">
   <input type="search" name="q" value="<?= $h($q) ?>" placeholder="<?= $h($t('pl_search_ph')) ?>">
@@ -515,6 +565,13 @@ if ($listId > 0 && !$list): ?>
 .pl-gal-thumbs img{width:100%;height:100%;object-fit:contain;display:block}
 .pl-info{min-width:0}
 .pl-links{display:flex;gap:8px;flex-wrap:wrap}
+.pl-share{margin:0 0 14px}
+.pl-share-row{padding:12px 0;border-bottom:1px solid var(--line)}
+.pl-share-row:last-of-type{border-bottom:0}
+.pl-gal-link{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:8px 0 0}
+.pl-gal-link input{flex:1;min-width:220px;font-size:12.5px}
+.pl-gal-acts{display:flex;gap:8px;flex-wrap:wrap;margin:8px 0 0}
+.pl-gal-acts form{margin:0}
 .pl-docs{display:flex;flex-direction:column;gap:6px}
 .pl-docs a{display:flex;align-items:center;gap:10px;padding:10px 12px;border:1px solid var(--line);border-radius:9px;background:var(--surface)}
 .pl-docs a:hover{border-color:var(--accent)}
@@ -535,3 +592,15 @@ if ($listId > 0 && !$list): ?>
   .pl-filter select{max-width:none;width:100%}
 }
 </style>
+<script>
+// Copy a public link: the office and the agents paste these into a chat.
+document.querySelectorAll('[data-copy]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var said = b.textContent;
+    var done = function () { b.textContent = '✓'; setTimeout(function () { b.textContent = said; }, 1200); };
+    if (navigator.clipboard) { navigator.clipboard.writeText(b.dataset.copy).then(done, done); return; }
+    var i = b.closest('.pl-gal-link').querySelector('input');
+    i.select(); document.execCommand('copy'); done();
+  });
+});
+</script>

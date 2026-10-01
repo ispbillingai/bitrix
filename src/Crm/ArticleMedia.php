@@ -80,6 +80,32 @@ final class ArticleMedia
         return self::ofKind($articleId, 'install');
     }
 
+    /**
+     * Every installation photo of a set of products, grouped by product — what a
+     * whole price list's gallery is made of, in one query rather than one per
+     * product.
+     *
+     * @return array<int,array<int,array>> article id => its photos, in order
+     */
+    public static function installsFor(array $articleIds): array
+    {
+        $ids = array_values(array_unique(array_filter(array_map('intval', $articleIds))));
+        if (!$ids) {
+            return [];
+        }
+        $out = [];
+        foreach (array_chunk($ids, 500) as $chunk) {
+            $rows = Db::pdo()->query(
+                "SELECT * FROM article_media WHERE kind = 'install' AND article_id IN ("
+                . implode(',', $chunk) . ') ORDER BY article_id, sort, id'
+            )->fetchAll() ?: [];
+            foreach ($rows as $r) {
+                $out[(int)$r['article_id']][] = $r;
+            }
+        }
+        return $out;
+    }
+
     /** How many installation photos each of these products has. @return array<int,int> */
     public static function installCounts(array $articleIds): array
     {

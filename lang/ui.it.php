@@ -2728,4 +2728,16 @@ mario@example.it',
     'evt_article_gallery_opened' => 'Galleria installazioni aperta',
     'evt_article_gallery_renewed' => 'Link della galleria cambiato',
     'evt_article_gallery_closed' => 'Galleria installazioni chiusa',
+
+    // ---- the two public links of a whole price list (075) ----
+    'pl_share' => 'Link pubblici del listino',
+    'pl_share_gallery' => 'Galleria installazioni del listino',
+    'pl_share_gallery_h' => 'Tutte le foto di installazione dei prodotti di questo listino, raggruppate per prodotto. Senza prezzi.',
+    'pl_share_catalog' => 'Catalogo con i prezzi',
+    'pl_share_catalog_h' => 'Il listino come lo vedi qui: foto, codice, descrizione e prezzo di ogni prodotto.',
+    'pl_share_make' => 'Crea il link',
+    'pl_share_warn' => 'Chi ha il link entra senza password e può girarlo ad altri. Se un listino non è pubblicato, i suoi link non rispondono. Con "Cambia link" l’indirizzo vecchio smette di funzionare.',
+    'evt_pricelist_link_opened' => 'Link pubblico del listino creato',
+    'evt_pricelist_link_renewed' => 'Link pubblico del listino cambiato',
+    'evt_pricelist_link_closed' => 'Link pubblico del listino tolto',
 ];

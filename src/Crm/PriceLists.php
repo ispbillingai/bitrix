@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace Glue\Crm;
 
+use Glue\Config;
 use Glue\Db;
 use Glue\Event\Log;
 
@@ -480,5 +481,78 @@ final class PriceLists
         $v  = 'v' . (int)($l['version'] ?? 1);
         $at = (string)($l['version_at'] ?? '');
         return $at === '' ? $v : $v . ($lang === 'en' ? ' of ' : ' del ') . date('d/m/Y', (int)strtotime($at));
+    }
+
+    // ---- the two public addresses of a list (migration 075) ------------------------
+
+    /**
+     * What a list can be opened by from outside, and where each one leads.
+     *
+     * Two, not one, because they are two different decisions: the installation
+     * gallery can go to anybody, the catalogue carries prices and is closer to a
+     * quotation. Each is minted, re-minted and revoked on its own.
+     */
+    public const LINKS = ['gallery' => 'gallery_token', 'catalog' => 'catalog_token'];
+
+    /** The list's link of that kind, minted if it has none. $fresh kills the old one. */
+    public static function linkToken(int $listId, string $kind, bool $fresh = false): string
+    {
+        $col = self::LINKS[$kind] ?? '';
+        if ($col === '' || !self::find($listId)) {
+            return '';
+        }
+        $s = Db::pdo()->prepare("SELECT $col FROM price_lists WHERE id = ?");
+        $s->execute([$listId]);
+        $token = trim((string)($s->fetchColumn() ?: ''));
+        if ($token !== '' && !$fresh) {
+            return $token;
+        }
+        $token = bin2hex(random_bytes(16));
+        Db::pdo()->prepare("UPDATE price_lists SET $col = ? WHERE id = ?")->execute([$token, $listId]);
+        Log::write('crm', $fresh ? 'pricelist_link_renewed' : 'pricelist_link_opened', 'price_list', $listId,
+            ['kind' => $kind]);
+        return $token;
+    }
+
+    /** Take one address away; the list and its products are untouched. */
+    public static function revokeLink(int $listId, string $kind): bool
+    {
+        $col = self::LINKS[$kind] ?? '';
+        if ($col === '') {
+            return false;
+        }
+        $s = Db::pdo()->prepare("UPDATE price_lists SET $col = NULL WHERE id = ? AND $col IS NOT NULL");
+        $s->execute([$listId]);
+        if ($s->rowCount() === 0) {
+            return false;
+        }
+        Log::write('crm', 'pricelist_link_closed', 'price_list', $listId, ['kind' => $kind]);
+        return true;
+    }
+
+    /**
+     * The list a public token opens, or null — the public pages' only door.
+     *
+     * A list the office has unpublished (visible = 0) answers nothing either:
+     * taking a list off the agents' screens must not leave it open to the world.
+     */
+    public static function byLinkToken(string $kind, string $token): ?array
+    {
+        $col = self::LINKS[$kind] ?? '';
+        if ($col === '' || !preg_match('/^[0-9a-f]{32}$/', trim($token))) {
+            return null;
+        }
+        $s = Db::pdo()->prepare("SELECT * FROM price_lists WHERE $col = ? AND visible = 1 LIMIT 1");
+        $s->execute([trim($token)]);
+        return $s->fetch() ?: null;
+    }
+
+    /** The address to give somebody. Absolute: it is meant to leave the CRM. */
+    public static function linkUrl(string $kind, string $token): string
+    {
+        if ($token === '' || !isset(self::LINKS[$kind])) {
+            return '';
+        }
+        return Config::appBaseUrl() . ($kind === 'catalog' ? '/catalogo.php?t=' : '/galleria.php?l=') . $token;
     }
 }

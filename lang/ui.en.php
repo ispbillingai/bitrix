@@ -2730,4 +2730,16 @@ mario@example.it',
     'evt_article_gallery_opened' => 'Installation gallery opened',
     'evt_article_gallery_renewed' => 'Gallery link changed',
     'evt_article_gallery_closed' => 'Installation gallery closed',
+
+    // ---- the two public links of a whole price list (075) ----
+    'pl_share' => 'Public links for this list',
+    'pl_share_gallery' => 'Installation gallery for the list',
+    'pl_share_gallery_h' => 'Every installation photo of this list\'s products, grouped by product. No prices.',
+    'pl_share_catalog' => 'Catalogue with prices',
+    'pl_share_catalog_h' => 'The list as you see it here: photo, code, description and price of each product.',
+    'pl_share_make' => 'Create the link',
+    'pl_share_warn' => 'Anyone holding the link gets in without a password and can pass it on. An unpublished list answers nothing. "New link" stops the old address working.',
+    'evt_pricelist_link_opened' => 'Public list link created',
+    'evt_pricelist_link_renewed' => 'Public list link changed',
+    'evt_pricelist_link_closed' => 'Public list link removed',
 ];

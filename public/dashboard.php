@@ -1356,6 +1356,29 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
 
+            // The two public addresses of a whole list: the installation gallery
+            // and the catalogue with prices. Separate on purpose — handing out a
+            // gallery and handing out a price list are different decisions.
+            case 'pricelist_link':
+            case 'pricelist_link_off': {
+                $plId   = (int)($_POST['id'] ?? 0);
+                $plKind = (string)($_POST['kind'] ?? '');
+                if (!isset(\Glue\Crm\PriceLists::LINKS[$plKind])) {
+                    $_SESSION['dash_flash'] = [$t('not_allowed'), 'err'];
+                } elseif ($do === 'pricelist_link_off') {
+                    $plOk = \Glue\Crm\PriceLists::revokeLink($plId, $plKind);
+                    $_SESSION['dash_flash'] = [$t($plOk ? 'pl_gal_closed' : 'pl_not_found'), $plOk ? 'ok' : 'err'];
+                } else {
+                    $plFresh = !empty($_POST['fresh']);
+                    $plTok   = \Glue\Crm\PriceLists::linkToken($plId, $plKind, $plFresh);
+                    $_SESSION['dash_flash'] = $plTok !== ''
+                        ? [$t($plFresh ? 'pl_gal_renewed' : 'pl_gal_opened'), 'ok']
+                        : [$t('pl_not_found'), 'err'];
+                }
+                header('Location: ?tab=pricelists&list=' . $plId);
+                exit;
+            }
+
             // ---------- price lists (office only) ----------
             case 'pricelist_save': {
                 $plId = (int)($_POST['id'] ?? 0);

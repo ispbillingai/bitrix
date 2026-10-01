@@ -2,16 +2,16 @@
 declare(strict_types=1);
 
 /**
- * A product's installation gallery — the photos of this product as it was
- * actually installed, on one public page.
+ * Installation photos on one public page — either a single product's, or every
+ * product of a whole price list, grouped by product.
  *
- * "Nei listini, per ogni prodotto, una cartella nella quale posso caricare
- *  tutte le foto delle installazioni relative a quel prodotto, e un link che mi
- *  permette di visualizzare la galleria."
+ *   ?t=<token>   one product   (migration 074)
+ *   ?l=<token>   a whole list  (migration 075: "mi fai un link galleria anche
+ *                              per l'intero listino")
  *
  * No login: the token in the link is the credential, like the signing and
- * survey pages. It opens exactly one product's installation photos — never its
- * price, never a customer's name, never the documents on its sheet. The office
+ * survey pages. It opens exactly those installation photos — never a price,
+ * never a customer's name, never the documents on a product's sheet. The office
  * can mint a new token (the old link dies) or take the link away entirely.
  *
  * The same page serves the images (?p=<media id>), so the photos stay outside
@@ -22,6 +22,7 @@ require __DIR__ . '/../src/Bootstrap.php';
 use Glue\Bootstrap;
 use Glue\Config;
 use Glue\Crm\ArticleMedia;
+use Glue\Crm\PriceLists;
 use Glue\Reminder\Templates;
 
 Bootstrap::init();
@@ -31,8 +32,11 @@ $it   = $lang !== 'en';
 $co   = (string)Config::get('app.company_name', 'CRM');
 $h    = static fn($s): string => htmlspecialchars((string)$s, ENT_QUOTES, 'UTF-8');
 
-$article = ArticleMedia::byGalleryToken((string)($_GET['t'] ?? ''));
-if (!$article) {
+$listToken = trim((string)($_GET['l'] ?? ''));
+$list      = $listToken !== '' ? PriceLists::byLinkToken('gallery', $listToken) : null;
+$article   = $listToken === '' ? ArticleMedia::byGalleryToken((string)($_GET['t'] ?? '')) : null;
+
+if (!$list && !$article) {
     http_response_code(404);
     header('Content-Type: text/html; charset=utf-8');
     header('X-Robots-Tag: noindex, nofollow');
@@ -41,23 +45,56 @@ if (!$article) {
         . ($it ? 'Questo link non è più valido.' : 'This link is no longer valid.') . '</p>');
 }
 
-$photos = ArticleMedia::installs((int)$article['id']);
+// ---- what this link shows: one product, or each product of the list ----
+$groups = [];   // [['title' => string, 'code' => string, 'photos' => rows], …]
+if ($list) {
+    $items = PriceLists::allItems((int)$list['id']);
+    $byArticle = ArticleMedia::installsFor(array_column($items, 'id'));
+    foreach ($items as $i) {
+        if (!empty($byArticle[(int)$i['id']])) {
+            $groups[] = ['title' => trim((string)$i['description']) ?: (string)$i['code'],
+                         'code'  => (string)$i['code'],
+                         'photos' => $byArticle[(int)$i['id']]];
+        }
+    }
+    $base  = '?l=' . $listToken;
+    $title = (string)$list['name'];
+} else {
+    $photos = ArticleMedia::installs((int)$article['id']);
+    if ($photos) {
+        $groups[] = ['title' => '', 'code' => (string)$article['code'], 'photos' => $photos];
+    }
+    $base  = '?t=' . (string)$article['gallery_token'];
+    $title = trim((string)($article['description'] ?? '')) ?: (string)$article['code'];
+}
+
+$all = [];
+foreach ($groups as $g) {
+    foreach ($g['photos'] as $p) {
+        $all[(int)$p['id']] = $p;
+    }
+}
 
 // ---- one photo, for someone holding the token ----
 if (isset($_GET['p'])) {
     $wanted = (int)$_GET['p'];
-    foreach ($photos as $p) {
-        if ((int)$p['id'] === $wanted) {
-            header('X-Robots-Tag: noindex, nofollow');
-            ArticleMedia::stream($p, ($_GET['s'] ?? '') === 't');
-        }
+    if (isset($all[$wanted])) {
+        header('X-Robots-Tag: noindex, nofollow');
+        ArticleMedia::stream($all[$wanted], ($_GET['s'] ?? '') === 't');
     }
     http_response_code(404);
     exit('Not found');
 }
 
-$title = trim((string)($article['description'] ?? '')) ?: (string)$article['code'];
-$n     = count($photos);
+$n = count($all);
+if ($list) {
+    $sub = sprintf($it ? '%d foto di installazioni · %d prodotti' : '%d installation photos · %d products',
+        $n, count($groups));
+} else {
+    $sub = ($it ? 'Codice ' : 'Code ') . (string)$article['code'] . ' · '
+         . ($n === 1 ? ($it ? '1 foto di installazione' : '1 installation photo')
+                     : sprintf($it ? '%d foto di installazioni' : '%d installation photos', $n));
+}
 
 header('Content-Type: text/html; charset=utf-8');
 header('X-Robots-Tag: noindex, nofollow');
@@ -80,13 +117,14 @@ header('Referrer-Policy: no-referrer');
   h1{margin:4px 0 2px;font-size:21px;line-height:1.25}
   .code{color:var(--muted);font-size:13px}
   main{padding:18px 0 40px}
-  .grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr))}
+  h2{font-size:16px;margin:22px 0 4px}
+  h2 span{color:var(--muted);font-weight:400;font-size:13px}
+  .grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-top:10px}
   .grid button{padding:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card);
                cursor:zoom-in;aspect-ratio:1;display:block}
   .grid img{width:100%;height:100%;object-fit:cover;display:block}
   .none{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:28px;text-align:center;color:var(--muted)}
   footer{color:var(--muted);font-size:12.5px;padding:0 0 30px}
-  /* the full photo, over everything */
   #lb{position:fixed;inset:0;background:rgba(0,0,0,.93);display:none;align-items:center;justify-content:center;z-index:50}
   #lb.on{display:flex}
   #lb img{max-width:100%;max-height:100%;object-fit:contain}
@@ -95,29 +133,30 @@ header('Referrer-Policy: no-referrer');
   #lb .x{top:14px;right:14px}
   #lb .nav{top:50%;transform:translateY(-50%)}
   #lb .prev{left:12px} #lb .next{right:12px}
-  #lb .count{position:absolute;bottom:16px;left:0;right:0;text-align:center;color:#fff;opacity:.8;font-size:13px}
+  #lb .cap{position:absolute;bottom:16px;left:0;right:0;text-align:center;color:#fff;opacity:.85;font-size:13px;padding:0 60px}
   @media (max-width:560px){ .grid{grid-template-columns:repeat(auto-fill,minmax(110px,1fr))} h1{font-size:18px} }
 </style></head><body>
 <header><div class="wrap">
   <div class="co"><?= $h($co) ?></div>
   <h1><?= $h($title) ?></h1>
-  <div class="code"><?= $h($it ? 'Codice' : 'Code') ?> <?= $h($article['code']) ?> ·
-    <?= $n === 1 ? $h($it ? '1 foto di installazione' : '1 installation photo')
-                 : $h(sprintf($it ? '%d foto di installazioni' : '%d installation photos', $n)) ?></div>
+  <div class="code"><?= $h($sub) ?></div>
 </div></header>
 
 <main class="wrap">
-<?php if (!$photos): ?>
-  <div class="none"><?= $h($it ? 'Non ci sono ancora foto per questo prodotto.' : 'No photos for this product yet.') ?></div>
-<?php else: ?>
+<?php if (!$all): ?>
+  <div class="none"><?= $h($it ? 'Non ci sono ancora foto di installazioni.' : 'No installation photos yet.') ?></div>
+<?php else: $i = 0; foreach ($groups as $g): ?>
+  <?php if ($list): ?>
+    <h2><?= $h($g['title']) ?> <span>· <?= $h($g['code']) ?> · <?= count($g['photos']) ?></span></h2>
+  <?php endif; ?>
   <div class="grid">
-    <?php foreach ($photos as $i => $p): ?>
-      <button type="button" data-i="<?= $i ?>" aria-label="<?= $h($p['name']) ?>">
-        <img src="?t=<?= $h($article['gallery_token']) ?>&amp;p=<?= (int)$p['id'] ?>&amp;s=t" alt="" loading="lazy">
+    <?php foreach ($g['photos'] as $p): ?>
+      <button type="button" data-i="<?= $i++ ?>" aria-label="<?= $h($p['name']) ?>">
+        <img src="<?= $h($base) ?>&amp;p=<?= (int)$p['id'] ?>&amp;s=t" alt="" loading="lazy">
       </button>
     <?php endforeach; ?>
   </div>
-<?php endif; ?>
+<?php endforeach; endif; ?>
 </main>
 
 <footer class="wrap"><?= $h($co) ?></footer>
@@ -127,21 +166,31 @@ header('Referrer-Policy: no-referrer');
   <button class="nav prev" aria-label="<?= $h($it ? 'Precedente' : 'Previous') ?>">&lsaquo;</button>
   <img id="lbimg" alt="">
   <button class="nav next" aria-label="<?= $h($it ? 'Successiva' : 'Next') ?>">&rsaquo;</button>
-  <div class="count" id="lbn"></div>
+  <div class="cap" id="lbn"></div>
 </div>
 
 <script>
 (function () {
-  var full = <?= json_encode(array_map(
-      fn($p) => '?t=' . $article['gallery_token'] . '&p=' . (int)$p['id'], $photos), JSON_UNESCAPED_SLASHES) ?>;
-  if (!full.length) { return; }
+  // Every photo on the page, in the order it is shown, with the product it
+  // belongs to: in a whole-list gallery the caption is the only thing saying
+  // which product you are looking at.
+  var shots = <?php
+      $flat = [];
+      foreach ($groups as $g) {
+          foreach ($g['photos'] as $p) {
+              $flat[] = ['u' => $base . '&p=' . (int)$p['id'], 'c' => $list ? $g['title'] . ' · ' . $g['code'] : ''];
+          }
+      }
+      echo json_encode($flat, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+  ?>;
+  if (!shots.length) { return; }
   var lb = document.getElementById('lb'), img = document.getElementById('lbimg'),
-      num = document.getElementById('lbn'), at = 0;
+      cap = document.getElementById('lbn'), at = 0;
 
   function show(i) {
-    at = (i + full.length) % full.length;
-    img.src = full[at];
-    num.textContent = (at + 1) + ' / ' + full.length;
+    at = (i + shots.length) % shots.length;
+    img.src = shots[at].u;
+    cap.textContent = (shots[at].c ? shots[at].c + ' — ' : '') + (at + 1) + ' / ' + shots.length;
     lb.classList.add('on');
     document.body.style.overflow = 'hidden';
   }
