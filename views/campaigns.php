@@ -3,9 +3,11 @@
  * Mass WhatsApp/email campaigns.
  *
  * Recipients come from three places that add up: customers ticked in the
- * picker, whole groups of the Clienti tab, and anything still typed by hand.
- * The office asked for the first two — "scegliere i clienti dalla lista così da
- * non scriverli" — so the typed box is now the exception, folded away.
+ * picker, whole groups of the Clienti tab, and numbers or addresses typed by
+ * hand. None of them is required on its own — the office asked for the list
+ * ("scegliere i clienti dalla lista così da non scriverli") and then for the
+ * other way round, "voglio poter aggiungere numeri manualmente", so the box is
+ * out in the open beside the picker rather than folded away under it.
  *
  * A campaign can also carry a photo or a document: WhatsApp gets it by URL
  * (photo in the chat, document as a file), email as an attachment.
@@ -37,6 +39,9 @@ $fmt = fn($n): string => number_format((float)$n, 0, ',', '.');
 $defThrottle = Sender::throttleFor();
 // Below the gateway's own minimum gap nothing goes faster, so the estimate says so.
 $minGap = max(0, (int)Config::get('textmebot.min_gap_seconds', 6));
+// A number typed without a prefix gets this country code (Notifier::normalizePhone),
+// so the hint under the box can say which one.
+$cc = preg_replace('/\D+/', '', (string)Config::get('app.default_country_code', '39'));
 
 // ?camp=<id> opens one campaign for editing, in place of the new-campaign form.
 // What has already left cannot be taken back: editing reaches only the messages
@@ -159,6 +164,7 @@ if (($editId = (int)($_GET['camp'] ?? 0)) > 0) {
 
   <b class="small"><?= $h($t('camp_recipients')) ?></b>
   <div class="camp-pick">
+    <p class="camp-way"><?= $h($t('camp_way_list')) ?></p>
     <div class="camp-search">
       <input type="search" id="camp-q" autocomplete="off" placeholder="<?= $h($t('camp_search_ph')) ?>">
       <div id="camp-hits" class="camp-hits" hidden></div>
@@ -175,12 +181,12 @@ if (($editId = (int)($_GET['camp'] ?? 0)) > 0) {
       <?php endforeach; ?>
     </div>
 
-    <details class="drawer" style="margin-top:10px">
-      <summary class="muted small" style="cursor:pointer"><?= $h($t('camp_typed')) ?></summary>
-      <label class="fld" style="margin-top:8px">
-        <textarea name="recipients" id="camp-typed" rows="3" placeholder="<?= $h($t('camp_typed_ph')) ?>"></textarea>
-        <small class="muted"><?= $h($t('camp_typed_h')) ?></small></label>
-    </details>
+    <?php // Typing numbers is a way of its own, not a fallback: the office asked
+          // to send to a number that is in no list, without choosing a customer. ?>
+    <p class="camp-way camp-way-or"><?= $h($t('camp_typed')) ?></p>
+    <label class="fld" style="margin:0">
+      <textarea name="recipients" id="camp-typed" rows="3" placeholder="<?= $h($t('camp_typed_ph')) ?>"></textarea>
+      <small class="muted"><?= $h(sprintf($t('camp_typed_h'), $cc)) ?></small></label>
   </div>
 
   <p class="camp-total" id="camp-total"></p>
@@ -220,6 +226,8 @@ if (($editId = (int)($_GET['camp'] ?? 0)) > 0) {
 .camp-on td:first-child{box-shadow:inset 3px 0 0 var(--accent)}
 .camp-open svg{width:14px;height:14px;vertical-align:-2px;opacity:.5}
 .camp-pick{border:1px solid var(--line);border-radius:10px;padding:12px;margin:6px 0 14px}
+.camp-way{font-weight:600;font-size:12.5px;margin:0 0 9px}
+.camp-way-or{margin-top:18px;padding-top:14px;border-top:1px solid var(--line)}
 .camp-search{position:relative}
 .camp-search input{width:100%}
 .camp-hits{position:absolute;z-index:40;left:0;right:0;top:100%;margin-top:4px;max-height:280px;overflow-y:auto;
@@ -256,7 +264,7 @@ if (($editId = (int)($_GET['camp'] ?? 0)) > 0) {
       'confirm'=> $t('camp_confirm'),
       'empty'  => $t('camp_err_no_recipients'),
       'eta'    => $t('camp_eta'), 'h' => $t('unit_h'), 'min' => $t('unit_min'), 'sec' => $t('unit_s'),
-      'gap'    => $minGap,
+      'gap'    => $minGap, 'bad' => $t('camp_typed_bad'), 'bad1' => $t('camp_typed_bad1'),
   ], JSON_UNESCAPED_UNICODE) ?>;
   var picked = {};   // contact id => {name, phone, email}
   var chips = document.getElementById('camp-chips'), totalEl = document.getElementById('camp-total'),
@@ -302,12 +310,21 @@ if (($editId = (int)($_GET['camp'] ?? 0)) > 0) {
     var n = 0, warn = 0;
     Object.keys(picked).forEach(function (id) { reachable(picked[id]) ? n++ : warn++; });
     form.querySelectorAll('input[name="groups[]"]:checked').forEach(function (g) { n += parseInt(g.dataset.n, 10) || 0; });
-    (typed.value || '').split(/[\n,;]+/).forEach(function (l) { if (l.trim() !== '') n++; });
+    // Count only what the server would accept, and say how many lines it would
+    // not: a mistyped number is otherwise only reported after the campaign exists.
+    var bad = 0;
+    (typed.value || '').split(/[\n,;]+/).forEach(function (l) {
+      l = l.trim();
+      if (l === '') { return; }
+      var ok = isWa() ? l.replace(/\D/g, '').length >= 6 : /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(l);
+      ok ? n++ : bad++;
+    });
     var txt = n > 0 ? L.total.replace('%d', n) : '';
     // At this pace the list takes this long — the reason the pace is worth setting.
     var gap = thr.value.trim() === '' ? parseInt(thr.placeholder, 10) : parseInt(thr.value, 10);
     if (gap > 0) { gap = Math.max(gap, L.gap); }   // the gateway never goes faster than its own gap
     if (txt && isWa() && gap > 0 && n > 1) txt += ' · ' + L.eta.replace('%s', human((n - 1) * gap));
+    if (bad > 0) txt += (txt ? ' · ' : '') + (bad === 1 ? L.bad1 : L.bad.replace('%d', bad));
     totalEl.textContent = txt;
     totalEl.style.color = n > 0 ? 'var(--txt)' : '';
     return n;
