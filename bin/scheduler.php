@@ -42,15 +42,17 @@ try {
     // before the work, not after, so a long batch never looks like an outage.
     Scheduler::markCronRun();
 
-    $reminders = (new Scheduler())->runDue();
-    // A campaign sends at its own pace, and the office sets that pace in minutes
-    // now, not seconds — 26 messages two minutes apart is nearly an hour of
-    // sleeping. This runner holds the single-instance lock while it sleeps, so
-    // without a budget the whole minute-by-minute schedule (a signature code a
-    // customer is waiting for, an alert to the office) would wait for the
-    // campaign to finish. Three minutes in, it stops and leaves the rest
-    // pending; the next tick carries on where it left off.
-    $campaigns = (new Sender())->runBatch(30, 180);
+    // Two minutes of reminders per tick. With the gap the office has set — a
+    // minute between messages, so the number keeps looking human — a queue of
+    // twenty would otherwise hold this runner, and its lock, for twenty minutes,
+    // long enough for the heartbeat below to look like an outage and for the
+    // dashboard's own dispatcher to wake up behind it.
+    $reminders = (new Scheduler())->runDue(200, 120);
+    // A campaign sends at its own pace, two minutes by default, and that pace is
+    // now kept between runs as well as inside one — so a minute of budget is
+    // plenty: the tick sends the message that is due and leaves immediately
+    // instead of sleeping with the lock held, and the next tick carries on.
+    $campaigns = (new Sender())->runBatch(30, 60);
     // Refresh the Sibill invoice mirror on its own slower cadence. Self-throttling
     // and never throws, so a Sibill outage can't hold up the messages above.
     $sibill = Invoices::syncIfDue();
@@ -80,6 +82,11 @@ try {
     // …and the other end of the same question: the customers who DO have a
     // contract, warned before it runs out. No-op until its configured hour.
     $maintExp = Maintenance::runExpiryNotices();
+
+    // Stamp the heartbeat again on the way out. It was stamped before the work so
+    // a long tick never reads as an outage; stamping it after keeps that true
+    // when the work itself took minutes of waiting between messages.
+    Scheduler::markCronRun();
 
     Log::write('scheduler', 'tick', null, null, [
         'reminders' => $reminders,

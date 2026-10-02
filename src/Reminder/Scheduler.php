@@ -173,8 +173,9 @@ final class Scheduler
      * Dispatch all pending reminders whose due_at has passed. Returns a small
      * summary. Safe to call every minute from cron.
      */
-    public function runDue(int $limit = 200): array
+    public function runDue(int $limit = 200, int $maxSeconds = 0): array
     {
+        $started = time();
         $stmt = $this->db->prepare(
             "SELECT * FROM reminders
              WHERE status='pending' AND due_at <= NOW()
@@ -186,6 +187,15 @@ final class Scheduler
 
         $sent = $skipped = $failed = 0;
         foreach ($rows as $r) {
+            // Every WhatsApp waits out the gap the office set — a minute, if
+            // they said a minute — so a queue of them is measured in minutes,
+            // not seconds. $maxSeconds stops the run and leaves the rest
+            // pending: the cron tick stays short enough that its heartbeat
+            // never looks like an outage, and the "run now" button comes back
+            // to the person who pressed it. 0 = no limit.
+            if ($maxSeconds > 0 && $sent > 0 && time() - $started >= $maxSeconds) {
+                break;
+            }
             if (!$this->claimForDispatch($r)) {
                 continue; // a concurrent dispatcher owns this one
             }
@@ -237,7 +247,10 @@ final class Scheduler
         if ($due === 0) {
             return ['ran' => true, 'due' => 0];
         }
-        return ['ran' => true] + $this->runDue();
+        // A page load is standing in for the cron here, so it drains what it can
+        // and no more: nobody opening the dashboard should wait out a queue
+        // spaced a minute apart.
+        return ['ran' => true] + $this->runDue(200, 15);
     }
 
     /**

@@ -2516,7 +2516,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $tab = 'reminders';
                 break;
             case 'run_scheduler':
-                $r = (new Scheduler())->runDue();
+                // A web request: the person is watching the page. Twenty seconds
+                // of queue, then whatever is left goes out on the cron ticks.
+                $r = (new Scheduler())->runDue(200, 20);
                 // "Run now" is a web request: give the campaign batch a budget so
                 // a slow pace (the delay between messages) cannot hang the page.
                 // Whatever is left over goes out on the next cron minute.

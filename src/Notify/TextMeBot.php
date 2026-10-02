@@ -24,6 +24,13 @@ final class TextMeBot
 {
     private const RETRIES = 2;
 
+    /**
+     * The longest a WEB request will ever wait for its slot. The gateway's own
+     * limit is one message per 5 seconds; this keeps a margin over it and keeps
+     * a page from hanging when the office has set a long pacing gap.
+     */
+    private const WEB_MAX_GAP = 8;
+
     private array $cfg;
 
     public function __construct(?array $cfg = null)
@@ -47,6 +54,15 @@ final class TextMeBot
     {
         // TextMeBot bans on "1 message per 5 seconds"; keep a safe margin over 5s.
         $gap = max(0, (int)($this->cfg['min_gap_seconds'] ?? 6));
+        // The office can set that gap to a minute to keep the number looking
+        // human. That is a pace for the QUEUE, which cron drains with nobody
+        // waiting — not for a request somebody is sitting in front of: a click
+        // that saves a lead must not hold the page for a minute. In a web
+        // request the wait therefore stops at the gateway's own floor, and the
+        // rest of the pacing is left to the cron runner.
+        if (PHP_SAPI !== 'cli') {
+            $gap = min($gap, self::WEB_MAX_GAP);
+        }
 
         $res = [];
         for ($attempt = 0; $attempt <= self::RETRIES; $attempt++) {
