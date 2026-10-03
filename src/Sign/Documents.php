@@ -316,7 +316,9 @@ final class Documents
              VALUES (?, NULL, ?, "doc", ?, ?)'
         )->execute([(int)$doc['contact_id'], $id, $code, $expires]);
 
-        $target = self::mask((string)($doc['signer_phone'] ?: $doc['signer_email']));
+        // Both channels, when the signer has both: that is where the message
+        // below really goes, so that is what the page and the audit say.
+        $target = implode(' · ', self::otpTargets($doc)) ?: '—';
         Db::pdo()->prepare(
             'UPDATE sign_documents SET status = IF(status = "sent", "viewed", status) WHERE id = ?'
         )->execute([$id]);
@@ -924,6 +926,29 @@ final class Documents
     }
 
     /** "+3933****4977" / "ma****@example.com" — provable, not re-usable. */
+    /**
+     * Where a code for this document actually goes, masked, keyed by channel.
+     *
+     * The code has always been queued on BOTH channels when the signer has both
+     * — the reminder goes out as 'both' — but every page and the audit line said
+     * only the phone, so a customer whose WhatsApp never arrived had no reason
+     * to look in their inbox, where the code was sitting. This is what the
+     * customer is told, and what the evidence records.
+     *
+     * @return array<string,string> 'whatsapp' and/or 'email' => the masked address
+     */
+    public static function otpTargets(array $doc): array
+    {
+        $out = [];
+        if (trim((string)($doc['signer_phone'] ?? '')) !== '') {
+            $out['whatsapp'] = self::mask((string)$doc['signer_phone']);
+        }
+        if (trim((string)($doc['signer_email'] ?? '')) !== '') {
+            $out['email'] = self::mask((string)$doc['signer_email']);
+        }
+        return $out;
+    }
+
     public static function mask(string $target): string
     {
         $target = trim($target);

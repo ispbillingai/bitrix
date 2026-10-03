@@ -122,12 +122,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && $blocked === '') {
         if (!$res['ok']) {
             $prg($t('otp_throttled'), 'err', $docId, null, $token);
         }
-        $prg(str_replace('{to}', $res['sent_to'], $t('otp_sent')), 'ok', $docId, 'code', $token);
+        $prg(str_replace('{to}', sign_otp_to($t, $doc), $t('otp_sent')), 'ok', $docId, 'code', $token);
     }
 
     if ($do === 'resend_code') {
         $res = Documents::issueCode($doc);
-        $prg($res['ok'] ? str_replace('{to}', $res['sent_to'], $t('otp_sent')) : $t('otp_throttled'),
+        $prg($res['ok'] ? str_replace('{to}', sign_otp_to($t, $doc), $t('otp_sent')) : $t('otp_throttled'),
             $res['ok'] ? 'ok' : 'err', $docId, 'code', $token);
     }
 
@@ -161,6 +161,21 @@ render_page($t, $h, $lang, $brand, $doc, $flash, $flashType, $step, $token);
 
 
 // ============================ view ============================
+
+/**
+ * Where the code is going, said in full. It has always gone to the phone AND
+ * the address when the signer has both; saying only the phone left anyone whose
+ * WhatsApp never arrived with no reason to look in their inbox, where the same
+ * code was waiting.
+ */
+function sign_otp_to(callable $t, ?array $doc): string
+{
+    $parts = [];
+    foreach ($doc ? Documents::otpTargets($doc) : [] as $kind => $masked) {
+        $parts[] = $masked . ' (' . ($kind === 'whatsapp' ? 'WhatsApp' : $t('by_email')) . ')';
+    }
+    return $parts ? implode(' ' . $t('and_also') . ' ', $parts) : '—';
+}
 
 function render_page(callable $t, callable $h, string $lang, string $brand, ?array $doc,
                      ?string $flash, ?string $flashType, string $step, ?string $token): void
@@ -266,8 +281,7 @@ function render_page(callable $t, callable $h, string $lang, string $brand, ?arr
         <span><?= $h($t('consent_text')) ?></span>
       </label>
       <button class="btn wide"><?= $h($t('send_code')) ?></button>
-      <p class="muted small center"><?= $h(str_replace('{to}',
-          \Glue\Sign\Documents::mask((string)($doc['signer_phone'] ?: $doc['signer_email'])), $t('send_code_help'))) ?></p>
+      <p class="muted small center"><?= $h(str_replace('{to}', sign_otp_to($t, $doc), $t('send_code_help'))) ?></p>
     </form>
   </div>
 
@@ -324,6 +338,8 @@ function sign_strings(string $lang): array
         'consent_text' => 'I have read the document and I am signing it electronically.',
         'send_code'   => 'Send me the code',
         'send_code_help' => 'We will send it to {to}',
+        'by_email' => 'email',
+        'and_also' => 'and',
         'code_title'  => 'Enter your code',
         'code_body'   => 'We sent you a 6-digit code. It is valid for 10 minutes.',
         'confirm_sign' => 'Confirm and sign',
@@ -371,6 +387,8 @@ function sign_strings(string $lang): array
         'consent_text' => 'Ho letto il documento e lo firmo elettronicamente.',
         'send_code'   => 'Inviami il codice',
         'send_code_help' => 'Lo invieremo a {to}',
+        'by_email' => 'email',
+        'and_also' => 'e',
         'code_title'  => 'Inserisci il codice',
         'code_body'   => 'Ti abbiamo inviato un codice di 6 cifre. È valido per 10 minuti.',
         'confirm_sign' => 'Conferma e firma',
