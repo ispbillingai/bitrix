@@ -168,7 +168,9 @@ $agentViews   = ['overview', 'calendar', 'leads', 'deals', 'quotes', 'articles',
 $techViews    = ['devices', 'network_areas', 'installations', 'inspections', 'inspections_archive', 'offers', 'support', 'calendar', 'tickets', 'team'];
 // The installation-report flow: open a draft, fill it in, attach the photos,
 // send it for signature. Deleting a report stays admin-only.
-$installActions = ['install_create', 'install_save', 'install_photos', 'install_photo_del', 'install_send'];
+$installActions = ['install_create', 'install_save', 'install_photos', 'install_photo_del', 'install_send',
+                   // asking the customer again when the first link never arrived
+                   'install_resend'];
 // Surveys: the same shape as an installation report, plus the opinion the
 // technical group writes once the customer has signed it.
 $inspectActions = ['insp_create', 'insp_save', 'insp_photos', 'insp_photo_del', 'insp_send',
@@ -1741,6 +1743,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $_SESSION['dash_flash'] = [$irMsg, 'err'];
                 }
                 header('Location: ?tab=installations&id=' . (int)$_POST['id']);
+                exit;
+            }
+            // Ask the customer again: same report, same PDF, a new link. A
+            // technician may only re-ask on a report they wrote, which is the
+            // rule the page itself goes by.
+            case 'install_resend': {
+                $irId  = (int)($_POST['id'] ?? 0);
+                $irRes = InstallReports::resendSignature($irId, $uid, $isTech || $isAgent);
+                $_SESSION['dash_flash'] = $irRes['ok']
+                    ? [$t('ir_resent'), 'ok']
+                    : [$t(match ($irRes['error']) {
+                        'not_found'      => 'ir_not_found',
+                        'not_sent'       => 'ir_not_sent_yet',
+                        'already_signed' => 'ir_already_signed',
+                        default          => 'ir_resend_closed',
+                      }), 'err'];
+                header('Location: ?tab=installations&id=' . $irId);
                 exit;
             }
             // ---------- surveys (sopralluoghi) ----------

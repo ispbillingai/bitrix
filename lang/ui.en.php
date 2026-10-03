@@ -2742,4 +2742,17 @@ mario@example.it',
     'evt_pricelist_link_opened' => 'Public list link created',
     'evt_pricelist_link_renewed' => 'Public list link changed',
     'evt_pricelist_link_closed' => 'Public list link removed',
+
+    // ---- asking again for the signature on an installation report ----
+    'ir_ask_again' => 'Ask for the signature again',
+    'ir_ask_again_h' => 'The customer has not signed. You can send the link again: the old one stops working.',
+    'ir_ask_again_confirm' => 'Send the customer the signing link again? The previous link will stop working.',
+    'ir_last_sent' => 'Last sent:',
+    'ir_sign_link' => 'Signing link',
+    'ir_resent' => 'The signing link has been sent to the customer again.',
+    'ir_not_found' => 'Report not found.',
+    'ir_not_sent_yet' => 'This report has not been sent for signature yet.',
+    'ir_already_signed' => 'The customer has already signed this report.',
+    'ir_resend_closed' => 'This signature request is closed: the link cannot be sent again.',
+    'evt_report_resent' => 'Signature asked for again',
 ];

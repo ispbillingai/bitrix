@@ -2740,4 +2740,17 @@ mario@example.it',
     'evt_pricelist_link_opened' => 'Link pubblico del listino creato',
     'evt_pricelist_link_renewed' => 'Link pubblico del listino cambiato',
     'evt_pricelist_link_closed' => 'Link pubblico del listino tolto',
+
+    // ---- asking again for the signature on an installation report ----
+    'ir_ask_again' => 'Richiedi di nuovo la firma',
+    'ir_ask_again_h' => 'Il cliente non ha firmato. Puoi rimandargli il link: quello vecchio smette di funzionare.',
+    'ir_ask_again_confirm' => 'Mandiamo di nuovo al cliente il link per firmare? Il link precedente non funzionerà più.',
+    'ir_last_sent' => 'Ultimo invio:',
+    'ir_sign_link' => 'Link per la firma',
+    'ir_resent' => 'Link per la firma inviato di nuovo al cliente.',
+    'ir_not_found' => 'Rapporto non trovato.',
+    'ir_not_sent_yet' => 'Questo rapporto non è ancora stato inviato per la firma.',
+    'ir_already_signed' => 'Il cliente ha già firmato questo rapporto.',
+    'ir_resend_closed' => 'Questa richiesta di firma è chiusa: non si può più rimandare il link.',
+    'evt_report_resent' => 'Firma richiesta di nuovo',
 ];

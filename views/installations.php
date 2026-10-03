@@ -234,9 +234,55 @@ if ($r !== null):
         <a class="btn ghost tiny" href="?sdl=<?= (int)$r['sign_document_id'] ?>&k=signed" target="_blank"><?= $h($t('ir_view_signed')) ?></a>
       <?php endif; ?>
     </div>
+
+    <?php // ---- not signed yet: ask again ----
+          // The first link went out when the report was finished. If it never
+          // arrived — message deleted, wrong number, the gateway down for an
+          // afternoon — this is how the office asks again, and the link itself
+          // is here to be copied into a chat by hand when WhatsApp is the thing
+          // that is broken.
+          $irCanAsk = !in_array($st, ['signed', 'declined', 'void'], true);
+          $irLink   = !empty($r['doc_token']) ? \Glue\Sign\Documents::signUrl((string)$r['doc_token']) : '';
+          if ($irCanAsk): ?>
+      <div style="margin-top:14px;padding-top:12px;border-top:1px solid var(--line)">
+        <p class="muted small" style="margin:0 0 8px">
+          <?= $h($t('ir_ask_again_h')) ?>
+          <?php if (!empty($r['doc_sent_at'])): ?>
+            · <?= $h($t('ir_last_sent')) ?> <b><?= $h($dtHuman($r['doc_sent_at'])) ?></b>
+          <?php endif; ?>
+        </p>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <form method="post" class="inline" onsubmit="return confirm('<?= $h($t('ir_ask_again_confirm')) ?>')">
+            <input type="hidden" name="do" value="install_resend">
+            <input type="hidden" name="id" value="<?= (int)$r['id'] ?>">
+            <button class="btn tiny"><?= svg('send') ?> <?= $h($t('ir_ask_again')) ?></button>
+          </form>
+          <?php if ($irLink !== ''): ?>
+            <input type="text" readonly value="<?= $h($irLink) ?>" onclick="this.select()"
+                   style="flex:1;min-width:220px;font-size:12.5px" aria-label="<?= $h($t('ir_sign_link')) ?>">
+            <button type="button" class="btn ghost tiny" data-copy="<?= $h($irLink) ?>"><?= $h($t('pl_gal_copy')) ?></button>
+          <?php endif; ?>
+        </div>
+      </div>
+    <?php endif; ?>
   <?php endif; ?>
 </div>
 <?php endif; ?>
+
+<script>
+// Copy the signing link: when WhatsApp is the thing that is broken, the
+// office sends it by hand.
+document.querySelectorAll('[data-copy]').forEach(function (b) {
+  b.addEventListener('click', function () {
+    var said = b.textContent;
+    var done = function () { b.textContent = '✓'; setTimeout(function () { b.textContent = said; }, 1200); };
+    if (navigator.clipboard) { navigator.clipboard.writeText(b.dataset.copy).then(done, done); return; }
+    var i = b.parentNode.querySelector('input[readonly]');
+    if (i) { i.select(); document.execCommand('copy'); }
+    done();
+  });
+});
+</script>
 
 <?php if ($isAdminHere && $st !== 'signed'): ?>
   <form method="post" onsubmit="return confirm('<?= $h($t('ir_delete_confirm')) ?>')" style="margin-bottom:14px">

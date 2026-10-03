@@ -219,6 +219,43 @@ final class Reports
     }
 
     /**
+     * Ask for the signature again: the same report, the same PDF, a new link.
+     *
+     * The first ask goes out with send() above, the moment the technician
+     * finishes on site. This is for everything that happens afterwards — the
+     * customer deleted the message, the number was wrong, or (as on 2026-10-02)
+     * the WhatsApp gateway was down all afternoon and nothing left the CRM at
+     * all. Without it the report sat there "sent" with no way to ask again.
+     *
+     * Sign\Documents::send() mints a FRESH token each time, so the old link
+     * stops working and the audit trail records every ask. A signed report is
+     * finished and refuses; so does a withdrawn or expired one.
+     *
+     * @param bool $ownOnly a technician may only re-ask on their own report
+     * @return array{ok:bool, error:?string}
+     */
+    public static function resendSignature(int $id, ?int $userId, bool $ownOnly = false): array
+    {
+        $r = self::find($id);
+        if (!$r || ($ownOnly && (int)$r['created_by'] !== (int)$userId)) {
+            return ['ok' => false, 'error' => 'not_found'];
+        }
+        $docId = (int)($r['sign_document_id'] ?? 0);
+        if ($docId <= 0) {
+            return ['ok' => false, 'error' => 'not_sent'];
+        }
+        if ((string)($r['doc_status'] ?? '') === 'signed') {
+            return ['ok' => false, 'error' => 'already_signed'];
+        }
+        if (!SignDocs::send($docId, $userId)) {
+            return ['ok' => false, 'error' => 'closed'];
+        }
+        Log::write('install', 'report_resent', 'install_report', $id,
+            ['sign_document_id' => $docId, 'contact_id' => (int)$r['contact_id']]);
+        return ['ok' => true, 'error' => null];
+    }
+
+    /**
      * Admin cleanup. A signed report is a record and is refused; an unsigned
      * sign request is withdrawn so the link in the customer's chat dies too.
      */
@@ -258,7 +295,8 @@ final class Reports
         $stmt = Db::pdo()->prepare(
             'SELECT r.*, c.name AS customer_name, c.phone AS customer_phone, c.email AS customer_email,
                     c.company AS customer_company, c.address, c.city, c.province,
-                    d.status AS doc_status, d.uid AS doc_uid, d.signed_at AS doc_signed_at
+                    d.status AS doc_status, d.uid AS doc_uid, d.signed_at AS doc_signed_at,
+                    d.sent_at AS doc_sent_at, d.access_token AS doc_token
              FROM install_reports r
              JOIN contacts c ON c.id = r.contact_id
              LEFT JOIN sign_documents d ON d.id = r.sign_document_id
