@@ -84,7 +84,7 @@ $pipelines = \Glue\Crm\Pipelines::all();
         // CRM sends, the second only to campaigns, on top of it. ?>
   <div class="row">
     <?php
-    fld($h, 'textmebot.min_gap_seconds', $t('f_tmb_gap'), $cfg('textmebot.min_gap_seconds', 6), $t('f_tmb_gap_h'));
+    fld($h, 'textmebot.min_gap_seconds', $t('f_tmb_gap'), \Glue\Notify\TextMeBot::gap(), $t('f_tmb_gap_h'));
     fld($h, 'textmebot.campaign_throttle_seconds', $t('f_tmb_camp_gap'),
         $cfg('textmebot.campaign_throttle_seconds', \Glue\Campaign\Sender::DEFAULT_THROTTLE), $t('f_tmb_camp_gap_h'));
     ?>

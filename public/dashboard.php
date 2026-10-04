@@ -782,7 +782,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // TextMeBot drops a message sent less than 5 s after the last one,
                 // so the minimum gap never goes below that however it is typed.
                 if (isset($pairs['textmebot.min_gap_seconds'])) {
-                    $pairs['textmebot.min_gap_seconds'] = (string)max(5, min(300, (int)$pairs['textmebot.min_gap_seconds']));
+                    $pairs['textmebot.min_gap_seconds'] = (string)max(\Glue\Notify\TextMeBot::MIN_GAP,
+                        min(300, (int)$pairs['textmebot.min_gap_seconds']));
                 }
                 if (isset($pairs['textmebot.campaign_throttle_seconds'])) {
                     // An EMPTY box must not read as "no wait at all": that is how a

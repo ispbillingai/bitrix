@@ -45,9 +45,11 @@ return [
     'textmebot' => [
         'api_key'  => 'YOUR_TEXTMEBOT_API_KEY',
         'endpoint' => 'https://api.textmebot.com/send.php',
-        // TextMeBot rejects messages sent too close together. Minimum seconds
-        // between ANY two WhatsApp sends, app-wide (reminders, alerts, tests).
-        'min_gap_seconds' => 8,
+        // TextMeBot rejects messages sent too close together, and WhatsApp bans
+        // a number that looks like a machine. Minimum seconds between ANY two
+        // sends, app-wide (reminders, alerts, campaigns, tests) and across
+        // processes — never less than TextMeBot::MIN_GAP, whatever is set here.
+        'min_gap_seconds' => 10,
         // Seconds to wait between messages in a bulk campaign. Two minutes, not
         // the gateway's bare minimum: on 2026-10-01 a campaign that sent 33
         // messages in seven minutes had the number cut off by WhatsApp mid-run.

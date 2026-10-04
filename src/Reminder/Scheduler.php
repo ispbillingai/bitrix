@@ -9,6 +9,7 @@ use Glue\Crm\EntityResolver;
 use Glue\Db;
 use Glue\Event\Log;
 use Glue\Notify\Notifier;
+use Glue\Notify\TextMeBot;
 use PDO;
 use Throwable;
 
@@ -35,6 +36,13 @@ final class Scheduler
      */
     private const INLINE_SEND_BUDGET = 1;
 
+    /**
+     * …and how long that one message may hold the request. Past this the row is
+     * left pending for cron: the page comes straight back, and the message is
+     * out within the minute either way.
+     */
+    private const INLINE_MAX_WAIT_SEC = 10;
+
     /** Inline sends already made in THIS request (static: survives new Scheduler()). */
     private static int $inlineSends = 0;
 
@@ -53,7 +61,17 @@ final class Scheduler
      */
     private static function maySendInline(): bool
     {
-        return PHP_SAPI === 'cli' || self::$inlineSends < self::INLINE_SEND_BUDGET;
+        if (PHP_SAPI === 'cli') {
+            return true;
+        }
+        if (self::$inlineSends >= self::INLINE_SEND_BUDGET) {
+            return false;
+        }
+        // And only while the WhatsApp line is about to be free. Messages are
+        // spaced by a gap the office sets in minutes; a request somebody is
+        // waiting on must not sleep through it, and it does not need to — the
+        // reminder stays pending and the next cron tick carries it.
+        return TextMeBot::slotWaitSeconds() <= self::INLINE_MAX_WAIT_SEC;
     }
 
     /**

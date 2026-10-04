@@ -38,7 +38,7 @@ $fmt = fn($n): string => number_format((float)$n, 0, ',', '.');
 // placeholder of the per-campaign field, and what a campaign uses when left blank.
 $defThrottle = Sender::throttleFor();
 // Below the gateway's own minimum gap nothing goes faster, so the estimate says so.
-$minGap = max(0, (int)Config::get('textmebot.min_gap_seconds', 6));
+$minGap = \Glue\Notify\TextMeBot::gap();
 // A number typed without a prefix gets this country code (Notifier::normalizePhone),
 // so the hint under the box can say which one.
 $cc = preg_replace('/\D+/', '', (string)Config::get('app.default_country_code', '39'));
