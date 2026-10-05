@@ -58,6 +58,54 @@ final class Skebby
     private const DOC_OTP_RULES = ['doc_sign_otp'];
 
     /**
+     * How an SMS leaves: through the REST API, or as an email Skebby turns into
+     * an SMS (Mail2SMS). The second needs no API key at all — which is why it is
+     * here: this client's panel issues alphanumeric keys the REST API refuses,
+     * while Mail2SMS only asks that the sending mailbox be authorised.
+     *
+     * Address: <number>@classic.skebby.com, the sender alias in the Subject, the
+     * text in the body closed by "##".
+     */
+    public const TRANSPORTS = ['api', 'mail2sms'];
+
+    private const MAIL2SMS_DOMAIN = 'classic.skebby.com';
+
+    public static function transport(): string
+    {
+        $t = strtolower(trim((string)Config::get('skebby.transport', 'api')));
+        return in_array($t, self::TRANSPORTS, true) ? $t : 'api';
+    }
+
+    /** The domain Skebby reads SMS-by-email on; its panel names the one to use. */
+    public static function mail2smsDomain(): string
+    {
+        return trim((string)Config::get('skebby.mail2sms_domain', '')) ?: self::MAIL2SMS_DOMAIN;
+    }
+
+    /**
+     * The email that becomes an SMS. Separated from the sending so it can be
+     * read and checked without posting anything.
+     *
+     * @return array{to:string, subject:string, body:string}|null null: unusable number
+     */
+    public static function mail2smsEnvelope(string $phoneE164, string $text): ?array
+    {
+        $to = Notifier::normalizePhone($phoneE164);
+        if ($to === '' || !preg_match('/^\+\d{6,}$/', $to)) {
+            return null;
+        }
+        return [
+            'to' => $to . '@' . self::mail2smsDomain(),
+            // Classic and Classic+ take the sender from the subject; with no
+            // alias configured the subject stays empty and Skebby uses its own.
+            'subject' => self::sender(),
+            // "##" is what tells Skebby the message ends — without it a mail
+            // signature would be read as part of the SMS.
+            'body' => rtrim($text) . "\n##",
+        ];
+    }
+
+    /**
      * Configured at all, one way or the other.
      *
      * Two ways in, because Skebby offers both: the account's email and password,
@@ -67,7 +115,12 @@ final class Skebby
      */
     public static function enabled(): bool
     {
-        return (bool)Config::get('skebby.enabled', false) && (self::hasKeys() || self::hasLogin());
+        if (!(bool)Config::get('skebby.enabled', false)) {
+            return false;
+        }
+        // Mail2SMS carries no credentials of its own: Skebby decides by the
+        // address the mail comes from, which it has to have been told about.
+        return self::transport() === 'mail2sms' || self::hasKeys() || self::hasLogin();
     }
 
     /** A user key (a NUMBER — the API types it as long) and a token, entered by hand. */
@@ -132,6 +185,25 @@ final class Skebby
         if ($to === '' || !preg_match('/^\+?\d{6,}$/', $to)) {
             return ['ok' => false, 'error' => 'bad_number', 'credits' => null];
         }
+
+        if (self::transport() === 'mail2sms') {
+            $env = self::mail2smsEnvelope($to, $text);
+            if ($env === null) {
+                return ['ok' => false, 'error' => 'bad_number', 'credits' => null];
+            }
+            // Skebby answers the mailbox, not this request: there is no credit
+            // count and no order id to learn from here. What came of it arrives
+            // later as a delivery report, if one is configured.
+            $res = (new Mailer())->send($env['to'], $env['subject'], $env['body']);
+            return [
+                'ok'       => (bool)($res['ok'] ?? false),
+                'error'    => ($res['ok'] ?? false) ? null : (string)($res['error'] ?? 'mail_failed'),
+                'credits'  => null,
+                'order_id' => null,
+                'via'      => 'mail2sms',
+            ];
+        }
+
         $auth = $this->auth();
         if ($auth === null) {
             return ['ok' => false, 'error' => 'auth_failed', 'credits' => null];
@@ -179,6 +251,11 @@ final class Skebby
      */
     public function credit(): array
     {
+        if (self::transport() === 'mail2sms') {
+            // Nothing to ask: Mail2SMS has no API session. The credit is on
+            // Skebby's own page, and saying that is more use than a false error.
+            return ['ok' => false, 'sms' => null, 'money' => null, 'error' => 'mail2sms'];
+        }
         $auth = $this->auth();
         if ($auth === null) {
             // Skebby answers 404 to a username/password it does not recognise —

@@ -746,6 +746,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'skebby.username', 'skebby.password', 'skebby.sender', 'skebby.quality',
                     // the panel's own pair, for an account whose login the API refuses
                     'skebby.user_key', 'skebby.token',
+                    'skebby.transport', 'skebby.mail2sms_domain',
                     'mail.from_name', 'mail.from_email',
                     'mail.smtp.host', 'mail.smtp.port', 'mail.smtp.user', 'mail.smtp.pass', 'mail.smtp.secure',
                     'logistics.email', 'logistics.phone',

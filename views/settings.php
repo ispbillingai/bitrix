@@ -110,6 +110,25 @@ $pipelines = \Glue\Crm\Pipelines::all();
     fld($h, 'skebby.sender', $t('f_sk_sender'), $cfg('skebby.sender', ''), $t('f_sk_sender_h'));
     ?>
   </div>
+  <?php // Two roads out: the REST API, or an email Skebby turns into an SMS.
+        // Mail2SMS needs no key at all — it trusts the mailbox the mail comes
+        // from — so the note names the address this CRM actually sends from. ?>
+  <div class="row">
+    <label class="fld"><span><?= $h($t('f_sk_transport')) ?></span>
+      <select name="skebby.transport">
+        <?php foreach (\Glue\Notify\Skebby::TRANSPORTS as $tr): ?>
+          <option value="<?= $h($tr) ?>"<?= \Glue\Notify\Skebby::transport() === $tr ? ' selected' : '' ?>>
+            <?= $h($t('f_sk_tr_' . $tr)) ?></option>
+        <?php endforeach; ?>
+      </select>
+      <small class="muted"><?= $h($t('f_sk_transport_h')) ?></small></label>
+    <?php fld($h, 'skebby.mail2sms_domain', $t('f_sk_m2s_domain'),
+        $cfg('skebby.mail2sms_domain', ''), $t('f_sk_m2s_domain_h')); ?>
+    <label class="fld"><span><?= $h($t('f_sk_m2s_from')) ?></span>
+      <input readonly value="<?= $h((string)$cfg('mail.from_email', '')) ?>" onclick="this.select()">
+      <small class="muted"><?= $h($t('f_sk_m2s_from_h')) ?></small></label>
+  </div>
+
   <?php // Skebby's panel also hands out a key pair, and on some accounts that is
         // the only thing the API accepts: the pair wins over the login above. ?>
   <div class="row">
