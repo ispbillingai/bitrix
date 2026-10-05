@@ -22,9 +22,9 @@ use Throwable;
  * and it carries no pacing gap — the code arrives at once instead of queueing
  * behind a minute of WhatsApp spacing ([[textmebot-rate-limit]]).
  *
- * API: Basic auth once to /token, which returns "USER_KEY;ACCESS_TOKEN" that
- * does not expire; both are then sent as headers. Credentials live in settings,
- * never in the code.
+ * API: one call to /token with the credentials as query parameters, which
+ * returns "USER_KEY;ACCESS_TOKEN" and does not expire; both are then sent as
+ * headers on every call. Credentials live in settings, never in the code.
  */
 final class Skebby
 {
@@ -159,7 +159,13 @@ final class Skebby
     {
         $auth = $this->auth();
         if ($auth === null) {
-            return ['ok' => false, 'sms' => null, 'money' => null, 'error' => 'auth_failed'];
+            // Skebby answers 404 to a username/password it does not recognise —
+            // measured against the live account — so say THAT rather than a
+            // shrug: the office has to go and look at the right thing.
+            return ['ok' => false, 'sms' => null, 'money' => null,
+                    'error' => in_array(self::$lastAuthHttp, [401, 403, 404], true)
+                        ? 'credenziali rifiutate (' . self::$lastAuthHttp . ')'
+                        : 'login non riuscito (' . self::$lastAuthHttp . ')'];
         }
         $res  = $this->call('GET', '/status?getMoney=true', $auth);
         $json = json_decode((string)($res['body'] ?? ''), true);
@@ -183,6 +189,9 @@ final class Skebby
      *
      * @return array{user_key:string, token:string}|null
      */
+    /** What the last login attempt answered, so a failure can say which failure. */
+    private static int $lastAuthHttp = 0;
+
     private function auth(): ?array
     {
         $key   = trim((string)Settings::get('skebby.user_key', ''));
@@ -196,16 +205,21 @@ final class Skebby
         if ($user === '' || $pass === '') {
             return null;
         }
-        $ch = curl_init(self::base() . '/token');
+        // The published examples show HTTP Basic here. The live API does not
+        // accept it: with an Authorization header /token and /login answer 404,
+        // while with the credentials as query parameters they validate properly
+        // (400 when one is missing) and 404 only when the pair is unknown.
+        // Measured against the client's own account on 2026-10-05.
+        $ch = curl_init(self::base() . '/token?username=' . rawurlencode($user)
+            . '&password=' . rawurlencode($pass));
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
             CURLOPT_TIMEOUT        => 15,
-            CURLOPT_USERPWD        => $user . ':' . $pass,
-            CURLOPT_HTTPAUTH       => CURLAUTH_BASIC,
         ]);
         $body = (string)curl_exec($ch);
         $http = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
         curl_close($ch);
+        self::$lastAuthHttp = $http;
         if ($http !== 200 || !str_contains($body, ';')) {
             return null;
         }
