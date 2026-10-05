@@ -52,6 +52,32 @@ final class Notifier
         return $res;
     }
 
+    /**
+     * One SMS through Skebby, logged in the outbox like everything else.
+     *
+     * No pacing: an SMS gateway is a carrier, not a phone pretending to be a
+     * person, so there is no gap to keep and a verification code leaves at once.
+     */
+    public function sms(string $phone, string $text, ?int $reminderId = null, ?int $campaignId = null): bool
+    {
+        return (bool)$this->smsResult($phone, $text, $reminderId, $campaignId)['ok'];
+    }
+
+    /** Same as sms() but returns the full provider response. */
+    public function smsResult(string $phone, string $text, ?int $reminderId = null, ?int $campaignId = null): array
+    {
+        $phone = self::normalizePhone($phone);
+        if ($phone === '' || !Skebby::enabled()) {
+            $why = $phone === '' ? 'no_phone' : 'skebby_disabled';
+            $res = ['ok' => false, 'error' => $why, 'skipped' => $why];
+            $this->record('sms', $phone, null, $text, false, $res, $reminderId, $campaignId);
+            return $res;
+        }
+        $res = (new Skebby())->send($phone, $text);
+        $this->record('sms', $phone, null, $text, (bool)$res['ok'], $res, $reminderId, $campaignId);
+        return $res;
+    }
+
     /** Same as email() but returns the full provider response — ['ok'=>bool, 'error'=>?string]. */
     public function emailResult(string $to, string $subject, string $html, ?int $reminderId = null, ?int $campaignId = null, array $attachments = []): array
     {

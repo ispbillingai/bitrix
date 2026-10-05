@@ -120,6 +120,21 @@ final class Templates
         return self::render($tpl, $vars);
     }
 
+    /**
+     * SMS text for a rule_key. Falls back to the WhatsApp copy with its markup
+     * taken out — an SMS has no bold, and a message that reads *123456* with the
+     * stars in it looks broken on a phone.
+     */
+    public static function sms(string $ruleKey, array $vars, ?string $lang = null): string
+    {
+        $lang = self::lang($lang);
+        $tpl  = self::load($lang)['sms'][$ruleKey] ?? self::load('en')['sms'][$ruleKey] ?? null;
+        if ($tpl !== null) {
+            return self::render($tpl, $vars);
+        }
+        return trim(str_replace(['*', '_'], '', self::whatsapp($ruleKey, $vars, $lang)));
+    }
+
     /** ['subject'=>..., 'html'=>...] for a rule_key in $lang. Dashboard overrides win. */
     public static function email(string $ruleKey, array $vars, ?string $lang = null): array
     {

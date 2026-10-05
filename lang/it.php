@@ -351,6 +351,14 @@ return [
             . "Non serve la fattura: te la paghiamo noi. Il dettaglio è qui: {link}\n— {company}",
     ],
 
+    // Testi SMS (Skebby). Solo dove un SMS deve leggersi diverso dal WhatsApp:
+    // niente grassetto, niente link lunghi, poche righe. Quello che manca qui
+    // ricade sul testo WhatsApp, ripulito dagli asterischi.
+    'sms' => [
+        'doc_sign_otp' =>
+            "{company}: il codice per firmare e' {code}. Vale {minutes} minuti. Non comunicarlo a nessuno.",
+    ],
+
     'email' => [
         'welcome' => [
             'subject' => 'Benvenuto in {company}',

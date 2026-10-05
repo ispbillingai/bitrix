@@ -172,7 +172,8 @@ function sign_otp_to(callable $t, ?array $doc): string
 {
     $parts = [];
     foreach ($doc ? Documents::otpTargets($doc) : [] as $kind => $masked) {
-        $parts[] = $masked . ' (' . ($kind === 'whatsapp' ? 'WhatsApp' : $t('by_email')) . ')';
+        $how = ['whatsapp' => 'WhatsApp', 'sms' => 'SMS'][$kind] ?? $t('by_email');
+        $parts[] = $masked . ' (' . $how . ')';
     }
     return $parts ? implode(' ' . $t('and_also') . ' ', $parts) : '—';
 }

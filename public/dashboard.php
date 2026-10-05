@@ -742,6 +742,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'notify.quiet_minutes',
                     'reminders.sign_before_due_days', 'reminders.offer_read_days',
                     'textmebot.api_key', 'textmebot.min_gap_seconds', 'textmebot.campaign_throttle_seconds',
+                    // SMS through Skebby, and what it is switched on for
+                    'skebby.username', 'skebby.password', 'skebby.sender', 'skebby.quality',
                     'mail.from_name', 'mail.from_email',
                     'mail.smtp.host', 'mail.smtp.port', 'mail.smtp.user', 'mail.smtp.pass', 'mail.smtp.secure',
                     'logistics.email', 'logistics.phone',
@@ -802,6 +804,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pairs['sibill.chase_enabled'] = $post('sibill.chase_enabled') !== null ? 'true' : 'false';
                 $pairs['sibill.chase_pay_link'] = $post('sibill.chase_pay_link') !== null ? 'true' : 'false';
                 $pairs['ai.read_only'] = $post('ai.read_only') !== null ? 'true' : 'false';
+                // SMS: on at all, and then one tick per use it is allowed for.
+                $pairs['skebby.enabled'] = $post('skebby.enabled') !== null ? 'true' : 'false';
+                $pairs['skebby.use_doc_otp'] = $post('skebby.use_doc_otp') !== null ? 'true' : 'false';
                 $pairs['leads_mailbox.enabled'] = $post('leads_mailbox.enabled') !== null ? 'true' : 'false';
                 $pairs['planning.enabled'] = $post('planning.enabled') !== null ? 'true' : 'false';
                 $pairs['maintenance.enabled']         = $post('maintenance.enabled') !== null ? 'true' : 'false';
@@ -865,7 +870,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     }
                 }
                 $prevNudgeH = Scheduler::leadNudgeHours();
+                // New Skebby credentials mean the cached access token belongs to
+                // the old account: drop it so the next SMS logs in again.
+                $skChanged = (isset($pairs['skebby.username']) && $pairs['skebby.username'] !== (string)Config::get('skebby.username', ''))
+                    || (isset($pairs['skebby.password']) && $pairs['skebby.password'] !== (string)Config::get('skebby.password', ''));
                 Settings::setMany($pairs);
+                if ($skChanged) {
+                    (new \Glue\Notify\Skebby())->forgetAuth();
+                }
                 // Config was overlaid once at boot; re-apply so the form below this
                 // request reflects the values we just saved (not the pre-save snapshot).
                 Config::applyOverlay(Settings::nested());
@@ -2662,6 +2674,20 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $flash = $t('test_ok') . ': ' . ($me['NAME'] ?? '') . ' ' . ($me['LAST_NAME'] ?? '') . ' (' . ($me['ID'] ?? '?') . ')';
                 $tab = 'settings';
                 break;
+            case 'test_skebby': {
+                // Reads the account only: credentials, and how much is left.
+                $sk = (new \Glue\Notify\Skebby())->credit();
+                if (!empty($sk['ok'])) {
+                    $flash = $t('test_ok') . ': ' . sprintf($t('sk_credit'),
+                        $sk['sms'] === null ? '—' : number_format((float)$sk['sms'], 0, ',', '.'),
+                        $sk['money'] === null ? '—' : number_format((float)$sk['money'], 2, ',', '.'));
+                } else {
+                    $flash = $t('sk_test_failed') . ' (' . (string)($sk['error'] ?? '?') . ')';
+                    $flashType = 'err';
+                }
+                $tab = 'settings';
+                break;
+            }
             case 'test_sibill':
                 // Lists what the token can see. A token is issued per organisation,
                 // so when there is exactly one company we save its id rather than

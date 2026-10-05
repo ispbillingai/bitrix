@@ -346,6 +346,14 @@ return [
             . "No invoice needed: we will pay it to you. Details: {link}\n— {company}",
     ],
 
+    // SMS copy (Skebby). Only where an SMS has to read differently from the
+    // WhatsApp one: no bold, no long links, few lines. Anything missing here
+    // falls back to the WhatsApp text with the markup stripped.
+    'sms' => [
+        'doc_sign_otp' =>
+            "{company}: your code to sign is {code}. It is valid for {minutes} minutes. Do not share it.",
+    ],
+
     'email' => [
         'welcome' => [
             'subject' => 'Welcome to {company}',

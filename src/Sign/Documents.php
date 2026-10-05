@@ -941,7 +941,11 @@ final class Documents
     {
         $out = [];
         if (trim((string)($doc['signer_phone'] ?? '')) !== '') {
-            $out['whatsapp'] = self::mask((string)$doc['signer_phone']);
+            // The same number, but say which way it travels: the office can send
+            // the verification code by SMS instead (Notify\Skebby), and a
+            // customer told "WhatsApp" would wait for the wrong thing.
+            $out[\Glue\Notify\Skebby::handles('doc_sign_otp') ? 'sms' : 'whatsapp']
+                = self::mask((string)$doc['signer_phone']);
         }
         if (trim((string)($doc['signer_email'] ?? '')) !== '') {
             $out['email'] = self::mask((string)$doc['signer_email']);

@@ -90,6 +90,40 @@ $pipelines = \Glue\Crm\Pipelines::all();
     ?>
   </div>
 
+  <?php // ---- SMS (Skebby) ----
+        // Switched on per use, not once for everything: the office asked for it
+        // "solo per la verifica dei documenti in maniera esclusiva", with the
+        // rest to follow when they tick it. ?>
+  <h3><?= $h($t('sec_skebby')) ?> <span class="pill"><?= $h($t('optional')) ?></span></h3>
+  <p class="muted small" style="margin:-6px 0 12px"><?= $h($t('sec_skebby_h')) ?></p>
+  <label class="fld" style="display:flex;flex-direction:row;align-items:center;gap:10px">
+    <input type="checkbox" name="skebby.enabled" value="true" style="width:auto" <?= (bool)$cfg('skebby.enabled', false) ? 'checked' : '' ?>>
+    <span style="margin:0"><?= $h($t('f_sk_enable')) ?></span>
+  </label>
+  <div class="row">
+    <?php
+    fld($h, 'skebby.username', $t('f_sk_user'), $cfg('skebby.username', ''), $t('f_sk_user_h'));
+    secret_fld($h, 'skebby.password', $t('f_sk_pass'), $cfg('skebby.password', ''));
+    fld($h, 'skebby.sender', $t('f_sk_sender'), $cfg('skebby.sender', ''), $t('f_sk_sender_h'));
+    ?>
+    <label class="fld"><span><?= $h($t('f_sk_quality')) ?></span>
+      <select name="skebby.quality">
+        <?php foreach (array_keys(\Glue\Notify\Skebby::QUALITIES) as $q): ?>
+          <option value="<?= $h($q) ?>"<?= \Glue\Notify\Skebby::quality() === $q ? ' selected' : '' ?>>
+            <?= $h($q . ' — ' . $t('f_sk_q_' . strtolower($q))) ?></option>
+        <?php endforeach; ?>
+      </select>
+      <small class="muted"><?= $h($t('f_sk_quality_h')) ?></small></label>
+  </div>
+  <b class="small"><?= $h($t('f_sk_uses')) ?></b>
+  <div style="margin:6px 0 4px">
+    <label class="fld" style="display:flex;flex-direction:row;align-items:center;gap:10px">
+      <input type="checkbox" name="skebby.use_doc_otp" value="true" style="width:auto" <?= (bool)$cfg('skebby.use_doc_otp', false) ? 'checked' : '' ?>>
+      <span style="margin:0"><?= $h($t('f_sk_use_otp')) ?></span>
+    </label>
+  </div>
+  <p class="muted small" style="margin:0 0 12px"><?= $h($t('f_sk_uses_h')) ?></p>
+
   <h3><?= $h($t('sec_mail')) ?></h3>
   <div class="row">
     <?php
@@ -476,6 +510,12 @@ $pipelines = \Glue\Crm\Pipelines::all();
   <?php if (trim((string)$cfg('sibill.api_key', '')) !== ''): ?>
   <form method="post" class="inline"><input type="hidden" name="do" value="test_sibill">
     <button class="btn ghost"><?= $h($t('test_sibill')) ?></button></form>
+  <?php endif; ?>
+  <?php // Reads the account: how many SMS are left, and whether the credentials
+        // and the sender alias are accepted. Sends nothing. ?>
+  <?php if (trim((string)$cfg('skebby.username', '')) !== ''): ?>
+  <form method="post" class="inline"><input type="hidden" name="do" value="test_skebby">
+    <button class="btn ghost"><?= $h($t('test_skebby')) ?></button></form>
   <?php endif; ?>
   <?php if (\Glue\Ai\Assistant::configured()): ?>
   <form method="post" class="inline"><input type="hidden" name="do" value="test_ai">

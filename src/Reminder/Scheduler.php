@@ -9,6 +9,7 @@ use Glue\Crm\EntityResolver;
 use Glue\Db;
 use Glue\Event\Log;
 use Glue\Notify\Notifier;
+use Glue\Notify\Skebby;
 use Glue\Notify\TextMeBot;
 use PDO;
 use Throwable;
@@ -59,13 +60,19 @@ final class Scheduler
      * May this request still deliver a due reminder inline? The cron runner has
      * no such limit — it exists to drain the queue and nobody is waiting on it.
      */
-    private static function maySendInline(): bool
+    private static function maySendInline(string $ruleKey = ''): bool
     {
         if (PHP_SAPI === 'cli') {
             return true;
         }
         if (self::$inlineSends >= self::INLINE_SEND_BUDGET) {
             return false;
+        }
+        // An SMS keeps no pacing gap of its own, so the WhatsApp line being busy
+        // says nothing about it: a verification code must not wait in a queue it
+        // does not travel in.
+        if ($ruleKey !== '' && Skebby::handles($ruleKey)) {
+            return true;
         }
         // And only while the WhatsApp line is about to be free. Messages are
         // spaced by a gap the office sets in minutes; a request somebody is
@@ -128,7 +135,7 @@ final class Scheduler
         // cron picks it up on its next tick, so nothing is lost, the caller just
         // doesn't wait for it.
         if ($sendIfDue && $freshInsert && strtotime((string)$r['due_at']) <= time()) {
-            if (self::maySendInline()) {
+            if (self::maySendInline((string)($r['rule_key'] ?? ''))) {
                 self::$inlineSends++;
                 $this->sendNow($id);
             }
@@ -384,13 +391,34 @@ final class Scheduler
         $imageUrl = ($ruleKey === 'welcome' && $r['entity_type'] === 'lead'
             && $r['recipient_type'] === 'customer') ? self::welcomeImageUrl() : '';
 
-        if ($channel === 'whatsapp' || $channel === 'both') {
+        if ($channel === 'whatsapp' || $channel === 'both' || $channel === 'sms') {
             $phone = $this->recipientPhone($r, $vars);
             if ($phone !== '') {
                 $hadRecipient = true;
-                // A staff alert (Notify\StaffAlert) carries its finished text; everything else is a template.
-                $text = (string)($vars['raw_wa'] ?? '') !== '' ? (string)$vars['raw_wa'] : Templates::whatsapp($ruleKey, $vars, $lang);
-                $okAny = $this->notifier->whatsapp($phone, $text, $reminderId, null, $imageUrl ?: null) || $okAny;
+                // Does this one go by SMS? The office decides per use in
+                // Impostazioni; today only the document verification code is
+                // ticked. An SMS does not depend on the WhatsApp number and
+                // waits for no pacing gap, which is the point for a code
+                // somebody is sitting there waiting to type.
+                $bySms = $channel === 'sms' || Skebby::handles($ruleKey);
+                if ($bySms) {
+                    $sms = (string)($vars['raw_wa'] ?? '') !== ''
+                        ? trim(str_replace(['*', '_'], '', (string)$vars['raw_wa']))
+                        : Templates::sms($ruleKey, $vars, $lang);
+                    $sent = $this->notifier->sms($phone, $sms, $reminderId);
+                    $okAny = $sent || $okAny;
+                    // Skebby down, out of credit, number refused: the message
+                    // still has to reach somebody. Fall back to the old road
+                    // rather than lose it — unless SMS was the explicit choice.
+                    if (!$sent && $channel !== 'sms') {
+                        $bySms = false;
+                    }
+                }
+                if (!$bySms) {
+                    // A staff alert (Notify\StaffAlert) carries its finished text; everything else is a template.
+                    $text = (string)($vars['raw_wa'] ?? '') !== '' ? (string)$vars['raw_wa'] : Templates::whatsapp($ruleKey, $vars, $lang);
+                    $okAny = $this->notifier->whatsapp($phone, $text, $reminderId, null, $imageUrl ?: null) || $okAny;
+                }
             }
         }
         if ($channel === 'email' || $channel === 'both') {
