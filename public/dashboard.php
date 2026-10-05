@@ -2888,13 +2888,23 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 break;
             case 'test_whatsapp':
                 $res = (new Notifier())->whatsappResult((string)$_POST['to'], (string)Config::get('app.company_name', 'CRM') . ' — test ✅');
-                $flash = $res['ok'] ? $t('test_ok') : $t('test_fail') . ': ' . test_reason($res);
+                $flash = $res['ok'] ? $t('test_ok') : $t('test_fail') . ': ' . test_reason($res, $t);
+                $flashType = $res['ok'] ? 'ok' : 'err';
+                $tab = 'settings';
+                break;
+            case 'test_sms':
+                // A real SMS, so it costs a real credit — and that is the point:
+                // it proves the account, the sender alias and the number, which
+                // is exactly what a dry run cannot.
+                $res = (new Notifier())->smsResult((string)$_POST['to'],
+                    (string)Config::get('app.company_name', 'CRM') . ' - SMS di prova dal CRM.');
+                $flash = $res['ok'] ? $t('test_ok') : $t('test_fail') . ': ' . test_reason($res, $t);
                 $flashType = $res['ok'] ? 'ok' : 'err';
                 $tab = 'settings';
                 break;
             case 'test_email':
                 $res = (new Notifier())->emailResult((string)$_POST['to'], 'CRM test', '<p>CRM — test ✅</p>');
-                $flash = $res['ok'] ? $t('test_ok') : $t('test_fail') . ': ' . test_reason($res);
+                $flash = $res['ok'] ? $t('test_ok') : $t('test_fail') . ': ' . test_reason($res, $t);
                 $flashType = $res['ok'] ? 'ok' : 'err';
                 $tab = 'settings';
                 break;
@@ -3538,15 +3548,13 @@ function send_user_credentials(string $email, string $phone, string $name, strin
  * for the Settings test buttons. Prefers the explicit 'error', then a non-200
  * HTTP code + response body (TextMeBot), then any 'skipped' marker.
  */
-function test_reason(array $res): string {
+function test_reason(array $res, ?callable $t = null): string {
     $parts = [];
     if (!empty($res['skipped'])) {
-        $map = [
-            'no_phone'           => 'No phone number entered',
-            'no_email'           => 'No email address entered',
-            'textmebot_disabled' => 'WhatsApp (TextMeBot) API key is not configured',
-        ];
-        $parts[] = $map[$res['skipped']] ?? (string)$res['skipped'];
+        // This ends up in a flash the office reads, so it is translated like the
+        // rest of the page instead of staying in English.
+        $why = 'tr_' . $res['skipped'];
+        $parts[] = $t !== null && $t($why) !== $why ? $t($why) : (string)$res['skipped'];
     }
     if (!empty($res['error']) && (empty($res['skipped']) || $res['error'] !== $res['skipped'])) {
         $parts[] = (string)$res['error'];

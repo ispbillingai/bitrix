@@ -511,11 +511,15 @@ $pipelines = \Glue\Crm\Pipelines::all();
   <form method="post" class="inline"><input type="hidden" name="do" value="test_sibill">
     <button class="btn ghost"><?= $h($t('test_sibill')) ?></button></form>
   <?php endif; ?>
-  <?php // Reads the account: how many SMS are left, and whether the credentials
-        // and the sender alias are accepted. Sends nothing. ?>
+  <?php // Two different questions. "Controlla" reads the account — credentials,
+        // sender, credit — and sends nothing; "Invia SMS di prova" spends one
+        // credit to prove the whole road, phone included. ?>
   <?php if (trim((string)$cfg('skebby.username', '')) !== ''): ?>
   <form method="post" class="inline"><input type="hidden" name="do" value="test_skebby">
     <button class="btn ghost"><?= $h($t('test_skebby')) ?></button></form>
+  <form method="post" class="inline"><input type="hidden" name="do" value="test_sms">
+    <input name="to" placeholder="<?= $h($t('test_phone_ph')) ?>" required>
+    <button class="btn ghost" title="<?= $h($t('test_sms_h')) ?>"><?= $h($t('test_sms')) ?></button></form>
   <?php endif; ?>
   <?php if (\Glue\Ai\Assistant::configured()): ?>
   <form method="post" class="inline"><input type="hidden" name="do" value="test_ai">
