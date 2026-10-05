@@ -95,14 +95,20 @@ final class Notifier
         string $channel, string $recipient, ?string $subject, ?string $body,
         bool $ok, array $providerResponse, ?int $reminderId, ?int $campaignId
     ): void {
+        // The gateway's own id for this send, when it gives one (Skebby's
+        // order_id). It is what a later delivery report refers to, so it is kept
+        // in a column of its own rather than buried in the response blob.
+        $ref = trim((string)($providerResponse['order_id'] ?? '')) ?: null;
         $stmt = Db::pdo()->prepare(
-            'INSERT INTO messages (reminder_id, campaign_id, channel, recipient, subject, body, status, provider_response)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO messages (reminder_id, campaign_id, channel, recipient, subject, body, status,
+                                   provider_response, provider_ref)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
         );
         $stmt->execute([
             $reminderId, $campaignId, $channel, $recipient, $subject, $body,
             $ok ? 'sent' : 'failed',
             json_encode($providerResponse, JSON_UNESCAPED_UNICODE),
+            $ref,
         ]);
     }
 

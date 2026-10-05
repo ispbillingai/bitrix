@@ -23,6 +23,9 @@ $urls = [
     'url_form'      => ["$base/webhooks/form-intake.php?secret=$is", true],
     'url_appt'      => ["$base/webhooks/appointment-intake.php?secret=$is", true],
     'url_bitrix_ev' => ["$base/webhooks/bitrix-event.php?secret=$os", true],
+    // Paste into Skebby (API & IP → rapporto di consegna): it calls back to say
+    // whether each SMS actually reached the phone.
+    'url_skebby_dlr' => ["$base/webhooks/skebby-dlr.php?secret=$is", true],
 ];
 $pipelines = \Glue\Crm\Pipelines::all();
 ?>

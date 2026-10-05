@@ -19,7 +19,15 @@ include __DIR__ . '/tickets.php';
 <?php foreach ($rows as $r): ?>
   <tr><td class="small"><?= $h($r['created_at']) ?></td><td><?= $h(code_label($t, 'chan_', $r['channel'])) ?></td>
     <td><?= $h($r['recipient']) ?></td><td class="small"><?= $h($r['subject']) ?></td>
-    <td><?= pill($h, $r['status'], $t) ?></td></tr>
+    <td><?= pill($h, $r['status'], $t) ?>
+      <?php // "Inviato" means the gateway took it. When the operator tells us what
+            // then happened to the SMS, say that instead — it is the better answer. ?>
+      <?php if (!empty($r['delivery_status'])): $dlv = (string)$r['delivery_status']; ?>
+        <span class="pill" style="color:<?= $dlv === 'DLVRD' ? 'var(--green)' : 'var(--amber)' ?>"
+              title="<?= $h($t('msg_dlr_at') . ' ' . (string)$r['delivered_at']) ?>">
+          <?= $h($t('msg_dlr_' . strtolower($dlv)) !== 'msg_dlr_' . strtolower($dlv)
+              ? $t('msg_dlr_' . strtolower($dlv)) : $dlv) ?></span>
+      <?php endif; ?></td></tr>
 <?php endforeach; ?>
 </tbody></table>
 <?php endif; ?>

@@ -167,6 +167,8 @@ final class Skebby
             'ok'      => $ok,
             'error'   => $ok ? null : trim((string)($json['result'] ?? '') ?: ('http_' . (int)($res['http'] ?? 0))),
             'credits' => isset($json['remaining_credits']) ? (int)$json['remaining_credits'] : null,
+            // Skebby's id for this send: the delivery report comes back quoting it.
+            'order_id' => trim((string)($json['order_id'] ?? '')) ?: null,
         ];
     }
 
