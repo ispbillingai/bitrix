@@ -132,6 +132,18 @@ $pipelines = \Glue\Crm\Pipelines::all();
   </div>
   <p class="muted small" style="margin:0 0 12px"><?= $h($t('f_sk_uses_h')) ?></p>
 
+  <?php // The proof, right here where the account is being set up rather than in
+        // the test card at the far end of the page — the office went looking for
+        // it and did not find it. These controls belong to their own little
+        // forms (below this one, by id): a settings page cannot nest forms. ?>
+  <div class="sk-test">
+    <button class="btn ghost tiny" form="sk-test-acct"><?= $h($t('test_skebby')) ?></button>
+    <input name="to" form="sk-test-sms" placeholder="<?= $h($t('test_phone_ph')) ?>"
+           aria-label="<?= $h($t('test_sms')) ?>">
+    <button class="btn ghost tiny" form="sk-test-sms" title="<?= $h($t('test_sms_h')) ?>"><?= $h($t('test_sms')) ?></button>
+  </div>
+  <p class="muted small" style="margin:6px 0 14px"><?= $h($t('f_sk_test_h')) ?></p>
+
   <h3><?= $h($t('sec_mail')) ?></h3>
   <div class="row">
     <?php
@@ -471,6 +483,11 @@ $pipelines = \Glue\Crm\Pipelines::all();
   <button class="btn"><?= $h($t('save')) ?></button>
 </form>
 
+<?php // The two Skebby tests live up in the SMS section, but their forms have to
+      // sit outside the settings form: the controls up there point at these by id. ?>
+<form method="post" id="sk-test-acct" hidden><input type="hidden" name="do" value="test_skebby"></form>
+<form method="post" id="sk-test-sms" hidden><input type="hidden" name="do" value="test_sms"></form>
+
 <div class="card">
   <h3><?= $h($t('sec_pipelines')) ?></h3>
   <p class="muted small"><?= $h($t('sec_pipelines_h')) ?></p>
@@ -519,16 +536,8 @@ $pipelines = \Glue\Crm\Pipelines::all();
   <form method="post" class="inline"><input type="hidden" name="do" value="test_sibill">
     <button class="btn ghost"><?= $h($t('test_sibill')) ?></button></form>
   <?php endif; ?>
-  <?php // Two different questions. "Controlla" reads the account — credentials,
-        // sender, credit — and sends nothing; "Invia SMS di prova" spends one
-        // credit to prove the whole road, phone included. ?>
-  <?php if (trim((string)$cfg('skebby.username', '')) !== ''): ?>
-  <form method="post" class="inline"><input type="hidden" name="do" value="test_skebby">
-    <button class="btn ghost"><?= $h($t('test_skebby')) ?></button></form>
-  <form method="post" class="inline"><input type="hidden" name="do" value="test_sms">
-    <input name="to" placeholder="<?= $h($t('test_phone_ph')) ?>" required>
-    <button class="btn ghost" title="<?= $h($t('test_sms_h')) ?>"><?= $h($t('test_sms')) ?></button></form>
-  <?php endif; ?>
+  <?php // The two SMS tests are up in the SMS (Skebby) section, next to the
+        // account they test. ?>
   <?php if (\Glue\Ai\Assistant::configured()): ?>
   <form method="post" class="inline"><input type="hidden" name="do" value="test_ai">
     <button class="btn ghost"><?= $h($t('test_ai')) ?></button></form>
@@ -544,3 +553,10 @@ $pipelines = \Glue\Crm\Pipelines::all();
     <button class="btn ghost"><?= $h($t('test_smallpay')) ?></button></form>
   <?php endif; ?>
 </div>
+
+<style>
+/* The SMS test sits inside the settings form but belongs to its own little
+   forms, so it needs its own row rather than the .row grid above it. */
+.sk-test{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0 0}
+.sk-test input{width:min(220px,60vw)}
+</style>

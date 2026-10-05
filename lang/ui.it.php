@@ -2784,4 +2784,5 @@ mario@example.it',
     'f_sk_userkey_h' => 'Il numero che Skebby mostra nel pannello accanto al token. Se lo compili, utente e password qui sopra non servono.',
     'f_sk_token' => 'Token di accesso',
     'f_sk_token_h' => 'Va insieme alla chiave utente: i due si usano come coppia.',
+    'f_sk_test_h' => 'Salva prima le impostazioni, poi prova: “Controlla” legge solo il conto, “Invia SMS di prova” manda un SMS vero e consuma un credito.',
 ];

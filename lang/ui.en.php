@@ -2786,4 +2786,5 @@ mario@example.it',
     'f_sk_userkey_h' => 'The number Skebby shows in the panel next to the token. Fill it in and the user and password above are not needed.',
     'f_sk_token' => 'Access token',
     'f_sk_token_h' => 'Goes with the user key: the two are used as a pair.',
+    'f_sk_test_h' => 'Save the settings first, then test: “Check” only reads the account, “Send a test SMS” sends a real one and spends a credit.',
 ];
