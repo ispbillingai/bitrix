@@ -57,12 +57,30 @@ final class Skebby
     /** The rules that belong to "verifica dei documenti". */
     private const DOC_OTP_RULES = ['doc_sign_otp'];
 
-    /** Configured at all: without these three there is nothing to send with. */
+    /**
+     * Configured at all, one way or the other.
+     *
+     * Two ways in, because Skebby offers both: the account's email and password,
+     * which the API exchanges for a key pair, or a key pair issued by the panel
+     * and pasted straight in. The second is what this client's account needs —
+     * its login is refused by the API while its panel hands out a token.
+     */
     public static function enabled(): bool
     {
+        return (bool)Config::get('skebby.enabled', false) && (self::hasKeys() || self::hasLogin());
+    }
+
+    /** A user key (a NUMBER — the API types it as long) and a token, entered by hand. */
+    private static function hasKeys(): bool
+    {
+        return trim((string)Config::get('skebby.user_key', '')) !== ''
+            && trim((string)Config::get('skebby.token', '')) !== '';
+    }
+
+    private static function hasLogin(): bool
+    {
         return trim((string)Config::get('skebby.username', '')) !== ''
-            && trim((string)Config::get('skebby.password', '')) !== ''
-            && (bool)Config::get('skebby.enabled', false);
+            && trim((string)Config::get('skebby.password', '')) !== '';
     }
 
     /** Is SMS switched on for this use? */
@@ -131,8 +149,10 @@ final class Skebby
         $res = $this->call('POST', '/sms', $auth, $body);
 
         // A token that stopped working (the account was re-issued one): forget it
-        // and try once more, so a stale cache never looks like an outage.
-        if (($res['http'] ?? 0) === 401) {
+        // and try once more, so a stale cache never looks like an outage. Only
+        // when there is a login to fetch a new one with — a pair typed in by the
+        // office is not a cache, and throwing it away would leave nothing.
+        if (($res['http'] ?? 0) === 401 && self::hasLogin()) {
             $this->forgetAuth();
             $auth = $this->auth();
             if ($auth === null) {
@@ -170,8 +190,11 @@ final class Skebby
         $res  = $this->call('GET', '/status?getMoney=true', $auth);
         $json = json_decode((string)($res['body'] ?? ''), true);
         if ((int)($res['http'] ?? 0) !== 200 || !is_array($json)) {
-            return ['ok' => false, 'sms' => null, 'money' => null,
-                    'error' => 'http_' . (int)($res['http'] ?? 0)];
+            // The API's own words when it has them: "Invalid value for parameter
+            // [user_key]" is a different problem from a network one, and the
+            // office should read which.
+            $why = trim((string)($json['error_message'] ?? '')) ?: ('http_' . (int)($res['http'] ?? 0));
+            return ['ok' => false, 'sms' => null, 'money' => null, 'error' => $why];
         }
         return [
             'ok'    => true,
@@ -194,9 +217,11 @@ final class Skebby
 
     private function auth(): ?array
     {
+        // A pair entered by hand, or one this client fetched earlier and kept.
         $key   = trim((string)Settings::get('skebby.user_key', ''));
         $token = trim((string)Settings::get('skebby.token', ''));
         if ($key !== '' && $token !== '') {
+            self::$lastAuthHttp = 200;
             return ['user_key' => $key, 'token' => $token];
         }
 

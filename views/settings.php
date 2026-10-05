@@ -106,6 +106,14 @@ $pipelines = \Glue\Crm\Pipelines::all();
     secret_fld($h, 'skebby.password', $t('f_sk_pass'), $cfg('skebby.password', ''));
     fld($h, 'skebby.sender', $t('f_sk_sender'), $cfg('skebby.sender', ''), $t('f_sk_sender_h'));
     ?>
+  </div>
+  <?php // Skebby's panel also hands out a key pair, and on some accounts that is
+        // the only thing the API accepts: the pair wins over the login above. ?>
+  <div class="row">
+    <?php
+    fld($h, 'skebby.user_key', $t('f_sk_userkey'), $cfg('skebby.user_key', ''), $t('f_sk_userkey_h'));
+    secret_fld($h, 'skebby.token', $t('f_sk_token'), $cfg('skebby.token', ''), $t('f_sk_token_h'));
+    ?>
     <label class="fld"><span><?= $h($t('f_sk_quality')) ?></span>
       <select name="skebby.quality">
         <?php foreach (array_keys(\Glue\Notify\Skebby::QUALITIES) as $q): ?>

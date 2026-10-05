@@ -2780,4 +2780,8 @@ mario@example.it',
     'tr_no_email' => 'Non hai scritto l’indirizzo email',
     'tr_textmebot_disabled' => 'La chiave WhatsApp (TextMeBot) non è configurata',
     'tr_skebby_disabled' => 'Skebby non è configurato, o l’interruttore è spento',
+    'f_sk_userkey' => 'Chiave utente (user key)',
+    'f_sk_userkey_h' => 'Il numero che Skebby mostra nel pannello accanto al token. Se lo compili, utente e password qui sopra non servono.',
+    'f_sk_token' => 'Token di accesso',
+    'f_sk_token_h' => 'Va insieme alla chiave utente: i due si usano come coppia.',
 ];

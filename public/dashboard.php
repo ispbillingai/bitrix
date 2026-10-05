@@ -744,6 +744,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     'textmebot.api_key', 'textmebot.min_gap_seconds', 'textmebot.campaign_throttle_seconds',
                     // SMS through Skebby, and what it is switched on for
                     'skebby.username', 'skebby.password', 'skebby.sender', 'skebby.quality',
+                    // the panel's own pair, for an account whose login the API refuses
+                    'skebby.user_key', 'skebby.token',
                     'mail.from_name', 'mail.from_email',
                     'mail.smtp.host', 'mail.smtp.port', 'mail.smtp.user', 'mail.smtp.pass', 'mail.smtp.secure',
                     'logistics.email', 'logistics.phone',
@@ -874,8 +876,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // the old account: drop it so the next SMS logs in again.
                 $skChanged = (isset($pairs['skebby.username']) && $pairs['skebby.username'] !== (string)Config::get('skebby.username', ''))
                     || (isset($pairs['skebby.password']) && $pairs['skebby.password'] !== (string)Config::get('skebby.password', ''));
+                // …but never throw away a key pair typed in on this same save:
+                // that one is the office's answer, not a cached login.
+                $skTyped = trim((string)($pairs['skebby.user_key'] ?? '')) !== ''
+                    && trim((string)($pairs['skebby.token'] ?? '')) !== '';
                 Settings::setMany($pairs);
-                if ($skChanged) {
+                if ($skChanged && !$skTyped) {
                     (new \Glue\Notify\Skebby())->forgetAuth();
                 }
                 // Config was overlaid once at boot; re-apply so the form below this

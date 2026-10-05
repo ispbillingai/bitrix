@@ -2782,4 +2782,8 @@ mario@example.it',
     'tr_no_email' => 'No email address entered',
     'tr_textmebot_disabled' => 'The WhatsApp (TextMeBot) key is not configured',
     'tr_skebby_disabled' => 'Skebby is not configured, or the switch is off',
+    'f_sk_userkey' => 'User key',
+    'f_sk_userkey_h' => 'The number Skebby shows in the panel next to the token. Fill it in and the user and password above are not needed.',
+    'f_sk_token' => 'Access token',
+    'f_sk_token_h' => 'Goes with the user key: the two are used as a pair.',
 ];
