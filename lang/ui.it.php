@@ -2793,4 +2793,5 @@ mario@example.it',
     'msg_dlr_rejectd' => 'Rifiutato',
     'msg_dlr_unknown' => 'Esito ignoto',
     'evt_sms_delivery_report' => 'Rapporto di consegna SMS',
+    'f_sk_userkey_err' => '· La chiave utente Skebby non è stata salvata: dev’essere un numero (quella alfanumerica è il token, va nel campo accanto).',
 ];

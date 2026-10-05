@@ -809,6 +809,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // SMS: on at all, and then one tick per use it is allowed for.
                 $pairs['skebby.enabled'] = $post('skebby.enabled') !== null ? 'true' : 'false';
                 $pairs['skebby.use_doc_otp'] = $post('skebby.use_doc_otp') !== null ? 'true' : 'false';
+                // Skebby's user key is a number — the API types it as long and
+                // refuses anything else. Say so here rather than let the office
+                // find out from a failed test (a password landed in it once).
+                $skKeyWarn = '';
+                if (isset($pairs['skebby.user_key']) && trim($pairs['skebby.user_key']) !== ''
+                    && !ctype_digit(trim($pairs['skebby.user_key']))) {
+                    unset($pairs['skebby.user_key']);
+                    $skKeyWarn = ' ' . $t('f_sk_userkey_err');
+                }
                 $pairs['leads_mailbox.enabled'] = $post('leads_mailbox.enabled') !== null ? 'true' : 'false';
                 $pairs['planning.enabled'] = $post('planning.enabled') !== null ? 'true' : 'false';
                 $pairs['maintenance.enabled']         = $post('maintenance.enabled') !== null ? 'true' : 'false';
@@ -887,7 +896,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Config was overlaid once at boot; re-apply so the form below this
                 // request reflects the values we just saved (not the pre-save snapshot).
                 Config::applyOverlay(Settings::nested());
-                $flash = $t('saved') . ' · ' . count($pairs) . ' ' . $t('settings_saved_n');
+                $flash = $t('saved') . ' · ' . count($pairs) . ' ' . $t('settings_saved_n') . $skKeyWarn;
+                if ($skKeyWarn !== '') {
+                    $flashType = 'warn';
+                }
                 // A new lead-nudge cadence must reach the chains already running,
                 // or the leads being nudged today keep their old pace for good.
                 if (Scheduler::leadNudgeHours() !== $prevNudgeH) {

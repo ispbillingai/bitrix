@@ -2795,4 +2795,5 @@ mario@example.it',
     'msg_dlr_rejectd' => 'Rejected',
     'msg_dlr_unknown' => 'Unknown',
     'evt_sms_delivery_report' => 'SMS delivery report',
+    'f_sk_userkey_err' => '· The Skebby user key was not saved: it has to be a number (the alphanumeric one is the token, which goes in the field beside it).',
 ];
