@@ -7,6 +7,7 @@ use Glue\Config;
 use Glue\Db;
 use Glue\Event\Log;
 use Glue\Notify\Notifier;
+use Glue\Notify\Skebby;
 use Glue\Reminder\Templates;
 use PDO;
 
@@ -14,7 +15,7 @@ use PDO;
 // (Campaign\Media and Campaign\Audience live beside this class.)
 
 /**
- * Mass WhatsApp / email campaigns (requirement part2 #2 marketing).
+ * Mass WhatsApp / email / SMS campaigns (requirement part2 #2 marketing).
  *
  * Recipients are stored per-campaign and sent in throttled batches by the cron
  * runner, so a huge list never blocks one request and we respect TextMeBot's
@@ -45,7 +46,7 @@ final class Sender
     public function create(string $name, string $channel, string $body, ?string $subject, array $recipients,
                            string $lang = 'it', ?array $media = null, ?int $throttle = null): int
     {
-        $channel = $channel === 'email' ? 'email' : 'whatsapp';
+        $channel = in_array($channel, self::CHANNELS, true) ? $channel : 'whatsapp';
         $lang = Templates::lang($lang);
         $stmt = $this->db->prepare(
             'INSERT INTO campaigns (name, channel, lang, subject, body, media_path, media_name, media_mime, media_kind,
@@ -93,6 +94,29 @@ final class Sender
     }
 
     /**
+     * The three ways a campaign can go out. SMS is the one that has to be
+     * switched on first (Impostazioni → SMS → "Campagne pubblicitarie"): it is
+     * a paid gateway, so nobody discovers it by accident.
+     */
+    public const CHANNELS = ['whatsapp', 'email', 'sms'];
+
+    /** True when this office may send a campaign by SMS at all. */
+    public static function smsAvailable(): bool
+    {
+        return Skebby::uses('campaigns');
+    }
+
+    /**
+     * Only WhatsApp is paced. Email and SMS leave through a gateway built for
+     * volume: the waiting is there to keep one WhatsApp number from being
+     * banned, and nothing else.
+     */
+    public static function paced(string $channel): bool
+    {
+        return $channel === 'whatsapp';
+    }
+
+    /**
      * Send one throttled batch for every running campaign. Call from cron each
      * minute; $batch limits how many go out per invocation (× cron frequency).
      *
@@ -110,6 +134,13 @@ final class Sender
 
         foreach ($stmt->fetchAll() as $c) {
             $cid = (int)$c['id'];
+            // The tick was taken away after this campaign was made: leave the
+            // rest of it queued rather than burn credit — or fail every line —
+            // behind the office's back. Ticking it again resumes the campaign.
+            if ($c['channel'] === 'sms' && !self::smsAvailable()) {
+                $summary[$cid] = ['sent' => 0, 'failed' => 0, 'held' => 'sms_off'];
+                continue;
+            }
             $recs = $this->db->prepare(
                 "SELECT * FROM campaign_recipients WHERE campaign_id=? AND status='pending' ORDER BY id ASC LIMIT ?"
             );
@@ -138,7 +169,7 @@ final class Sender
             // next one — a campaign set to two minutes would send two of them
             // sixty seconds apart, which is the kind of burst that gets the
             // number blocked. Too soon: leave this campaign for a later tick.
-            if ($throttle > 0 && $c['channel'] === 'whatsapp' && $rows) {
+            if ($throttle > 0 && self::paced((string)$c['channel']) && $rows) {
                 $since = $this->db->prepare(
                     "SELECT UNIX_TIMESTAMP(MAX(sent_at)) FROM campaign_recipients
                       WHERE campaign_id = ? AND sent_at IS NOT NULL"
@@ -153,12 +184,23 @@ final class Sender
             $sent = $failed = 0;
             $last = count($rows) - 1;
             foreach ($rows as $i => $r) {
-                $vars = ['name' => $r['name'] ?: 'there', 'company' => Config::get('mail.from_name', '')];
+                $vars = ['name' => trim((string)($r['name'] ?? '')), 'company' => Config::get('mail.from_name', '')];
                 $body = Templates::render((string)$c['body'], $vars);
+                // A number typed by hand carries no name, and "Ciao {name}," then
+                // reaches the customer as "Ciao ," — or, as it did, as the English
+                // "Ciao there,". Close the gap the empty placeholder leaves.
+                $body = trim((string)preg_replace(
+                    ['/[ \t]{2,}/', '/[ \t]+([,.;:!?])/', '/[ \t]+$/m'], [' ', '$1', ''], $body));
 
-                $ok = $c['channel'] === 'email'
-                    ? $this->notifier->email($r['recipient'], (string)($c['subject'] ?? ''), $body, null, $cid, $attach)
-                    : $this->notifier->whatsapp($r['recipient'], $body, null, $cid, $mediaUrl, $mediaKind);
+                // An SMS carries text and nothing else — no subject, no
+                // attachment — which is why the form hides both for it.
+                if ($c['channel'] === 'email') {
+                    $ok = $this->notifier->email($r['recipient'], (string)($c['subject'] ?? ''), $body, null, $cid, $attach);
+                } elseif ($c['channel'] === 'sms') {
+                    $ok = $this->notifier->sms($r['recipient'], $body, null, $cid);
+                } else {
+                    $ok = $this->notifier->whatsapp($r['recipient'], $body, null, $cid, $mediaUrl, $mediaKind);
+                }
 
                 $this->db->prepare(
                     "UPDATE campaign_recipients SET status=?, sent_at=NOW() WHERE id=?"
@@ -170,7 +212,7 @@ final class Sender
                 if ($i === $last) {
                     break;
                 }
-                $wait = $c['channel'] === 'whatsapp' ? $throttle : 0;
+                $wait = self::paced((string)$c['channel']) ? $throttle : 0;
                 // Count the wait we are about to take, not only the time already
                 // spent: a 5-minute pace must not hold the "send now" request
                 // open for five minutes. The rest stays pending for the next run.

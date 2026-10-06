@@ -810,6 +810,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // SMS: on at all, and then one tick per use it is allowed for.
                 $pairs['skebby.enabled'] = $post('skebby.enabled') !== null ? 'true' : 'false';
                 $pairs['skebby.use_doc_otp'] = $post('skebby.use_doc_otp') !== null ? 'true' : 'false';
+                $pairs['skebby.use_campaigns'] = $post('skebby.use_campaigns') !== null ? 'true' : 'false';
                 // Skebby's user key is a number — the API types it as long and
                 // refuses anything else. Say so here rather than let the office
                 // find out from a failed test (a password landed in it once).
@@ -2596,7 +2597,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 // Recipients are resolved server-side from what the page posted:
                 // customers ticked in the picker, whole groups of the Clienti
                 // tab, and anything still typed by hand (Campaign\Audience).
-                $campCh = ($_POST['channel'] ?? '') === 'email' ? 'email' : 'whatsapp';
+                $campCh = (string)($_POST['channel'] ?? '');
+                $campCh = in_array($campCh, \Glue\Campaign\Sender::CHANNELS, true) ? $campCh : 'whatsapp';
+                // The SMS channel only exists while the tick in Impostazioni is
+                // on: it is paid per message, so a stale form may not spend it.
+                if ($campCh === 'sms' && !\Glue\Campaign\Sender::smsAvailable()) {
+                    $_SESSION['dash_flash'] = [$t('camp_err_sms_off'), 'err'];
+                    header('Location: ?tab=campaigns');
+                    exit;
+                }
                 $campMedia = \Glue\Campaign\Media::store($_FILES['media'] ?? null, $campErr);
                 if ($campErr !== null) {
                     $_SESSION['dash_flash'] = [$t('camp_err_media_' . $campErr), 'err'];

@@ -1,6 +1,6 @@
 <?php
 /**
- * Mass WhatsApp/email campaigns.
+ * Mass WhatsApp/email/SMS campaigns.
  *
  * Recipients come from three places that add up: customers ticked in the
  * picker, whole groups of the Clienti tab, and numbers or addresses typed by
@@ -37,6 +37,9 @@ $fmt = fn($n): string => number_format((float)$n, 0, ',', '.');
 // The wait between one message and the next, as Impostazioni has it: the
 // placeholder of the per-campaign field, and what a campaign uses when left blank.
 $defThrottle = Sender::throttleFor();
+// SMS is a channel only where the office has ticked it on (Impostazioni → SMS →
+// "Campagne pubblicitarie"). Off: the select does not offer what cannot be sent.
+$smsOn = Sender::smsAvailable();
 // Below the gateway's own minimum gap nothing goes faster, so the estimate says so.
 $minGap = \Glue\Notify\TextMeBot::gap();
 // A number typed without a prefix gets this country code (Notifier::normalizePhone),
@@ -62,7 +65,9 @@ if (($editId = (int)($_GET['camp'] ?? 0)) > 0) {
 <h2><?= $h($t('camp_title')) ?></h2>
 <div class="warn"><?= $h($t('camp_warn')) ?></div>
 
-<?php if ($edit): $eid = (int)$edit['id']; $isMail = $edit['channel'] === 'email'; ?>
+<?php if ($edit): $eid = (int)$edit['id'];
+      $isMail = $edit['channel'] === 'email';
+      $isSms  = $edit['channel'] === 'sms'; ?>
 <div class="card">
   <div class="camp-edit-head">
     <h3 style="margin:0"><?= svg('pen') ?> <?= $h($edit['name']) ?></h3>
@@ -83,6 +88,7 @@ if (($editId = (int)($_GET['camp'] ?? 0)) > 0) {
       <?php if ($isMail): ?>
         <label class="fld"><span><?= $h($t('camp_subject')) ?></span>
           <input name="subject" value="<?= $h((string)$edit['subject']) ?>"></label>
+      <?php elseif ($isSms): // an SMS has no subject, and no pace to keep ?>
       <?php else: ?>
         <label class="fld" style="max-width:220px"><span><?= $h($t('camp_throttle')) ?></span>
           <input name="throttle_seconds" type="number" min="0" max="3600" inputmode="numeric"
@@ -93,8 +99,13 @@ if (($editId = (int)($_GET['camp'] ?? 0)) > 0) {
     </div>
     <label class="fld"><span><?= $h($t('camp_body')) ?></span>
       <textarea name="body" rows="4" required><?= $h($edit['body']) ?></textarea>
-      <small class="muted"><?= $h($t('camp_body_h')) ?></small></label>
+      <small class="muted"><?= $h($t('camp_body_h')) ?><?= $isSms ? ' ' . $h($t('camp_sms_h')) : '' ?></small></label>
 
+    <?php if ($isSms): ?>
+      <?php if (!$smsOn): ?>
+        <p class="muted small" style="color:var(--amber);margin:0 0 12px"><?= $h($t('camp_sms_held')) ?></p>
+      <?php endif; ?>
+    <?php else: ?>
     <label class="fld"><span><?= $h($t('camp_media')) ?></span>
       <input type="file" name="media"
              accept="<?= $h('.' . implode(',.', array_merge(Media::IMAGE_EXT, Media::DOC_EXT))) ?>">
@@ -113,6 +124,7 @@ if (($editId = (int)($_GET['camp'] ?? 0)) > 0) {
           <span><?= $h($t('camp_media_remove')) ?></span></label>
       </div>
     <?php endif; ?>
+    <?php endif; // not SMS ?>
 
     <button class="btn"><?= svg('check') ?> <?= $h($t('save')) ?></button>
   </form>
@@ -143,15 +155,18 @@ if (($editId = (int)($_GET['camp'] ?? 0)) > 0) {
   <div class="row">
     <label class="fld"><span><?= $h($t('camp_name')) ?></span><input name="name"></label>
     <label class="fld"><span><?= $h($t('camp_channel')) ?></span>
-      <select name="channel" id="camp-channel"><option value="whatsapp">WhatsApp</option><option value="email">Email</option></select></label>
+      <select name="channel" id="camp-channel"><option value="whatsapp">WhatsApp</option><option value="email">Email</option>
+        <?php if ($smsOn): ?><option value="sms">SMS</option><?php endif; ?>
+      </select></label>
     <label class="fld" id="camp-subject-fld" hidden><span><?= $h($t('camp_subject')) ?></span><input name="subject"></label>
   </div>
   <label class="fld"><span><?= $h($t('camp_body')) ?></span>
-    <textarea name="body" rows="4" required placeholder="<?= $h($t('camp_body_ph')) ?>"></textarea>
-    <small class="muted"><?= $h($t('camp_body_h')) ?></small></label>
+    <textarea name="body" rows="4" id="camp-body" required placeholder="<?= $h($t('camp_body_ph')) ?>"></textarea>
+    <small class="muted"><?= $h($t('camp_body_h')) ?>
+      <span id="camp-sms-h" hidden><?= $h($t('camp_sms_h')) ?></span></small></label>
 
   <div class="row">
-    <label class="fld"><span><?= $h($t('camp_media')) ?></span>
+    <label class="fld" id="camp-media-fld"><span><?= $h($t('camp_media')) ?></span>
       <input type="file" name="media" id="camp-media"
              accept="<?= $h('.' . implode(',.', array_merge(Media::IMAGE_EXT, Media::DOC_EXT))) ?>">
       <small class="muted"><?= $h($t('camp_media_h')) ?></small></label>
@@ -211,7 +226,8 @@ if (($editId = (int)($_GET['camp'] ?? 0)) > 0) {
         <a href="<?= $h(Media::url((string)$r['media_path'])) ?>" target="_blank" rel="noopener">
           <?= $r['media_kind'] === 'document' ? '📎' : '🖼' ?> <?= $h($r['media_name'] ?: '') ?></a>
       <?php else: ?><span class="muted">—</span><?php endif; ?></td>
-    <td class="small"><?= $h($r['channel'] === 'email' ? '—' : sprintf($t('camp_throttle_v'), Sender::throttleFor($r))) ?></td>
+    <td class="small"><?= $h(Sender::paced((string)$r['channel'])
+        ? sprintf($t('camp_throttle_v'), Sender::throttleFor($r)) : '—') ?></td>
     <td><?= $h($r['total']) ?></td>
     <td><?= $h($r['sent']) ?></td><td><?= $h($r['failed']) ?></td><td><?= pill($h, $r['status'], $t) ?></td></tr>
 <?php endforeach; ?>
@@ -265,15 +281,20 @@ if (($editId = (int)($_GET['camp'] ?? 0)) > 0) {
       'empty'  => $t('camp_err_no_recipients'),
       'eta'    => $t('camp_eta'), 'h' => $t('unit_h'), 'min' => $t('unit_min'), 'sec' => $t('unit_s'),
       'gap'    => $minGap, 'bad' => $t('camp_typed_bad'), 'bad1' => $t('camp_typed_bad1'),
+      'parts'  => $t('camp_sms_parts'), 'part1' => $t('camp_sms_part1'),
   ], JSON_UNESCAPED_UNICODE) ?>;
   var picked = {};   // contact id => {name, phone, email}
   var chips = document.getElementById('camp-chips'), totalEl = document.getElementById('camp-total'),
       noneEl = document.getElementById('camp-none'), chan = document.getElementById('camp-channel'),
       typed = document.getElementById('camp-typed'),
-      thr = document.getElementById('camp-throttle');
+      thr = document.getElementById('camp-throttle'),
+      body = document.getElementById('camp-body');
 
-  function isWa() { return chan.value !== 'email'; }
-  function reachable(c) { return isWa() ? !!c.phone : !!c.email; }
+  // Phones or addresses: SMS asks for the same thing WhatsApp does.
+  function isPhone() { return chan.value !== 'email'; }
+  function isWa() { return chan.value === 'whatsapp'; }
+  function isSms() { return chan.value === 'sms'; }
+  function reachable(c) { return isPhone() ? !!c.phone : !!c.email; }
   function esc(s) { return String(s == null ? '' : s); }
 
   function draw() {
@@ -283,7 +304,7 @@ if (($editId = (int)($_GET['camp'] ?? 0)) > 0) {
       var c = picked[id];
       var chip = document.createElement('span');
       chip.className = 'camp-chip' + (reachable(c) ? '' : ' no-reach');
-      chip.title = reachable(c) ? '' : (isWa() ? L.nophone : L.noemail);
+      chip.title = reachable(c) ? '' : (isPhone() ? L.nophone : L.noemail);
       chip.appendChild(document.createTextNode(esc(c.name) + (reachable(c) ? '' : ' ⚠')));
       var x = document.createElement('button');
       x.type = 'button'; x.textContent = '×';
@@ -316,7 +337,7 @@ if (($editId = (int)($_GET['camp'] ?? 0)) > 0) {
     (typed.value || '').split(/[\n,;]+/).forEach(function (l) {
       l = l.trim();
       if (l === '') { return; }
-      var ok = isWa() ? l.replace(/\D/g, '').length >= 6 : /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(l);
+      var ok = isPhone() ? l.replace(/\D/g, '').length >= 6 : /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(l);
       ok ? n++ : bad++;
     });
     var txt = n > 0 ? L.total.replace('%d', n) : '';
@@ -324,6 +345,14 @@ if (($editId = (int)($_GET['camp'] ?? 0)) > 0) {
     var gap = thr.value.trim() === '' ? parseInt(thr.placeholder, 10) : parseInt(thr.value, 10);
     if (gap > 0) { gap = Math.max(gap, L.gap); }   // the gateway never goes faster than its own gap
     if (txt && isWa() && gap > 0 && n > 1) txt += ' · ' + L.eta.replace('%s', human((n - 1) * gap));
+    // SMS is billed by the message, and a long text is more than one of them:
+    // say how many each recipient costs before the campaign is created.
+    var len = (body.value || '').length;
+    if (isSms() && len > 0) {
+      var parts = len <= 160 ? 1 : Math.ceil(len / 153);
+      txt += (txt ? ' · ' : '') + (parts === 1 ? L.part1.replace('%d', len)
+                                               : L.parts.replace('%d', len).replace('%n', parts));
+    }
     if (bad > 0) txt += (txt ? ' · ' : '') + (bad === 1 ? L.bad1 : L.bad.replace('%d', bad));
     totalEl.textContent = txt;
     totalEl.style.color = n > 0 ? 'var(--txt)' : '';
@@ -351,7 +380,7 @@ if (($editId = (int)($_GET['camp'] ?? 0)) > 0) {
             var st = document.createElement('strong'); st.textContent = c.name; b.appendChild(st);
             var sp = document.createElement('span'); sp.className = 'sub';
             sp.textContent = c.label || '';
-            if (!(isWa() ? c.phone : c.email)) { sp.textContent += (sp.textContent ? ' · ' : '') + (isWa() ? L.nophone : L.noemail); sp.style.color = 'var(--amber)'; }
+            if (!(isPhone() ? c.phone : c.email)) { sp.textContent += (sp.textContent ? ' · ' : '') + (isPhone() ? L.nophone : L.noemail); sp.style.color = 'var(--amber)'; }
             b.appendChild(sp);
             b.addEventListener('click', function () {
               picked[c.id] = {name: c.name, phone: c.phone, email: c.email};
@@ -371,16 +400,23 @@ if (($editId = (int)($_GET['camp'] ?? 0)) > 0) {
     if (e.target !== q && !hits.contains(e.target)) closeHits();
   });
 
-  // The subject only belongs to email; the chips re-read as the channel changes.
+  // Each channel carries what it can: the subject belongs to email, the pace to
+  // WhatsApp (an SMS gateway is a carrier and needs none), and an attachment to
+  // neither SMS nor a phone line that has no file to fetch. The chips also
+  // re-read, because the same customer may be reachable on one and not another.
   function channelChanged() {
-    document.getElementById('camp-subject-fld').hidden = isWa();
-    document.getElementById('camp-throttle-fld').hidden = !isWa();   // email has no such limit
+    document.getElementById('camp-subject-fld').hidden = isPhone();
+    document.getElementById('camp-throttle-fld').hidden = !isWa();
+    document.getElementById('camp-media-fld').hidden = isSms();
+    if (isSms()) { document.getElementById('camp-media').value = ''; }
+    document.getElementById('camp-sms-h').hidden = !isSms();
     draw();
   }
   chan.addEventListener('change', channelChanged);
   form.addEventListener('change', count);
   typed.addEventListener('input', count);
   thr.addEventListener('input', count);
+  body.addEventListener('input', count);
   form.addEventListener('submit', function (e) {
     var n = count();
     if (n === 0) { e.preventDefault(); e.stopImmediatePropagation(); alert(L.empty); return; }

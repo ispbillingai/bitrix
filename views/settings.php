@@ -151,6 +151,10 @@ $pipelines = \Glue\Crm\Pipelines::all();
       <input type="checkbox" name="skebby.use_doc_otp" value="true" style="width:auto" <?= (bool)$cfg('skebby.use_doc_otp', false) ? 'checked' : '' ?>>
       <span style="margin:0"><?= $h($t('f_sk_use_otp')) ?></span>
     </label>
+    <label class="fld" style="display:flex;flex-direction:row;align-items:center;gap:10px;margin-top:8px">
+      <input type="checkbox" name="skebby.use_campaigns" value="true" style="width:auto" <?= (bool)$cfg('skebby.use_campaigns', false) ? 'checked' : '' ?>>
+      <span style="margin:0"><?= $h($t('f_sk_use_camp')) ?></span>
+    </label>
   </div>
   <p class="muted small" style="margin:0 0 12px"><?= $h($t('f_sk_uses_h')) ?></p>
 
