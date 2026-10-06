@@ -630,6 +630,11 @@ return [
     'chan_email'      => 'Email',
     'chan_sms'        => 'SMS',
 
+    // the box that searches in place of a list too long to scroll (pick_field)
+    'pick_ph'   => 'Search by name, company, phone or email…',
+    'pick_none' => 'No customer found',
+    'pick_need' => 'Pick a customer from the list that appears as you type.',
+
     // activity-log sources
     'src_appointment'  => 'Appointment',
     'src_bitrix_event' => 'Bitrix event',
@@ -1584,7 +1589,7 @@ return [
     'pay_new_title'       => 'Open a payment contract',
     'pay_new_h'           => 'SmallPay charges the customer\'s card and holds the mandate. We send them the link; nothing is charged until they complete the payment page.',
     'pay_f_customer'      => 'Customer',
-    'pay_f_customer_h'    => 'Only customers with a phone number or email are listed — the link has to reach them.',
+    'pay_f_customer_h'    => 'Type two letters and pick from the list. Each name shows its phone and email: without one of them the contract still opens, but the link cannot be sent.',
     'pay_f_deal'          => 'Deal (optional)',
     'pay_f_deal_h'        => 'Links the contract to the sale it came from.',
     'pay_f_kind'          => 'Type',

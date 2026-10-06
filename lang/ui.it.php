@@ -630,6 +630,11 @@ return [
     'chan_email'      => 'Email',
     'chan_sms'        => 'SMS',
 
+    // la casella che cerca al posto di un elenco troppo lungo (pick_field)
+    'pick_ph'   => 'Cerca per nome, azienda, telefono o email…',
+    'pick_none' => 'Nessun cliente trovato',
+    'pick_need' => 'Scegli un cliente dall’elenco che compare mentre scrivi.',
+
     // origini registro attività
     'src_appointment'  => 'Appuntamento',
     'src_bitrix_event' => 'Evento Bitrix',
@@ -1582,7 +1587,7 @@ return [
     'pay_new_title'       => 'Apri un contratto di pagamento',
     'pay_new_h'           => 'SmallPay addebita la carta del cliente e custodisce il mandato. Noi gli inviamo il link; non viene addebitato nulla finché non completa la pagina di pagamento.',
     'pay_f_customer'      => 'Cliente',
-    'pay_f_customer_h'    => 'Sono elencati solo i clienti con telefono o email — il link deve poterli raggiungere.',
+    'pay_f_customer_h'    => 'Scrivi due lettere e scegli dall’elenco. Sotto ogni nome vedi telefono ed email: senza uno dei due il contratto si apre lo stesso, ma il link non parte.',
     'pay_f_deal'          => 'Trattativa (facoltativa)',
     'pay_f_deal_h'        => 'Collega il contratto alla vendita da cui nasce.',
     'pay_f_kind'          => 'Tipo',

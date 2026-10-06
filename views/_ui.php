@@ -213,6 +213,107 @@ function phone_field(callable $h, string $label, string $name, ?string $value, s
 </label>
 <?php }
 
+/**
+ * A field that SEARCHES a registry instead of listing it.
+ *
+ * A <select> cannot hold ten thousand customers: the one on the contract form
+ * was capped at 500 and ended inside the letter A, so the office could not
+ * reach their own customers from it. Here you type two letters, the server
+ * answers (?find=<what>&q=…), and picking a hit fills the hidden field with the
+ * id — the form still posts one number, exactly as the select did.
+ *
+ * $a: name (the hidden field), find (the lookup), label, placeholder, hint,
+ *     value + value_label (what is already chosen), none (nothing found),
+ *     need (said when the form is sent with a name typed but nobody picked;
+ *     its presence is what makes the field required).
+ */
+function pick_field(callable $h, array $a): void { ?>
+<label class="fld"><span><?= $h($a['label'] ?? '') ?></span>
+  <span class="pick" data-find="<?= $h($a['find'] ?? 'contacts') ?>"
+        data-none="<?= $h($a['none'] ?? '') ?>"<?= isset($a['need']) ? ' data-need="' . $h($a['need']) . '"' : '' ?>>
+    <input type="text" class="pick-q" autocomplete="off" placeholder="<?= $h($a['placeholder'] ?? '') ?>"
+           value="<?= $h($a['value_label'] ?? '') ?>" aria-label="<?= $h($a['label'] ?? '') ?>">
+    <input type="hidden" name="<?= $h($a['name'] ?? 'contact_id') ?>" value="<?= $h($a['value'] ?? '') ?>">
+    <div class="pick-hits" hidden></div>
+  </span>
+  <?php if (!empty($a['hint'])): ?><small class="muted"><?= $h($a['hint']) ?></small><?php endif; ?>
+</label>
+<?php }
+
+/** Wires every pick_field() on the page. Call once, after the markup. */
+function pick_js(): void { ?>
+<script>
+(function () {
+  document.querySelectorAll('.pick').forEach(function (pick) {
+    var box  = pick.querySelector('.pick-q'),
+        hid  = pick.querySelector('input[type=hidden]'),
+        hits = pick.querySelector('.pick-hits'),
+        find = pick.getAttribute('data-find') || 'contacts',
+        timer = null;
+
+    function close() { hits.hidden = true; hits.innerHTML = ''; }
+
+    function render(list) {
+      hits.innerHTML = '';
+      if (!list.length) {
+        var d = document.createElement('div');
+        d.className = 'none';
+        d.textContent = pick.getAttribute('data-none') || '';
+        hits.appendChild(d);
+        hits.hidden = false;
+        return;
+      }
+      list.forEach(function (c) {
+        var b = document.createElement('button');
+        b.type = 'button';
+        b.appendChild(document.createTextNode(c.name));
+        if (c.label) {
+          var sp = document.createElement('span');
+          sp.className = 'sub';
+          sp.textContent = c.label;
+          b.appendChild(sp);
+        }
+        b.addEventListener('click', function () {
+          box.value = c.name;
+          hid.value = c.id;
+          close();
+        });
+        hits.appendChild(b);
+      });
+      hits.hidden = false;
+    }
+
+    box.addEventListener('input', function () {
+      hid.value = '';                        // typing again unpicks whoever was chosen
+      var q = box.value.trim();
+      clearTimeout(timer);
+      if (q.length < 2) { close(); return; }
+      timer = setTimeout(function () {
+        fetch('?find=' + encodeURIComponent(find) + '&q=' + encodeURIComponent(q), {credentials: 'same-origin'})
+          .then(function (r) { return r.json(); }).then(render).catch(close);
+      }, 220);
+    });
+    box.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape') { close(); }
+      if (e.key === 'Enter') { e.preventDefault(); }   // never submit from the search box
+    });
+    document.addEventListener('click', function (e) {
+      if (e.target !== box && !hits.contains(e.target)) { close(); }
+    });
+
+    // A name typed but nobody picked is not a choice: say so rather than post
+    // a form the server would refuse.
+    var need = pick.getAttribute('data-need');
+    if (need && box.form) {
+      box.form.addEventListener('submit', function (e) {
+        if (!hid.value) { e.preventDefault(); e.stopImmediatePropagation(); box.focus(); alert(need); }
+      }, true);
+    }
+  });
+})();
+</script>
+<?php }
+
 function css(): void { ?>
 <style>
 :root{
@@ -505,6 +606,17 @@ a.tel:hover{text-decoration:underline;}
 .cp-act input[type=date]{width:auto;padding:6px 8px;font-size:13px;}
 .cp-of{font-size:13px;margin:8px 0;color:var(--muted);}
 .cp-of a{color:var(--accent);}
+
+/* pick_field(): the search box that stands in for a select too long to scroll */
+.pick{position:relative;display:block;}
+.pick-hits{position:absolute;z-index:40;left:0;right:0;top:100%;margin-top:4px;max-height:280px;overflow-y:auto;
+  background:var(--surface);border:1px solid var(--line);border-radius:10px;box-shadow:0 10px 26px rgba(0,0,0,.35);}
+.pick-hits button{display:block;width:100%;text-align:left;padding:9px 12px;border:0;background:transparent;
+  color:inherit;font:inherit;cursor:pointer;border-bottom:1px solid var(--line);}
+.pick-hits button:last-child{border-bottom:0;}
+.pick-hits button:hover{background:var(--surface2);}
+.pick-hits .sub{display:block;font-size:11.5px;color:var(--muted);margin-top:2px;}
+.pick-hits .none{padding:9px 12px;font-size:12px;color:var(--muted);}
 @media (max-width:560px){.cp-prog{display:none;}.cp-act{width:100%;}.cp-act button{flex:1;justify-content:center;}}
 </style>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">

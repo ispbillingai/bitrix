@@ -64,7 +64,7 @@ $here = function (array $over = []) use ($filter): string {
 <?php else: ?>
 
   <?php $s = Contracts::summary(); ?>
-  <div class="grid" style="grid-template-columns:repeat(4,1fr);margin-bottom:18px">
+  <div class="grid" style="margin-bottom:18px"><?php // four across on a desktop, wrapping on a phone: the shared .grid rule ?>
     <?php
     num_card($h, 'alert', $t('pay_t_past_due'), (int)($s['past_due'] ?? 0), $t('pay_t_past_due_h'));
     num_card($h, 'check', $t('pay_t_active'), (int)($s['active'] ?? 0),
@@ -100,13 +100,17 @@ $here = function (array $over = []) use ($filter): string {
   <?php // ---- open a contract ---- ?>
   <?php if ($newOpen): ?>
     <?php
-    // Contacts that can actually be reached — a contract whose link can't be
-    // delivered is just a row nobody acts on.
-    $contactRows = $pdo->query(
-        "SELECT id, name, company, phone, email, lang FROM contacts
-          WHERE (phone IS NOT NULL AND phone <> '') OR (email IS NOT NULL AND email <> '')
-          ORDER BY name LIMIT 500"
-    )->fetchAll();
+    // The customer is SEARCHED, not listed: ten thousand contacts never fitted
+    // in a dropdown — the one that used to be here was capped at 500 and ended
+    // inside the letter A, so most customers could not be reached at all.
+    // ?find=contacts answers the typing (same lookup the Messaggi picker uses).
+    $prefName = '';
+    if ($prefContact > 0) {
+        $pcq = $pdo->prepare('SELECT name, company FROM contacts WHERE id = ?');
+        $pcq->execute([$prefContact]);
+        $pc = $pcq->fetch();
+        $prefName = $pc ? trim((string)$pc['name'] . ($pc['company'] ? ' · ' . $pc['company'] : '')) : '';
+    }
     $dealRows = $pdo->query(
         "SELECT id, title, contact_id, amount, currency FROM deals
           WHERE status <> 'lost' ORDER BY id DESC LIMIT 300"
@@ -118,17 +122,17 @@ $here = function (array $over = []) use ($filter): string {
       <p class="muted small" style="margin:0 0 14px"><?= $h($t('pay_new_h')) ?></p>
 
       <div class="row">
-        <label class="fld"><span><?= $h($t('pay_f_customer')) ?></span>
-          <select name="contact_id" required>
-            <option value="">—</option>
-            <?php foreach ($contactRows as $c): ?>
-              <option value="<?= $h($c['id']) ?>" <?= $prefContact === (int)$c['id'] ? 'selected' : '' ?>>
-                <?= $h(trim($c['name'] . ($c['company'] ? ' · ' . $c['company'] : ''))) ?>
-              </option>
-            <?php endforeach; ?>
-          </select>
-          <small class="muted"><?= $h($t('pay_f_customer_h')) ?></small>
-        </label>
+        <?php pick_field($h, [
+            'name'        => 'contact_id',
+            'find'        => 'contacts',
+            'label'       => $t('pay_f_customer'),
+            'placeholder' => $t('pick_ph'),
+            'hint'        => $t('pay_f_customer_h'),
+            'none'        => $t('pick_none'),
+            'need'        => $t('pick_need'),
+            'value'       => $prefContact ?: '',
+            'value_label' => $prefName,
+        ]); ?>
         <label class="fld"><span><?= $h($t('pay_f_deal')) ?></span>
           <select name="deal_id">
             <option value="">—</option>
@@ -384,3 +388,6 @@ $here = function (array $over = []) use ($filter): string {
     </div>
   <?php endif; ?>
 <?php endif; ?>
+
+<?php // one shared script wires every search box on this page
+pick_js(); ?>
