@@ -1373,6 +1373,22 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 exit;
             }
 
+            // A word or two under an installation photo. The media row must
+            // belong to the product the form came from, like the two below.
+            case 'article_media_tags': {
+                $amId = (int)($_POST['id'] ?? 0);
+                $am   = \Glue\Crm\ArticleMedia::find((int)($_POST['media'] ?? 0));
+                if ($am && (int)$am['article_id'] === $amId) {
+                    $amTags = \Glue\Crm\ArticleMedia::setTags((int)$am['id'], (string)($_POST['tags'] ?? ''));
+                    $_SESSION['dash_flash'] = [$amTags
+                        ? sprintf($t('pl_tags_ok'), implode(', ', $amTags)) : $t('pl_tags_cleared'), 'ok'];
+                } else {
+                    $_SESSION['dash_flash'] = [$t('not_allowed'), 'err'];
+                }
+                header('Location: ?tab=articles&id=' . $amId . '#pl-gal');
+                exit;
+            }
+
             case 'article_media_del':
             case 'article_media_cover': {
                 $amId = (int)($_POST['id'] ?? 0);

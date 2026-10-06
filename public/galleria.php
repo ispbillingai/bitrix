@@ -14,6 +14,11 @@ declare(strict_types=1);
  * never a customer's name, never the documents on a product's sheet. The office
  * can mint a new token (the old link dies) or take the link away entirely.
  *
+ * Each photo carries the words the office put on it (migration 078) and, when
+ * there is more than one on the page, they become filter chips: in a whole
+ * list's gallery that is the difference between "the ones in a tabaccheria"
+ * and scrolling past forty shops.
+ *
  * The same page serves the images (?p=<media id>), so the photos stay outside
  * the web root and leave only for someone holding the token.
  */
@@ -75,6 +80,21 @@ foreach ($groups as $g) {
     }
 }
 
+// ---- the words on the photos, and how many carry each (078) ----
+$tagsOf   = [];   // media id  => string[]
+$tagCount = [];   // lowercase => ['label' => as written, 'n' => photos]
+foreach ($all as $mid => $p) {
+    $tagsOf[$mid] = ArticleMedia::tagsOf($p);
+    foreach ($tagsOf[$mid] as $tg) {
+        $k = mb_strtolower($tg);
+        $tagCount[$k] ??= ['label' => $tg, 'n' => 0];
+        $tagCount[$k]['n']++;
+    }
+}
+// The busiest word first: it is the one most likely to be what you are after.
+uasort($tagCount, static fn(array $x, array $y): int
+    => ($y['n'] <=> $x['n']) ?: strcmp($x['label'], $y['label']));
+
 // ---- one photo, for someone holding the token ----
 if (isset($_GET['p'])) {
     $wanted = (int)$_GET['p'];
@@ -116,15 +136,27 @@ header('Referrer-Policy: no-referrer');
   .co{color:var(--muted);font-size:12.5px;text-transform:uppercase;letter-spacing:.08em}
   h1{margin:4px 0 2px;font-size:21px;line-height:1.25}
   .code{color:var(--muted);font-size:13px}
-  main{padding:18px 0 40px}
+  /* type selectors lose to .wrap, so the page margins are set on the elements themselves */
+  main.wrap{padding:18px 16px 30px}
+  footer.wrap{padding:0 16px 30px}
+  .chips{display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin:4px 0 2px}
+  .chips .lbl{color:var(--muted);font-size:12.5px}
+  .chip{border:1px solid var(--line);background:var(--card);color:var(--txt);border-radius:999px;
+        padding:5px 11px;font:inherit;font-size:13px;cursor:pointer}
+  .chip b{font-weight:400;font-size:12px;margin-left:5px;opacity:.6}
+  .chip[aria-pressed="true"]{background:var(--txt);color:var(--bg);border-color:var(--txt)}
   h2{font-size:16px;margin:22px 0 4px}
   h2 span{color:var(--muted);font-weight:400;font-size:13px}
   .grid{display:grid;gap:10px;grid-template-columns:repeat(auto-fill,minmax(150px,1fr));margin-top:10px}
   .grid button{padding:0;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:var(--card);
-               cursor:zoom-in;aspect-ratio:1;display:block}
+               cursor:zoom-in;aspect-ratio:1;display:block;width:100%}
+  .shot{margin:0;display:flex;flex-direction:column;gap:5px}
+  .shot[hidden],.group[hidden]{display:none}
+  figcaption{color:var(--muted);font-size:12px;line-height:1.3}
+
   .grid img{width:100%;height:100%;object-fit:cover;display:block}
   .none{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:28px;text-align:center;color:var(--muted)}
-  footer{color:var(--muted);font-size:12.5px;padding:0 0 30px}
+  footer{color:var(--muted);font-size:12.5px}
   #lb{position:fixed;inset:0;background:rgba(0,0,0,.93);display:none;align-items:center;justify-content:center;z-index:50}
   #lb.on{display:flex}
   #lb img{max-width:100%;max-height:100%;object-fit:contain}
@@ -145,18 +177,34 @@ header('Referrer-Policy: no-referrer');
 <main class="wrap">
 <?php if (!$all): ?>
   <div class="none"><?= $h($it ? 'Non ci sono ancora foto di installazioni.' : 'No installation photos yet.') ?></div>
-<?php else: $i = 0; foreach ($groups as $g): ?>
-  <?php if ($list): ?>
-    <h2><?= $h($g['title']) ?> <span>· <?= $h($g['code']) ?> · <?= count($g['photos']) ?></span></h2>
+<?php else: ?>
+  <?php if (count($tagCount) > 1): ?>
+    <div class="chips">
+      <span class="lbl"><?= $h($it ? 'Filtra:' : 'Filter:') ?></span>
+      <button type="button" class="chip" data-tag="" aria-pressed="true"><?= $h($it ? 'Tutte' : 'All') ?> <b><?= $n ?></b></button>
+      <?php foreach ($tagCount as $tk => $tc): ?>
+        <button type="button" class="chip" data-tag="<?= $h($tk) ?>" aria-pressed="false"><?= $h($tc['label']) ?> <b><?= (int)$tc['n'] ?></b></button>
+      <?php endforeach; ?>
+    </div>
   <?php endif; ?>
-  <div class="grid">
-    <?php foreach ($g['photos'] as $p): ?>
-      <button type="button" data-i="<?= $i++ ?>" aria-label="<?= $h($p['name']) ?>">
-        <img src="<?= $h($base) ?>&amp;p=<?= (int)$p['id'] ?>&amp;s=t" alt="" loading="lazy">
-      </button>
-    <?php endforeach; ?>
-  </div>
-<?php endforeach; endif; ?>
+  <?php $i = 0; foreach ($groups as $g): ?>
+    <section class="group">
+      <?php if ($list): ?>
+        <h2><?= $h($g['title']) ?> <span>· <?= $h($g['code']) ?> · <?= count($g['photos']) ?></span></h2>
+      <?php endif; ?>
+      <div class="grid">
+        <?php foreach ($g['photos'] as $p): $pt = $tagsOf[(int)$p['id']] ?? []; ?>
+          <figure class="shot" data-tags="<?= $h($pt ? '|' . mb_strtolower(implode('|', $pt)) . '|' : '') ?>">
+            <button type="button" data-i="<?= $i++ ?>" aria-label="<?= $h($p['name']) ?>">
+              <img src="<?= $h($base) ?>&amp;p=<?= (int)$p['id'] ?>&amp;s=t" alt="" loading="lazy">
+            </button>
+            <?php if ($pt): ?><figcaption><?= $h(implode(' · ', $pt)) ?></figcaption><?php endif; ?>
+          </figure>
+        <?php endforeach; ?>
+      </div>
+    </section>
+  <?php endforeach; ?>
+<?php endif; ?>
 </main>
 
 <footer class="wrap"><?= $h($co) ?></footer>
@@ -178,7 +226,9 @@ header('Referrer-Policy: no-referrer');
       $flat = [];
       foreach ($groups as $g) {
           foreach ($g['photos'] as $p) {
-              $flat[] = ['u' => $base . '&p=' . (int)$p['id'], 'c' => $list ? $g['title'] . ' · ' . $g['code'] : ''];
+              $flat[] = ['u' => $base . '&p=' . (int)$p['id'],
+                         'c' => $list ? $g['title'] . ' · ' . $g['code'] : '',
+                         't' => implode(' · ', $tagsOf[(int)$p['id']] ?? [])];
           }
       }
       echo json_encode($flat, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
@@ -187,27 +237,61 @@ header('Referrer-Policy: no-referrer');
   var lb = document.getElementById('lb'), img = document.getElementById('lbimg'),
       cap = document.getElementById('lbn'), at = 0;
 
+  var figs  = Array.prototype.slice.call(document.querySelectorAll('.shot'));
+  var chips = Array.prototype.slice.call(document.querySelectorAll('.chip'));
+  // Which photos are on screen right now, in order. A filter narrows it, and
+  // the arrows then walk that selection instead of the whole page.
+  var vis = shots.map(function (_, k) { return k; });
+
   function show(i) {
     at = (i + shots.length) % shots.length;
-    img.src = shots[at].u;
-    cap.textContent = (shots[at].c ? shots[at].c + ' — ' : '') + (at + 1) + ' / ' + shots.length;
+    var s = shots[at], bits = [], k = vis.indexOf(at);
+    if (s.c) { bits.push(s.c); }
+    if (s.t) { bits.push(s.t); }
+    img.src = s.u;
+    cap.textContent = (bits.length ? bits.join(' · ') + ' — ' : '')
+                    + ((k < 0 ? 0 : k) + 1) + ' / ' + vis.length;
     lb.classList.add('on');
     document.body.style.overflow = 'hidden';
   }
+  function step(d) {
+    var k = vis.indexOf(at);
+    show(vis[((k < 0 ? 0 : k) + d + vis.length) % vis.length]);
+  }
+
   function close() { lb.classList.remove('on'); img.src = ''; document.body.style.overflow = ''; }
 
   document.querySelectorAll('.grid button').forEach(function (b) {
     b.addEventListener('click', function () { show(parseInt(b.dataset.i, 10) || 0); });
   });
+
+  function filter(tag) {
+    vis = [];
+    figs.forEach(function (fg) {
+      var on = !tag || (fg.getAttribute('data-tags') || '').indexOf('|' + tag + '|') >= 0;
+      fg.hidden = !on;
+      if (on) { vis.push(parseInt(fg.querySelector('button').getAttribute('data-i'), 10) || 0); }
+    });
+    // A product whose photos are all filtered out loses its heading too.
+    Array.prototype.forEach.call(document.querySelectorAll('.group'), function (sec) {
+      sec.hidden = !sec.querySelector('.shot:not([hidden])');
+    });
+    chips.forEach(function (c) {
+      c.setAttribute('aria-pressed', c.getAttribute('data-tag') === tag ? 'true' : 'false');
+    });
+  }
+  chips.forEach(function (c) {
+    c.addEventListener('click', function () { filter(c.getAttribute('data-tag')); });
+  });
   lb.querySelector('.x').addEventListener('click', close);
-  lb.querySelector('.prev').addEventListener('click', function (e) { e.stopPropagation(); show(at - 1); });
-  lb.querySelector('.next').addEventListener('click', function (e) { e.stopPropagation(); show(at + 1); });
+  lb.querySelector('.prev').addEventListener('click', function (e) { e.stopPropagation(); step(-1); });
+  lb.querySelector('.next').addEventListener('click', function (e) { e.stopPropagation(); step(1); });
   lb.addEventListener('click', function (e) { if (e.target === lb || e.target === img) { close(); } });
   document.addEventListener('keydown', function (e) {
     if (!lb.classList.contains('on')) { return; }
     if (e.key === 'Escape') { close(); }
-    if (e.key === 'ArrowLeft') { show(at - 1); }
-    if (e.key === 'ArrowRight') { show(at + 1); }
+    if (e.key === 'ArrowLeft') { step(-1); }
+    if (e.key === 'ArrowRight') { step(1); }
   });
   // a thumb swipe on a phone, where there is no keyboard and the arrows are small
   var x0 = null;
@@ -215,7 +299,7 @@ header('Referrer-Policy: no-referrer');
   lb.addEventListener('touchend', function (e) {
     if (x0 === null) { return; }
     var dx = e.changedTouches[0].clientX - x0;
-    if (Math.abs(dx) > 50) { show(at + (dx < 0 ? 1 : -1)); }
+    if (Math.abs(dx) > 50) { step(dx < 0 ? 1 : -1); }
     x0 = null;
   }, {passive: true});
 })();

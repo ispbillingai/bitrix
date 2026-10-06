@@ -384,19 +384,37 @@ if ($a !== null):
 
     <?php if ($amInstalls): ?>
       <div class="pl-photos">
-        <?php foreach ($amInstalls as $p): ?>
-          <div class="pl-photo">
+        <?php foreach ($amInstalls as $p): $pTags = ArticleMedia::tagsOf($p); ?>
+          <div class="pl-photo pl-photo-tagged">
             <a href="?amf=<?= (int)$p['id'] ?>" target="_blank" rel="noopener"><img src="?amf=<?= (int)$p['id'] ?>&s=t" alt="<?= $h($p['name']) ?>" loading="lazy"></a>
             <?php if ($isAdminHere): ?>
+              <?php // The tags are edited where the photo is, one little form each:
+                    // typing a word and pressing enter is the whole interaction. ?>
+              <form method="post" class="pl-tagform">
+                <input type="hidden" name="do" value="article_media_tags">
+                <input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="media" value="<?= (int)$p['id'] ?>">
+                <input name="tags" list="pl-tags" value="<?= $h(implode(', ', $pTags)) ?>"
+                       placeholder="<?= $h($t('pl_tags_ph')) ?>" title="<?= $h($t('pl_tags_h')) ?>">
+                <button class="btn ghost tiny" title="<?= $h($t('save')) ?>"><?= svg('check') ?></button>
+              </form>
               <div class="pl-photo-acts">
                 <form method="post" onsubmit="return confirm(<?= $h(json_encode($t('pl_media_del_confirm'), JSON_UNESCAPED_UNICODE)) ?>)"><input type="hidden" name="do" value="article_media_del">
                   <input type="hidden" name="id" value="<?= (int)$a['id'] ?>"><input type="hidden" name="media" value="<?= (int)$p['id'] ?>">
                   <button class="btn ghost tiny" style="color:var(--red)" title="<?= $h($t('delete')) ?>">✕</button></form>
               </div>
+            <?php elseif ($pTags): ?>
+              <p class="mini muted" style="margin:6px 0 0;line-height:1.3"><?= $h(implode(' · ', $pTags)) ?></p>
             <?php endif; ?>
           </div>
         <?php endforeach; ?>
       </div>
+      <?php if ($isAdminHere): ?>
+        <?php // The words already in use, so the second tabaccheria is not a "tabacchi". ?>
+        <datalist id="pl-tags">
+          <?php foreach (ArticleMedia::knownTags() as $kt): ?><option value="<?= $h($kt) ?>"><?php endforeach; ?>
+        </datalist>
+        <p class="muted small" style="margin:0 0 10px"><?= $h($t('pl_tags_h')) ?></p>
+      <?php endif; ?>
     <?php else: ?>
       <p class="muted small" style="margin:0 0 10px"><?= $h($t('pl_gal_none')) ?></p>
     <?php endif; ?>
@@ -700,6 +718,15 @@ document.querySelectorAll('[data-copy]').forEach(function (b) {
 .pl-cover{position:absolute;top:6px;left:6px;background:var(--accent);color:#fff;font-size:10.5px;font-weight:700;padding:2px 7px;border-radius:6px}
 .pl-photo-acts{display:flex;gap:6px;margin-top:6px}
 .pl-photo-acts form{margin:0}
+.pl-photo-tagged{width:158px}
+.pl-photo-tagged img{width:158px;height:158px}
+.pl-tagform{display:flex;gap:4px;margin-top:6px}
+.pl-tagform input{flex:1;min-width:0;font-size:12px;padding:5px 7px}
+.pl-tagform .btn{flex:0 0 auto;padding:4px 7px}
+.pl-tagform .btn svg{width:15px;height:15px;display:block}
+/* the tags want the width under the photo, so the delete button goes on it */
+.pl-photo-tagged .pl-photo-acts{position:absolute;top:5px;right:5px;margin:0}
+.pl-photo-tagged .pl-photo-acts .btn{background:rgba(0,0,0,.55);padding:1px 7px;border-radius:7px}
 .pl-up{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
 .pl-up input[type=file]{flex:1;min-width:200px}
 .pl-flag-go{width:40px;flex:0 0 auto;text-align:right}

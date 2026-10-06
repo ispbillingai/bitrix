@@ -6,6 +6,7 @@ namespace Glue\Crm;
 use Glue\Config;
 use Glue\Db;
 use Glue\Event\Log;
+use PDO;
 
 /**
  * A product's sheet: its photos, its documents (datasheets, manuals, brochures)
@@ -30,6 +31,9 @@ final class ArticleMedia
 
     private const PHOTO_MAX_PX = 1600;
     private const THUMB_PX     = 480;
+    /** The most tags one installation photo may carry, and how long each may be. */
+    private const TAGS_MAX     = 8;
+    private const TAG_CHARS    = 30;
     /** 60 megapixels: ~240 MB decoded, inside the 512 MB the upload handler asks for. */
     private const MAX_PIXELS   = 60_000_000;
 
@@ -104,6 +108,77 @@ final class ArticleMedia
             }
         }
         return $out;
+    }
+
+    /**
+     * Put a word or two on one photo: "tabaccheria", "banco", "esterno".
+     *
+     * Free text, because the office names things better than a fixed list
+     * would, but tidied on the way in: trimmed, de-duplicated case-blind,
+     * commas and semicolons both read as separators, and capped — eight labels
+     * is already more than anyone reads under a thumbnail.
+     *
+     * @return string[] the tags as stored
+     */
+    public static function setTags(int $mediaId, string $raw): array
+    {
+        $tags = [];
+        $seen = [];
+        foreach (preg_split('/[,;\n]+/', $raw) ?: [] as $t) {
+            $t = trim(preg_replace('/\s+/u', ' ', $t) ?? '');
+            if ($t === '') {
+                continue;
+            }
+            $t = mb_substr($t, 0, self::TAG_CHARS);
+            $k = mb_strtolower($t);
+            if (isset($seen[$k])) {
+                continue;
+            }
+            $seen[$k] = true;
+            $tags[] = $t;
+            if (count($tags) >= self::TAGS_MAX) {
+                break;
+            }
+        }
+        $value = implode(', ', $tags);
+        Db::pdo()->prepare('UPDATE article_media SET tags = ? WHERE id = ?')
+            ->execute([$value !== '' ? mb_substr($value, 0, 255) : null, $mediaId]);
+        return $tags;
+    }
+
+    /** One photo's tags, as a list. */
+    public static function tagsOf(array $media): array
+    {
+        $raw = trim((string)($media['tags'] ?? ''));
+        if ($raw === '') {
+            return [];
+        }
+        return array_values(array_filter(array_map('trim', explode(',', $raw)), 'strlen'));
+    }
+
+    /**
+     * Every tag in use, for the suggestion list — so the second photo of a
+     * tabaccheria is tagged with the same word as the first instead of a
+     * synonym.
+     *
+     * @return string[] alphabetical, case-folded to the first spelling seen
+     */
+    public static function knownTags(int $limit = 200): array
+    {
+        $rows = Db::pdo()->query(
+            "SELECT tags FROM article_media WHERE kind = 'install' AND tags IS NOT NULL AND tags <> ''"
+        )->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        $out = [];
+        foreach ($rows as $row) {
+            foreach (explode(',', (string)$row) as $t) {
+                $t = trim($t);
+                if ($t !== '' && !isset($out[mb_strtolower($t)])) {
+                    $out[mb_strtolower($t)] = $t;
+                }
+            }
+        }
+        ksort($out);
+        return array_slice(array_values($out), 0, $limit);
     }
 
     /** How many installation photos each of these products has. @return array<int,int> */
