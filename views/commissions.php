@@ -115,6 +115,18 @@ $actions = function (array $s) use ($t, $h, $m): string {
     if ($st === 'sent' && $needs) {
         $html .= commission_invoice_form($s, $t, $h, 'cm_invoice_office', true);
     }
+    // The tick is corrected here, not by cancelling and writing the statement
+    // again: it is the one thing on this card that is decided in a second and
+    // regretted later. An invoice already in hand stays where it is.
+    if (in_array($st, ['sent', 'invoiced'], true) && !$hasInvoice) {
+        $html .= '<form method="post" class="cm-form">'
+            . '<input type="hidden" name="do" value="cm_invoice_flag"><input type="hidden" name="id" value="' . $id . '">'
+            . '<input type="hidden" name="required" value="' . ($needs ? '' : '1') . '">'
+            . '<b class="small">' . $h($t('cm_flag')) . '</b>'
+            . '<p class="muted small" style="margin:4px 0 8px">'
+            . $h($t($needs ? 'cm_flag_is_required' : 'cm_flag_is_not_required')) . '</p>'
+            . '<button class="btn tiny ghost">' . $h($t($needs ? 'cm_flag_drop_btn' : 'cm_flag_ask_btn')) . '</button></form>';
+    }
     // A statement for a whole sale can still be turned into instalments that
     // follow the customer's payments, until an invoice for all of it arrives.
     if (Plans::splittable($s)) {

@@ -2349,6 +2349,17 @@ return [
     'cm_inv_not_required' => 'non richiesta',
     'cm_inv_none' => 'nessuna',
     'cm_err_no_invoice_needed' => 'Per questo conteggio non serve la fattura.',
+    'cm_err_closed' => 'Il conteggio è già pagato o annullato: non si può più cambiare.',
+    'cm_err_not_found' => 'Conteggio non trovato.',
+    // correggere la spunta "senza fattura" dopo aver salvato (082)
+    'cm_flag' => 'Fattura: serve o no',
+    'cm_flag_is_required' => 'Adesso al destinatario viene chiesta la fattura. Se non la emette, puoi toglierla: il conteggio passa subito tra quelli da pagare.',
+    'cm_flag_is_not_required' => 'Adesso è segnato "senza fattura" ed è pronto da pagare. Se invece la fattura serve, richiedila: il conteggio torna in attesa e il destinatario riceve l’avviso.',
+    'cm_flag_ask_btn' => 'Richiedi la fattura',
+    'cm_flag_drop_btn' => 'Non serve la fattura',
+    'cm_flag_now_required' => 'Ora la fattura serve: il conteggio è tornato in attesa e il destinatario è stato avvisato.',
+    'cm_flag_now_not_required' => 'Ora la fattura non serve: il conteggio è pronto da pagare.',
+    'evt_statement_invoice_flag' => 'Conteggio: cambiata la richiesta di fattura',
     'rk_commission_statement_noinv' => 'Nuovo conteggio provvigioni senza fattura (partner/agente)',
 
     // ---- lead documents and financing applications (src/Finance/Docs.php) ----

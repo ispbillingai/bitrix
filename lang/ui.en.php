@@ -2351,6 +2351,17 @@ return [
     'cm_inv_not_required' => 'not required',
     'cm_inv_none' => 'none',
     'cm_err_no_invoice_needed' => 'This statement needs no invoice.',
+    'cm_err_closed' => 'The statement is already paid or cancelled: it can no longer be changed.',
+    'cm_err_not_found' => 'Statement not found.',
+    // correcting the "no invoice" tick after filing (082)
+    'cm_flag' => 'Invoice: needed or not',
+    'cm_flag_is_required' => 'The payee is being asked for an invoice. If they do not issue one, drop it: the statement moves straight to the ones ready to pay.',
+    'cm_flag_is_not_required' => 'It is filed as "no invoice" and ready to pay. If an invoice is needed after all, ask for it: the statement goes back to waiting and the payee is told.',
+    'cm_flag_ask_btn' => 'Ask for the invoice',
+    'cm_flag_drop_btn' => 'No invoice needed',
+    'cm_flag_now_required' => 'The invoice is needed again: the statement is back to waiting and the payee has been told.',
+    'cm_flag_now_not_required' => 'No invoice needed: the statement is ready to pay.',
+    'evt_statement_invoice_flag' => 'Statement: invoice requirement changed',
     'rk_commission_statement_noinv' => 'New commission statement without invoice (partner/agent)',
 
     // ---- lead documents and financing applications (src/Finance/Docs.php) ----

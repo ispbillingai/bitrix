@@ -3209,6 +3209,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     : [$t('cm_err_' . $cmRes['error']), 'err'];
                 header('Location: ?tab=' . ($do === 'cm_invoice' ? 'my_commissions' : 'commissions') . '&st=' . $cmId . '#cm-' . $cmId);
                 exit;
+            // office: the invoice tick, corrected after the fact
+            case 'cm_invoice_flag': {
+                $cmId  = (int)($_POST['id'] ?? 0);
+                $cmReq = !empty($_POST['required']);
+                $cmRes = \Glue\Commission\Statements::setInvoiceRequired($cmId, $cmReq, $uid ? (int)$uid : null);
+                $_SESSION['dash_flash'] = $cmRes['ok']
+                    ? [$t($cmReq ? 'cm_flag_now_required' : 'cm_flag_now_not_required'), 'ok']
+                    : [$t('cm_err_' . $cmRes['error']), 'err'];
+                header('Location: ?tab=commissions&st=' . $cmId . '#cm-' . $cmId);
+                exit;
+            }
             case 'cm_pay':    // office: paid
             case 'cm_reject': // office: the invoice goes back to the payee, with the reason
             case 'cm_cancel': // office: withdrawn before payment

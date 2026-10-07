@@ -225,6 +225,54 @@ final class Statements
     }
 
     /** The office sends the invoice back: it goes to 'sent' again with the reason, and the payee is told. */
+    /**
+     * Change your mind about the invoice.
+     *
+     * "Involontariamente ho spuntato che non serve fattura. Sarebbe possibile
+     *  modificare?" — it is one tick at the moment a statement is filed, it
+     *  decides whether the payee is asked for an invoice at all, and until now
+     *  it could not be taken back: the only way out was to cancel the statement
+     *  and write it again.
+     *
+     * Asking for an invoice again puts the statement back to waiting for it;
+     * giving up on it files it ready to pay. Neither is possible once the thing
+     * is paid or cancelled — that is history, not a pending decision. An invoice
+     * already in hand is never thrown away: the statement stays 'invoiced' and
+     * keeps it.
+     *
+     * @return array{ok:bool, error:?string, changed:bool}
+     */
+    public static function setInvoiceRequired(int $id, bool $required, ?int $userId): array
+    {
+        $st = self::find($id);
+        if (!$st) {
+            return ['ok' => false, 'error' => 'not_found', 'changed' => false];
+        }
+        if (in_array((string)$st['status'], ['paid', 'cancelled'], true)) {
+            return ['ok' => false, 'error' => 'closed', 'changed' => false];
+        }
+        if ((int)$st['invoice_required'] === ($required ? 1 : 0)) {
+            return ['ok' => true, 'error' => null, 'changed' => false];
+        }
+        $hasInvoice = (string)($st['invoice_number'] ?? '') !== '';
+        $status = $required && !$hasInvoice ? 'sent' : 'invoiced';
+
+        Db::pdo()->prepare(
+            'UPDATE commission_statements SET invoice_required = ?, status = ?, updated_at = NOW() WHERE id = ?'
+        )->execute([$required ? 1 : 0, $status, $id]);
+
+        Log::write('commission', 'statement_invoice_flag', 'commission', $id,
+            ['required' => $required, 'status' => $status, 'by' => $userId]);
+
+        // The payee was told the opposite a moment ago. Asking for an invoice
+        // now needs them to act, so they are told again; letting them off does
+        // not, and a second message would only confuse.
+        if ($required) {
+            self::notifyPayee($id, 'commission_statement');
+        }
+        return ['ok' => true, 'error' => null, 'changed' => true];
+    }
+
     public static function reject(int $id, string $reason, ?int $userId): array
     {
         $st = self::find($id);
