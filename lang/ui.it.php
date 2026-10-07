@@ -2353,6 +2353,10 @@ return [
     'cm_err_not_found' => 'Conteggio non trovato.',
     // correggere la spunta "senza fattura" dopo aver salvato (082)
     'cm_flag' => 'Fattura: serve o no',
+    // il doppione: stessa provvigione già caricata come conteggio unico (083)
+    'cp_dup_found' => 'Attenzione: per questo destinatario e questo cliente c’è già il conteggio n. %d «%t» da %a del %g, ancora aperto. Se è la stessa vendita non crearne un altro: dividi QUEL conteggio in rate, altrimenti la provvigione risulta dovuta due volte.',
+    'cp_dup_ok' => 'È una vendita diversa: crea comunque il piano',
+    'cp_err_dup_statement' => 'Piano non creato: per questo destinatario e questo cliente c’è già il conteggio n. %d «%s» da %s, ancora aperto. Dividi quello in rate, oppure spunta "È una vendita diversa".',
     'cm_flag_is_required' => 'Adesso al destinatario viene chiesta la fattura. Se non la emette, puoi toglierla: il conteggio passa subito tra quelli da pagare.',
     'cm_flag_is_not_required' => 'Adesso è segnato "senza fattura" ed è pronto da pagare. Se invece la fattura serve, richiedila: il conteggio torna in attesa e il destinatario riceve l’avviso.',
     'cm_flag_ask_btn' => 'Richiedi la fattura',

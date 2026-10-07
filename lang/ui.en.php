@@ -2355,6 +2355,10 @@ return [
     'cm_err_not_found' => 'Statement not found.',
     // correcting the "no invoice" tick after filing (082)
     'cm_flag' => 'Invoice: needed or not',
+    // the duplicate: the same commission already filed as one statement (083)
+    'cp_dup_found' => 'Careful: this payee already has statement no. %d "%t" for %a of %g open for this customer. If it is the same sale, do not file another one — split THAT statement into instalments, or the commission is owed twice.',
+    'cp_dup_ok' => 'It is a different sale: create the plan anyway',
+    'cp_err_dup_statement' => 'Plan not created: this payee already has statement no. %d "%s" for %s open for this customer. Split that one into instalments, or tick "It is a different sale".',
     'cm_flag_is_required' => 'The payee is being asked for an invoice. If they do not issue one, drop it: the statement moves straight to the ones ready to pay.',
     'cm_flag_is_not_required' => 'It is filed as "no invoice" and ready to pay. If an invoice is needed after all, ask for it: the statement goes back to waiting and the payee is told.',
     'cm_flag_ask_btn' => 'Ask for the invoice',

@@ -241,6 +241,18 @@ $actions = function (array $s) use ($t, $h, $m): string {
         <input name="title" maxlength="190" value="<?= $h($split['title'] ?? '') ?>" placeholder="<?= $h($t('cp_title_ph')) ?>"></label>
     </div>
 
+    <?php // The same commission already filed as a lump sum for this payee and
+          // this customer. Asked of the server while the form is filled in, so
+          // nobody types twenty-seven instalments and is told afterwards. ?>
+    <div id="cp-dup" class="warn" hidden>
+      <div id="cp-dup-text"></div>
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px">
+        <a id="cp-dup-split" class="btn tiny" href="#"><?= $h($t("cp_split_btn")) ?></a>
+        <label class="cm-chip" style="margin:0">
+          <input type="checkbox" name="confirm_dup" value="1" style="width:auto"> <?= $h($t("cp_dup_ok")) ?></label>
+      </div>
+    </div>
+
     <b class="small"><?= $h($t('cp_customer_pays')) ?></b>
     <div class="cm-chips" style="margin:8px 0 10px">
       <label class="cm-chip"><input type="radio" name="cp_src" value="sibill" style="width:auto"<?= $hasSibill ? ' checked' : '' ?><?= $hasSibill ? '' : ' disabled' ?>> <?= $h($t('cp_src_sibill')) ?></label>
@@ -371,6 +383,7 @@ if(location.hash.indexOf('#cp-')===0){var cpd=document.querySelector(location.ha
       'toomuch' => $t('cp_js_toomuch'), 'change' => $t('cp_js_change'), 'rate' => $t('cp_js_rate'),
       'due' => $t('cp_js_due'), 'amount' => $t('cp_js_amount'), 'invoice' => $t('cp_js_invoice'),
       'pick' => $t('cp_js_pick'),
+      'dup'  => $t('cp_dup_found'),
   ], JSON_UNESCAPED_UNICODE) ?>;
   var picked=null; // the chosen Sibill invoice
   function num(s){ s=String(s||'').replace(/[^\d.,]/g,''); if(!s) return 0;
@@ -430,6 +443,44 @@ if(location.hash.indexOf('#cp-')===0){var cpd=document.querySelector(location.ha
     box.innerHTML=html; box.hidden=false;
   }
 
+  // ---- already filed as a lump sum? ----
+  // The answer changes with the payee and with the customer, and the customer
+  // comes either from the typed field or from the chosen Sibill invoice.
+  var dupBox = document.getElementById('cp-dup'), dupText = document.getElementById('cp-dup-text'),
+      dupSplit = document.getElementById('cp-dup-split'), dupTimer = null;
+  function customerNow() {
+    if (src() === 'sibill') { return picked ? (picked.customer || '') : ''; }
+    var el = document.getElementById('cp-cust');
+    return el ? el.value.trim() : '';
+  }
+  function checkDup() {
+    var sel = document.getElementById('cp-payee');
+    var payee = sel ? sel.value : '<?= $h($split ? $split['payee_type'] . ':' . (int)$split['payee_id'] : '') ?>';
+    var cust = customerNow();
+    clearTimeout(dupTimer);
+    // A split already carries its statement with it: nothing to warn about.
+    if (!payee || cust.length < 3 || document.querySelector('input[name="source_statement_id"]')) {
+      dupBox.hidden = true;
+      return;
+    }
+    dupTimer = setTimeout(function () {
+      fetch('?find=cm_twin&payee=' + encodeURIComponent(payee) + '&customer=' + encodeURIComponent(cust),
+            {credentials: 'same-origin'})
+        .then(function (r) { return r.json(); })
+        .then(function (s) {
+          if (!s) { dupBox.hidden = true; return; }
+          dupText.textContent = L.dup.replace('%d', s.id).replace('%t', s.title).replace('%a', s.amount).replace('%g', s.date);
+          dupSplit.href = '?tab=commissions&split=' + s.id + '#cp-new';
+          dupBox.hidden = false;
+        }).catch(function () { dupBox.hidden = true; });
+    }, 300);
+  }
+  (function () {
+    var sel = document.getElementById('cp-payee'), cst = document.getElementById('cp-cust');
+    if (sel) { sel.addEventListener('change', checkDup); }
+    if (cst) { cst.addEventListener('input', checkDup); }
+  })();
+
   // ---- Sibill invoice search ----
   var q=document.getElementById('cp-inv-q'), res=document.getElementById('cp-inv-res'), pick=document.getElementById('cp-inv-pick'), timer=null, list=[];
   function showPick(){
@@ -443,6 +494,7 @@ if(location.hash.indexOf('#cp-')===0){var cpd=document.querySelector(location.ha
     pick.hidden=false; res.innerHTML=''; q.value='';
     document.getElementById('cp-inv-clear').onclick=function(){ picked=null; showPick(); q.focus(); };
     preview();
+    checkDup();
   }
   if(q){ q.addEventListener('input',function(){
     clearTimeout(timer); var v=q.value.trim(); if(v.length<2){ res.innerHTML=''; return; }

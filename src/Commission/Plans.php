@@ -45,6 +45,54 @@ final class Plans
      * @param array|null $file the calculation (optional)
      * @return array{ok:bool, id:int, error:?string, earned?:int}
      */
+    /**
+     * A customer's name reduced to what two spellings of it have in common:
+     * "Provvigioni CLI NON SOLO CREMERIA SRL" and "NON SOLO CREMERIA SRL" are
+     * the same shop, and the office writes it both ways within the same hour.
+     */
+    public static function nameKey(string $s): string
+    {
+        $s = mb_strtoupper(trim($s), 'UTF-8');
+        $s = preg_replace('/\x{2014}.*$/u', ' ', $s) ?? $s;                    // "… — rata 3/11"
+        $s = preg_replace('/\b(PROVVIGIONI|PROVVIGIONE|CLIENTE|CLI|RIF)\b/u', ' ', $s) ?? $s;
+        $s = preg_replace('/\b(S\.?R\.?L\.?S?|S\.?P\.?A|SAS|SNC|DI|E|C)\b/u', ' ', $s) ?? $s;
+        $s = preg_replace('/[^A-Z0-9]+/u', ' ', $s) ?? $s;
+        return trim(preg_replace('/\s+/', ' ', $s) ?? $s);
+    }
+
+    /**
+     * The statement that would be paid twice.
+     *
+     * The same commission can be filed as a lump sum AND as a plan — they are
+     * separate records and nothing joined them up, so on 2026-10-07 one agent
+     * was owed NON SOLO CREMERIA twice, 1.454,24 as a statement and the same
+     * amount again over four instalments, four minutes apart. Splitting the
+     * statement (source_statement_id) is the way to do it; this is what warns
+     * whoever is about to do it the other way.
+     *
+     * @return array|null the open statement of this payee for this customer
+     */
+    public static function openStatementFor(string $payeeType, int $payeeId, string $customer): ?array
+    {
+        $key = self::nameKey($customer);
+        if ($key === '' || $payeeId <= 0) {
+            return null;
+        }
+        $q = Db::pdo()->prepare(
+            "SELECT * FROM commission_statements
+              WHERE payee_type = ? AND payee_id = ? AND plan_id IS NULL
+                AND status IN ('sent','invoiced')
+              ORDER BY id DESC LIMIT 100"
+        );
+        $q->execute([$payeeType, $payeeId]);
+        foreach ($q->fetchAll() ?: [] as $s) {
+            if (self::nameKey((string)$s['title']) === $key) {
+                return $s;
+            }
+        }
+        return null;
+    }
+
     public static function create(array $d, ?array $file, ?int $userId): array
     {
         $fail = fn(string $e): array => ['ok' => false, 'id' => 0, 'error' => $e];
@@ -135,6 +183,17 @@ final class Plans
             ?: mb_substr('Provvigioni ' . $customer, 0, 190);
         if (trim($title) === 'Provvigioni') {
             return $fail('title');
+        }
+
+        // Already filed as a lump sum for this payee and this customer? Then
+        // this plan would owe it a second time. A split carries its statement
+        // with it and is fine; anything else stops here until somebody says it
+        // really is a different sale.
+        if (!$source && empty($d['confirm_dup'])) {
+            $twin = self::openStatementFor($type, (int)$pid, $customer !== '' ? $customer : $title);
+            if ($twin) {
+                return ['ok' => false, 'id' => 0, 'error' => 'dup_statement', 'statement' => $twin];
+            }
         }
 
         $calc = Statements::storeFile($file, $err);

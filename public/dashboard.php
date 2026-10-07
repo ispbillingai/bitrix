@@ -488,6 +488,27 @@ if (($_GET['find'] ?? '') === 'contacts') {
     exit;
 }
 
+// ---- "is this commission already filed?" (?find=cm_twin&payee=&customer=) ----
+// Asked by the instalment-plan form while it is being filled in, so the warning
+// arrives before the work is typed rather than after it is lost. Office only:
+// it reads other people's commissions.
+if (($_GET['find'] ?? '') === 'cm_twin') {
+    header('Content-Type: application/json');
+    if ($isAgent || $isTech) {
+        echo json_encode(null);
+        exit;
+    }
+    [$twType, $twId] = array_pad(explode(':', (string)($_GET['payee'] ?? ''), 2), 2, '0');
+    $tw = \Glue\Commission\Plans::openStatementFor((string)$twType, (int)$twId, (string)($_GET['customer'] ?? ''));
+    echo json_encode($tw ? [
+        'id'     => (int)$tw['id'],
+        'title'  => (string)$tw['title'],
+        'amount' => \Glue\Commission\Statements::money((float)$tw['amount']),
+        'date'   => date('d/m/Y', strtotime((string)$tw['created_at'])),
+    ] : null, JSON_UNESCAPED_UNICODE);
+    exit;
+}
+
 // ---- article lookup for the quote builder (?find=articles&q=...) ----
 // Office only: sellers never build quotes, and the builder is where prices are
 // set. Priced from the LISTINO, the discounts going on top of it; where the
@@ -3240,7 +3261,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             case 'cp_create': {
                 $cpRes = \Glue\Commission\Plans::create($_POST, $_FILES['calc'] ?? null, $uid ? (int)$uid : null);
                 if (!$cpRes['ok']) {
-                    $_SESSION['dash_flash'] = [$t('cp_err_' . $cpRes['error']), 'err'];
+                    // The duplicate is the one refusal that has to name what it
+                    // found, or nobody knows which statement to look at.
+                    $_SESSION['dash_flash'] = [$cpRes['error'] === 'dup_statement' && !empty($cpRes['statement'])
+                        ? sprintf($t('cp_err_dup_statement'), (int)$cpRes['statement']['id'],
+                            (string)$cpRes['statement']['title'],
+                            \Glue\Commission\Statements::money((float)$cpRes['statement']['amount']))
+                        : $t('cp_err_' . $cpRes['error']), 'err'];
                     $cpSrc = (int)($_POST['source_statement_id'] ?? 0);
                     header('Location: ?tab=commissions' . ($cpSrc > 0 ? '&split=' . $cpSrc : '&cp_new=1') . '#cp-new');
                     exit;
