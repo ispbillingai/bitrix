@@ -440,6 +440,26 @@ if (isset($_GET['sdl'])) {
     exit('Not found');
 }
 
+// ---- one PEC receipt (?pecr=<id>) ----
+// The .eml exactly as the provider signed it: that file, not our summary of it,
+// is what proves the message was delivered. Office only, like the card it is on.
+if (isset($_GET['pecr']) && !$isAgent && !$isTech) {
+    $rcq = $pdo->prepare('SELECT * FROM pec_receipts WHERE id = ?');
+    $rcq->execute([(int)$_GET['pecr']]);
+    $rc = $rcq->fetch();
+    $rcPath = $rc && !empty($rc['eml_path'])
+        ? \Glue\Mail\PecReceipts::dir() . '/' . basename((string)$rc['eml_path']) : '';
+    if ($rcPath !== '' && is_file($rcPath)) {
+        header('Content-Type: message/rfc822');
+        header('Content-Disposition: attachment; filename="' . basename($rcPath) . '"');
+        header('Content-Length: ' . filesize($rcPath));
+        readfile($rcPath);
+        exit;
+    }
+    http_response_code(404);
+    exit('Not found');
+}
+
 // ---- customer lookup for the "new message" picker (?find=contacts&q=...) ----
 // The picker cannot be a plain <select>: the registry is ten thousand contacts
 // deep, and a dropdown capped at 500 stopped inside the letter A. Same scope as
@@ -811,6 +831,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $pairs['skebby.enabled'] = $post('skebby.enabled') !== null ? 'true' : 'false';
                 $pairs['skebby.use_doc_otp'] = $post('skebby.use_doc_otp') !== null ? 'true' : 'false';
                 $pairs['skebby.use_campaigns'] = $post('skebby.use_campaigns') !== null ? 'true' : 'false';
+                // PEC: the mailbox is on or off, and whether an address that does
+                // not look like a PEC may be written to at all.
+                $pairs['pec.enabled']   = $post('pec.enabled') !== null ? 'true' : 'false';
+                $pairs['pec.allow_any'] = $post('pec.allow_any') !== null ? 'true' : 'false';
                 // Skebby's user key is a number — the API types it as long and
                 // refuses anything else. Say so here rather than let the office
                 // find out from a failed test (a password landed in it once).
@@ -2729,6 +2753,71 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $flash = $t('sk_test_failed') . ' (' . (string)($sk['error'] ?? '?') . ')';
                     $flashType = 'err';
                 }
+                $tab = 'settings';
+                break;
+            }
+            // The sollecito leaves. Office only (customers is not an agent view),
+            // and only to a real PEC address — Notify\Pec refuses the rest, since
+            // a certified message to an ordinary mailbox proves nothing.
+            case 'pec_send': {
+                $pcId   = (int)($_POST['id'] ?? 0);
+                $pcTo   = trim((string)($_POST['to'] ?? ''));
+                $pcSubj = trim((string)($_POST['subject'] ?? ''));
+                $pcText = trim((string)($_POST['body'] ?? ''));
+                $pcCt   = \Glue\Crm\Contacts::find($pcId);
+                if (!$pcCt || $pcSubj === '' || $pcText === '') {
+                    $_SESSION['dash_flash'] = [$t('pec_e_incomplete'), 'err'];
+                    header('Location: ?tab=customers&id=' . $pcId . '&pec=1#pec');
+                    exit;
+                }
+                // The address is the customer's own, never whatever was posted:
+                // the form shows it read-only, and this is what makes that true.
+                $pcTo = trim((string)($pcCt['pec'] ?? '')) ?: $pcTo;
+                $pcR  = (new \Glue\Notify\Pec())->send($pcTo, $pcSubj, \Glue\Crm\Dunning::html($pcText));
+                \Glue\Event\Log::write('crm', $pcR['ok'] ? 'pec_sent' : 'pec_failed', 'contact', $pcId,
+                    ['to' => $pcTo, 'subject' => $pcSubj, 'error' => $pcR['error'] ?? null]);
+                // The two refusals have their own words; anything else is the
+                // provider talking, and is repeated verbatim so it can be acted on.
+                $pcSaid = ['pec_disabled' => 'pec_why_pec_off', 'not_a_pec' => 'pec_why_not_a_pec'];
+                $pcErr  = (string)($pcR['error'] ?? '');
+                $_SESSION['dash_flash'] = $pcR['ok']
+                    ? [sprintf($t('pec_sent_ok'), $pcTo), 'ok']
+                    : [isset($pcSaid[$pcErr]) ? $t($pcSaid[$pcErr])
+                        : $t('pec_send_failed') . ' (' . $pcErr . ')', 'err'];
+                header('Location: ?tab=customers&id=' . $pcId . '#pec');
+                exit;
+            }
+            // Sends one real PEC to whoever is typed beside the button — the
+            // office's own address, normally. It is a real certified message:
+            // it costs a send, and its receipts come back like any other's.
+            case 'test_pec': {
+                $pcTo = trim((string)($_POST['to'] ?? ''));
+                if ($pcTo === '') {
+                    $pcTo = \Glue\Notify\Pec::address();
+                }
+                $pcR = (new \Glue\Notify\Pec())->send(
+                    $pcTo, $t('pec_test_subject'),
+                    '<p>' . $h($t('pec_test_body')) . '</p>'
+                );
+                $flash = !empty($pcR['ok'])
+                    ? $t('test_ok') . ' — ' . $pcTo
+                    : $t('pec_test_failed') . ' (' . (string)($pcR['error'] ?? '?') . ')';
+                $flashType = !empty($pcR['ok']) ? 'ok' : 'err';
+                $tab = 'settings';
+                break;
+            }
+            // Fetches the mailbox now instead of waiting for the cron minute —
+            // the receipts of a test PEC are what tell the office it works.
+            case 'pec_poll': {
+                $pcP = \Glue\Mail\PecReceipts::pollIfDue();
+                if ($pcP === null) {
+                    \Glue\Settings::set('pec.last_poll_at', null);
+                    $pcP = \Glue\Mail\PecReceipts::pollIfDue() ?? ['error' => $t('pec_off')];
+                }
+                $flash = isset($pcP['error'])
+                    ? $t('pec_poll_failed') . ': ' . (string)$pcP['error']
+                    : sprintf($t('pec_poll_ok'), (int)($pcP['receipts'] ?? 0), (int)($pcP['matched'] ?? 0));
+                $flashType = isset($pcP['error']) ? 'err' : 'ok';
                 $tab = 'settings';
                 break;
             }

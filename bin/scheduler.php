@@ -17,6 +17,7 @@ use Glue\Crm\DayPlanner;
 use Glue\Crm\Maintenance;
 use Glue\Event\Log;
 use Glue\Mail\LeadMailImporter;
+use Glue\Mail\PecReceipts;
 use Glue\Pay\Contracts as PayContracts;
 use Glue\Reminder\Scheduler;
 use Glue\Sibill\Customers as SibillCustomers;
@@ -63,6 +64,10 @@ try {
     // Pull lead emails from the company mailbox (POP3) on its own cadence.
     // Self-throttling and never throws; a mailbox outage can't stall the rest.
     $mail = LeadMailImporter::pollIfDue();
+    // Collect the PEC receipts. A sollecito sent by certified mail is worth what
+    // its consegna says it is worth, and that arrives minutes later in the PEC
+    // mailbox — nobody is going to fetch it by hand. Same cadence rules as above.
+    $pec = PecReceipts::pollIfDue();
     // Re-read live SmallPay contracts. The status callback is what keeps the CRM
     // current; this is the net under it, so a callback SmallPay never managed to
     // deliver can't leave a customer who stopped paying looking paid. Anything
@@ -92,6 +97,7 @@ try {
         'reminders' => $reminders,
         'campaigns' => $campaigns,
     ] + ($sibill !== null ? ['sibill' => $sibill] : [])
+      + ($pec !== null ? ['pec' => $pec] : [])
       + ($chase !== null ? ['chase' => $chase] : [])
       + ($mail !== null ? ['mail' => $mail] : [])
       + ($pay !== null ? ['pay' => $pay] : [])

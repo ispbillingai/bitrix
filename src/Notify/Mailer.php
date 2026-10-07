@@ -27,12 +27,17 @@ final class Mailer
      *
      * @param array $attachments [['path'=>, 'name'=>, 'mime'=>, 'url'=>?], …]
      *                           — a campaign's photo or document.
+     * @param array $extra       extra headers, "Name: value" — a PEC passes the
+     *                           Message-ID it chose, since that is the string
+     *                           its delivery receipts refer back to.
      */
-    public function send(string $to, string $subject, string $htmlBody, array $attachments = []): array
+    public function send(string $to, string $subject, string $htmlBody, array $attachments = [],
+                         array $extra = []): array
     {
         $fromEmail = $this->cfg['from_email'] ?? 'noreply@localhost';
         $fromName  = $this->cfg['from_name'] ?? 'Bitrix24';
         $part      = $this->compose($htmlBody, $attachments);
+        $part['headers'] = array_merge($part['headers'], array_values(array_filter($extra, 'strlen')));
 
         if (!empty($this->cfg['smtp'])) {
             return $this->sendSmtp($this->cfg['smtp'], $fromEmail, $fromName, $to, $subject, $part);

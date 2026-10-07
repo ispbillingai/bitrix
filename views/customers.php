@@ -191,6 +191,82 @@ if ($ov !== null):
     <?php endif; ?>
   </div>
 
+  <!-- ---- certified reminder (PEC) ----
+       Where the unpaid invoices are, because that is where somebody decides to
+       send one. The letter is drafted by the CRM and SENT BY A PERSON: a
+       sollecito per PEC is what puts a customer in mora, not a notification. -->
+  <div class="card" id="pec">
+    <h3><?= svg('mail') ?> <?= $h($t('pec_card')) ?></h3>
+    <?php
+    $pecOpen  = !empty($_GET['pec']);
+    $pecSent  = \Glue\Notify\Pec::forContact($custId);
+    $pecAddr  = trim((string)($c['pec'] ?? ''));
+    $pecDraft = $pecOpen ? \Glue\Crm\Dunning::draft($custId) : null;
+    $pecWhy   = $pecDraft['why'] ?? (\Glue\Notify\Pec::enabled()
+        ? ($pecAddr === '' ? 'no_pec' : (\Glue\Notify\Pec::isPec($pecAddr) ? null : 'not_a_pec'))
+        : 'pec_off');
+    ?>
+    <p class="muted small" style="margin:0 0 10px">
+      <?= $h($t('pec_card_h')) ?>
+      <?php if ($pecAddr !== ''): ?><br><b>PEC:</b> <?= $h($pecAddr) ?><?php endif; ?>
+    </p>
+    <?php if ($pecWhy !== null): ?>
+      <p class="muted small" style="color:var(--amber);margin:0 0 10px"><?= $h($t('pec_why_' . $pecWhy)) ?></p>
+    <?php endif; ?>
+
+    <?php if ($pecOpen && $pecDraft !== null): ?>
+      <form method="post">
+        <input type="hidden" name="do" value="pec_send">
+        <input type="hidden" name="id" value="<?= (int)$custId ?>">
+        <div class="row">
+          <label class="fld"><span><?= $h($t('pec_to')) ?></span>
+            <input name="to" value="<?= $h($pecDraft['to']) ?>" <?= $pecDraft['to'] === '' ? '' : 'readonly' ?>></label>
+          <label class="fld"><span><?= $h($t('pec_subject')) ?></span>
+            <input name="subject" value="<?= $h($pecDraft['subject']) ?>" required></label>
+        </div>
+        <label class="fld"><span><?= $h($t('pec_body')) ?></span>
+          <textarea name="body" rows="16" required style="font:13px/1.6 ui-monospace,Consolas,monospace"><?= $h($pecDraft['body']) ?></textarea>
+          <small class="muted"><?= $h($t('pec_body_h')) ?></small></label>
+        <button class="btn" <?= $pecDraft['can_send'] ? '' : 'disabled' ?>
+                onclick="return confirm(<?= $h(json_encode($t('pec_confirm'), JSON_UNESCAPED_UNICODE)) ?>)">
+          <?= svg('send') ?> <?= $h($t('pec_send')) ?></button>
+        <a class="btn ghost" href="?tab=customers&id=<?= (int)$custId ?>#pec"><?= $h($t('cancel')) ?></a>
+      </form>
+    <?php else: ?>
+      <?php $pecDebt = \Glue\Crm\Dunning::debt($custId); ?>
+      <p class="small" style="margin:0 0 10px">
+        <?= $h(sprintf($t('pec_owes'), $eur($pecDebt['total']),
+            count($pecDebt['invoices']), count($pecDebt['rates']))) ?>
+      </p>
+      <a class="btn tiny<?= $pecWhy !== null ? ' ghost' : '' ?>"
+         href="?tab=customers&id=<?= (int)$custId ?>&pec=1#pec"><?= svg('mail') ?> <?= $h($t('pec_prepare')) ?></a>
+    <?php endif; ?>
+
+    <?php if ($pecSent): ?>
+      <table style="margin-top:12px"><thead><tr>
+        <th><?= $h($t('cu_date')) ?></th><th><?= $h($t('pec_subject')) ?></th>
+        <th><?= $h($t('th_status')) ?></th><th><?= $h($t('pec_proof')) ?></th>
+      </tr></thead><tbody>
+      <?php foreach ($pecSent as $pm): $pst = \Glue\Notify\Pec::stateOf($pm); ?>
+        <tr>
+          <td class="small"><?= $h($pm['created_at']) ?></td>
+          <td class="small"><?= $h($pm['subject']) ?></td>
+          <td><span class="pill <?= $pst === 'consegna' ? 'pill-done' : ($pst === 'errore' || $pst === 'failed' ? 'pill-down' : '') ?>">
+            <?= $h($t('pec_st_' . $pst)) ?></span></td>
+          <td class="small">
+            <?php foreach ($pm['receipts'] as $rc): ?>
+              <?php if (!empty($rc['eml_path'])): ?>
+                <a href="?pecr=<?= (int)$rc['id'] ?>"><?= $h($t('pec_rc_' . $rc['kind'])) ?></a>
+              <?php else: ?><?= $h($t('pec_rc_' . $rc['kind'])) ?><?php endif; ?>
+            <?php endforeach; ?>
+            <?= $pm['receipts'] ? '' : $dash ?>
+          </td>
+        </tr>
+      <?php endforeach; ?>
+      </tbody></table>
+    <?php endif; ?>
+  </div>
+
   <!-- ---- support contracts (SmallPay) ---- -->
   <div class="card">
     <h3><?= svg('payments') ?> <?= $h($t('cu_contracts')) ?></h3>

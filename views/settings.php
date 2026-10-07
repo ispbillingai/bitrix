@@ -93,6 +93,59 @@ $pipelines = \Glue\Crm\Pipelines::all();
     ?>
   </div>
 
+  <?php // ---- PEC (certified email) ----
+        // Its own mailbox and its own SMTP account, never the ordinary one: a
+        // sollecito is worth something because it left the PEC box, and the
+        // receipts that prove it arrive back in the same box (POP3, below). ?>
+  <h3><?= $h($t('sec_pec')) ?> <span class="pill"><?= $h($t('optional')) ?></span></h3>
+  <p class="muted small" style="margin:-6px 0 12px"><?= $h($t('sec_pec_h')) ?></p>
+  <label class="fld" style="display:flex;flex-direction:row;align-items:center;gap:10px">
+    <input type="checkbox" name="pec.enabled" value="true" style="width:auto" <?= (bool)$cfg('pec.enabled', false) ? 'checked' : '' ?>>
+    <span style="margin:0"><?= $h($t('f_pec_enable')) ?></span>
+  </label>
+  <div class="row">
+    <?php
+    fld($h, 'pec.address', $t('f_pec_address'), $cfg('pec.address', ''), $t('f_pec_address_h'));
+    fld($h, 'pec.from_name', $t('f_pec_from_name'), $cfg('pec.from_name', ''), $t('f_pec_from_name_h'));
+    ?>
+  </div>
+  <div class="row">
+    <?php
+    fld($h, 'pec.user', $t('f_pec_user'), $cfg('pec.user', ''), $t('f_pec_user_h'));
+    secret_fld($h, 'pec.pass', $t('f_pec_pass'), $cfg('pec.pass', ''));
+    ?>
+  </div>
+  <div class="row">
+    <?php fld($h, 'pec.smtp_host', $t('f_pec_smtp'), $cfg('pec.smtp_host', ''), $t('f_pec_smtp_h')); ?>
+    <?php fld($h, 'pec.smtp_port', $t('f_pec_smtp_port'), $cfg('pec.smtp_port', '465')); ?>
+    <label class="fld"><span><?= $h($t('f_pec_secure')) ?></span>
+      <select name="pec.secure">
+        <?php // 'none' and not '': an empty setting is dropped on save, and the
+              // field would read as its default (SSL) the next time it is used. ?>
+        <?php foreach (['ssl' => 'SSL (465)', 'tls' => 'STARTTLS (587)', 'none' => $t('f_pec_secure_none')] as $k => $lbl): ?>
+          <option value="<?= $h($k) ?>"<?= (string)$cfg('pec.secure', 'ssl') === $k ? ' selected' : '' ?>><?= $h($lbl) ?></option>
+        <?php endforeach; ?>
+      </select>
+      <small class="muted"><?= $h($t('f_pec_secure_h')) ?></small></label>
+  </div>
+  <div class="row">
+    <?php fld($h, 'pec.pop_host', $t('f_pec_pop'), $cfg('pec.pop_host', ''), $t('f_pec_pop_h')); ?>
+    <?php fld($h, 'pec.pop_port', $t('f_pec_pop_port'), $cfg('pec.pop_port', '995')); ?>
+    <?php fld($h, 'pec.poll_minutes', $t('f_pec_poll'), $cfg('pec.poll_minutes', '5'), $t('f_pec_poll_h')); ?>
+  </div>
+  <?php fld($h, 'pec.extra_domains', $t('f_pec_domains'), $cfg('pec.extra_domains', ''), $t('f_pec_domains_h')); ?>
+  <label class="fld" style="display:flex;flex-direction:row;align-items:center;gap:10px">
+    <input type="checkbox" name="pec.allow_any" value="true" style="width:auto" <?= (bool)$cfg('pec.allow_any', false) ? 'checked' : '' ?>>
+    <span style="margin:0"><?= $h($t('f_pec_allow_any')) ?></span>
+  </label>
+  <p class="muted small" style="margin:4px 0 12px"><?= $h($t('f_pec_allow_any_h')) ?></p>
+  <?php // The proof that the mailbox answers, where the mailbox is being set up. ?>
+  <div class="sk-test">
+    <input name="to" form="pec-test" placeholder="<?= $h($t('f_pec_test_ph')) ?>" aria-label="<?= $h($t('test_pec')) ?>">
+    <button class="btn ghost tiny" form="pec-test" title="<?= $h($t('test_pec_h')) ?>"><?= $h($t('test_pec')) ?></button>
+    <button class="btn ghost tiny" form="pec-poll" title="<?= $h($t('test_pec_poll_h')) ?>"><?= $h($t('test_pec_poll')) ?></button>
+  </div>
+
   <?php // ---- SMS (Skebby) ----
         // Switched on per use, not once for everything: the office asked for it
         // "solo per la verifica dei documenti in maniera esclusiva", with the
@@ -512,6 +565,8 @@ $pipelines = \Glue\Crm\Pipelines::all();
 <?php // The two Skebby tests live up in the SMS section, but their forms have to
       // sit outside the settings form: the controls up there point at these by id. ?>
 <form method="post" id="sk-test-acct" hidden><input type="hidden" name="do" value="test_skebby"></form>
+<form method="post" id="pec-test" hidden><input type="hidden" name="do" value="test_pec"></form>
+<form method="post" id="pec-poll" hidden><input type="hidden" name="do" value="pec_poll"></form>
 <form method="post" id="sk-test-sms" hidden><input type="hidden" name="do" value="test_sms"></form>
 
 <div class="card">
