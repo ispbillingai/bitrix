@@ -3230,6 +3230,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     : [$t('cm_err_' . $cmRes['error']), 'err'];
                 header('Location: ?tab=' . ($do === 'cm_invoice' ? 'my_commissions' : 'commissions') . '&st=' . $cmId . '#cm-' . $cmId);
                 exit;
+            // ---- the contracts on a customer's record (080) ----
+            // Office only: customers is not an agent view, and what a customer
+            // pays for assistance is not a seller's to rewrite.
+            case 'contract_save':
+            case 'contract_delete': {
+                $ctCust = (int)($_POST['id'] ?? 0);
+                $ctId   = (int)($_POST['contract_id'] ?? 0);
+                if ($do === 'contract_delete') {
+                    $ctOk = $ctId > 0 && \Glue\Crm\Contracts::delete($ctId, $uid ? (int)$uid : null);
+                    $_SESSION['dash_flash'] = [$ctOk ? $t('ct_deleted') : $t('ct_err_not_found'), $ctOk ? 'ok' : 'err'];
+                } else {
+                    $ctRes = \Glue\Crm\Contracts::save($ctId, $ctCust, $_POST, $uid ? (int)$uid : null);
+                    $_SESSION['dash_flash'] = $ctRes['ok']
+                        ? [$t($ctId > 0 ? 'ct_saved' : 'ct_created'), 'ok']
+                        : [$t('ct_err_' . $ctRes['error']), 'err'];
+                }
+                header('Location: ?tab=customers&id=' . $ctCust . '#contracts');
+                exit;
+            }
+
             // office: the invoice tick, corrected after the fact
             case 'cm_invoice_flag': {
                 $cmId  = (int)($_POST['id'] ?? 0);

@@ -33,6 +33,13 @@ use Glue\Reminder\Templates;
  */
 final class Maintenance
 {
+    /**
+     * A contract's billing period in the words this panel has always used.
+     * A one-off has no period: there is nothing recurring to name.
+     */
+    private const PERIOD_OF = ['month' => 'monthly', 'quarter' => 'quarterly',
+                               'semester' => 'semester', 'year' => 'yearly', 'one_off' => null];
+
     public const ON_DEMAND  = 'ON_DEMAND';
     public const SUBSCRIPTION = 'SUBSCRIPTION';
     public const GESTIONALE = 'GESTIONALE';
@@ -91,6 +98,25 @@ final class Maintenance
         $c = Contacts::find($contactId);
         if (!$c) {
             return $none;
+        }
+
+        // 0. A contract written on the record (migration 080) is the answer:
+        //    somebody typed it, it names what it covers, and it is the only
+        //    source that knows there are several. The nearest expiry is the one
+        //    that matters, which is the order Contracts::forContact returns.
+        $live = Contracts::activeFor($contactId);
+        if ($live !== null) {
+            $all = Contracts::forContact($contactId);
+            $n   = count(array_filter($all, static fn(array $x): bool => $x['state'] === 'active'));
+            return [
+                'type' => self::CUSTOM,
+                'label' => (string)$live['name'] . ($n > 1 ? ' +' . ($n - 1) : ''),
+                'fee_cents' => $live['amount_cents'] !== null ? (int)$live['amount_cents'] : null,
+                'currency' => (string)($live['currency'] ?: 'EUR'),
+                'period' => self::PERIOD_OF[(string)$live['period']] ?? null,
+                'expires_at' => (string)($live['expires_on'] ?? '') ?: null,
+                'source' => 'contract', 'note' => (string)($live['notes'] ?? '') ?: null,
+            ];
         }
 
         // 1. The office's own entry wins: a paper contract, or one billed

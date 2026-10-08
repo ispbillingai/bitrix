@@ -70,6 +70,147 @@ if ($ov !== null):
   <?php stat_card($h, 'tickets', $t('cu_open_tickets'), (string)$openTickets, $openTickets === 0); ?>
 </div>
 
+<?php // ---- the contracts this customer holds (080) -------------------------
+      // Plural, and independent of each other: an H24 on the two Cashmatic
+      // machines paid by SDD, and a basic one on the fiscal printer paid by
+      // transfer, are two contracts and the card shows them as two.
+      $cts     = \Glue\Crm\Contracts::forContact($custId);
+      $ctEdit  = (int)($_GET['ct'] ?? 0);
+      $ctOne   = $ctEdit > 0 ? \Glue\Crm\Contracts::find($ctEdit) : null;
+      $ctNew   = isset($_GET['ct_new']) || ($ctEdit > 0 && !$ctOne);
+      $ctOpen  = $ctOne !== null || $ctNew;
+      $ctPick  = $ctOpen ? \Glue\Crm\Contracts::devicePicker($custId) : [];
+      $ctHas   = array_column($ctOne['devices'] ?? [], 'id');
+      $ctState = ['active' => 'var(--green)', 'expired' => 'var(--amber)', 'cancelled' => 'var(--muted)']; ?>
+<div class="card" id="contracts">
+  <h3><?= svg('documents') ?> <?= $h($t('ct_h')) ?>
+    <?php $ctLive = count(array_filter($cts, fn($c) => $c['state'] === 'active')); ?>
+    <?php if ($ctLive): ?><span class="pill pill-up"><?= (int)$ctLive ?> <?= $h($t('ct_active')) ?></span><?php endif; ?>
+  </h3>
+  <p class="muted small" style="margin:0 0 12px"><?= $h($t('ct_h_sub')) ?></p>
+
+  <?php if ($cts): // the wrapper that makes it scroll on a phone is added by render_foot ?>
+    <table><thead><tr>
+      <th><?= $h($t('ct_name')) ?></th><th><?= $h($t('ct_devices')) ?></th>
+      <th><?= $h($t('ct_amount')) ?></th><th><?= $h($t('ct_method')) ?></th>
+      <th><?= $h($t('ct_period_col')) ?></th><th><?= $h($t('th_status')) ?></th><th></th>
+    </tr></thead><tbody>
+    <?php foreach ($cts as $c): ?>
+      <tr>
+        <td><a href="?tab=customers&amp;id=<?= (int)$custId ?>&amp;ct=<?= (int)$c["id"] ?>#contracts"><b><?= $h($c["name"]) ?></b></a>
+          <?php if (!empty($c['notes'])): ?><br><span class="muted small"><?= $h($c['notes']) ?></span><?php endif; ?></td>
+        <td class="small">
+          <?php if ($c['devices']): ?>
+            <?php foreach ($c['devices'] as $dv): ?>
+              <span class="pill" title="<?= $h(trim((string)($dv['area'] ?? '') . ' ' . (string)($dv['ip'] ?? ''))) ?>"><?= $h($dv['name']) ?></span>
+            <?php endforeach; ?>
+          <?php else: ?><?= $dash ?><?php endif; ?></td>
+        <td><?= $c['amount_cents'] !== null ? $eurC($c['amount_cents'], $c['currency']) : $dash ?></td>
+        <td class="small"><?= $h($t('ct_pm_' . $c['payment_method'])) ?></td>
+        <td class="small"><?= $h($t('ct_per_' . $c['period'])) ?>
+          <?php if (!empty($c['expires_on'])): ?><br><span class="muted"><?= $h($t('ct_until')) ?> <?= $h(date('d/m/Y', strtotime((string)$c['expires_on']))) ?></span><?php endif; ?></td>
+        <td><span class="pill" style="color:<?= $h($ctState[$c['state']]) ?>"><?= $h($t('ct_st_' . $c['state'])) ?></span></td>
+        <td class="small"><a class="btn ghost tiny" href="?tab=customers&id=<?= (int)$custId ?>&ct=<?= (int)$c['id'] ?>#contracts"><?= svg('pen') ?></a></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody></table>
+  <?php else: ?>
+    <p class="muted small"><?= $h($t('ct_none')) ?></p>
+  <?php endif; ?>
+
+  <?php if (!$ctOpen): ?>
+    <a class="btn tiny" href="?tab=customers&id=<?= (int)$custId ?>&ct_new=1#contracts"><?= $h($t('ct_add')) ?></a>
+  <?php else: ?>
+    <form method="post" class="card" style="margin:14px 0 0">
+      <input type="hidden" name="do" value="contract_save">
+      <input type="hidden" name="id" value="<?= (int)$custId ?>">
+      <input type="hidden" name="contract_id" value="<?= (int)($ctOne['id'] ?? 0) ?>">
+      <b class="small"><?= $h($t($ctOne ? 'ct_edit' : 'ct_add')) ?></b>
+      <div class="row" style="margin-top:10px">
+        <label class="fld"><span><?= $h($t('ct_name')) ?> *</span>
+          <input name="name" required maxlength="120" list="ct-names" value="<?= $h($ctOne['name'] ?? '') ?>"
+                 placeholder="<?= $h($t('ct_name_ph')) ?>"></label>
+        <label class="fld" style="max-width:180px"><span><?= $h($t('ct_amount')) ?></span>
+          <input name="amount" inputmode="decimal" placeholder="0,00"
+                 value="<?= $ctOne && $ctOne['amount_cents'] !== null ? $h(number_format(((int)$ctOne['amount_cents']) / 100, 2, ',', '')) : '' ?>"></label>
+        <label class="fld" style="max-width:190px"><span><?= $h($t('ct_period')) ?></span>
+          <select name="period">
+            <?php foreach (\Glue\Crm\Contracts::PERIODS as $pk): ?>
+              <option value="<?= $h($pk) ?>"<?= ($ctOne['period'] ?? 'year') === $pk ? ' selected' : '' ?>><?= $h($t('ct_per_' . $pk)) ?></option>
+            <?php endforeach; ?>
+          </select></label>
+        <label class="fld" style="max-width:200px"><span><?= $h($t('ct_method')) ?></span>
+          <select name="payment_method">
+            <?php foreach (\Glue\Crm\Contracts::METHODS as $mk): ?>
+              <option value="<?= $h($mk) ?>"<?= ($ctOne['payment_method'] ?? 'transfer') === $mk ? ' selected' : '' ?>><?= $h($t('ct_pm_' . $mk)) ?></option>
+            <?php endforeach; ?>
+          </select></label>
+      </div>
+      <div class="row">
+        <label class="fld" style="max-width:190px"><span><?= $h($t('ct_from')) ?></span>
+          <input type="date" name="started_on" value="<?= $h($ctOne['started_on'] ?? '') ?>"></label>
+        <label class="fld" style="max-width:190px"><span><?= $h($t('ct_to')) ?></span>
+          <input type="date" name="expires_on" value="<?= $h($ctOne['expires_on'] ?? '') ?>">
+          <small class="muted"><?= $h($t('ct_to_h')) ?></small></label>
+        <label class="fld"><span><?= $h($t('f_notes')) ?></span>
+          <input name="notes" maxlength="500" value="<?= $h($ctOne['notes'] ?? '') ?>"></label>
+      </div>
+
+      <b class="small"><?= $h($t('ct_devices')) ?></b>
+      <p class="muted small" style="margin:4px 0 8px"><?= $h($t('ct_devices_h')) ?></p>
+      <?php if ($ctPick): ?>
+        <input type="search" id="ct-dev-q" placeholder="<?= $h($t('ct_devices_find')) ?>" style="margin-bottom:8px">
+        <div class="ct-devs">
+          <?php foreach ($ctPick as $dv): ?>
+            <label class="cm-chip ct-dev" data-k="<?= $h(mb_strtolower((string)$dv['name'] . ' ' . (string)($dv['area'] ?? '') . ' ' . (string)($dv['ip'] ?? ''))) ?>">
+              <input type="checkbox" name="device_ids[]" value="<?= (int)$dv['id'] ?>" style="width:auto"
+                     <?= in_array((int)$dv['id'], array_map('intval', $ctHas), true) ? 'checked' : '' ?>>
+              <span><?= $h($dv['name']) ?><?php if (!empty($dv['area'])): ?> <span class="muted small">· <?= $h($dv['area']) ?></span><?php endif; ?></span>
+            </label>
+          <?php endforeach; ?>
+        </div>
+      <?php else: ?>
+        <p class="muted small"><?= $h($t('ct_devices_none')) ?></p>
+      <?php endif; ?>
+
+      <?php if ($ctOne): ?>
+        <label class="cm-chip" style="margin:12px 0 0">
+          <input type="checkbox" name="status" value="cancelled" style="width:auto"<?= ($ctOne['status'] ?? '') === 'cancelled' ? ' checked' : '' ?>>
+          <span><?= $h($t('ct_cancelled')) ?></span></label>
+      <?php endif; ?>
+
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px">
+        <button class="btn"><?= svg('check') ?> <?= $h($t('save')) ?></button>
+        <a class="btn ghost" href="?tab=customers&id=<?= (int)$custId ?>#contracts"><?= $h($t('cancel')) ?></a>
+        <?php if ($ctOne): ?>
+          <button class="btn ghost" style="color:var(--red);margin-left:auto" formnovalidate
+                  name="do" value="contract_delete"
+                  onclick="return confirm(<?= $h(json_encode($t('ct_del_confirm'), JSON_UNESCAPED_UNICODE)) ?>)">
+            <?= $h($t('delete')) ?></button>
+        <?php endif; ?>
+      </div>
+    </form>
+    <datalist id="ct-names">
+      <?php foreach (['Assistenza Base', 'Assistenza Full Risk', 'Assistenza H24', 'Noleggio', 'Comodato d’uso'] as $sug): ?>
+        <option value="<?= $h($sug) ?>">
+      <?php endforeach; ?>
+    </datalist>
+    <script>
+    (function () {
+      var q = document.getElementById('ct-dev-q');
+      if (!q) { return; }
+      q.addEventListener('input', function () {
+        var v = q.value.trim().toLowerCase();
+        document.querySelectorAll('.ct-dev').forEach(function (el) {
+          el.hidden = v !== '' && (el.getAttribute('data-k') || '').indexOf(v) < 0
+                      && !el.querySelector('input').checked;
+        });
+      });
+    })();
+    </script>
+  <?php endif; ?>
+</div>
+
 <?php // ---- maintenance contract -------------------------------------------
       // The one panel that answers "what are we to this customer?" — a periodic
       // contract, or A CHIAMATA, which is an answer and not a blank.
@@ -655,7 +796,10 @@ if ($ov !== null):
 .cu-chatbox .msg.staff{align-self:flex-end;background:var(--accent-soft);border:1px solid var(--line);border-bottom-right-radius:3px}
 .pill-up{background:rgba(62,207,142,.15);color:#3ecf8e}
 .pill-down{background:rgba(240,82,82,.15);color:#f05252}
-@media (max-width:1000px){.cu-cols{flex-direction:column}.cu-side{width:100%}}
+/* Stacked, the row becomes a column — and a column that keeps align-items:flex-start
+   sizes .cu-main to its WIDEST child (a table is 520px min), which pushed the whole
+   card sideways on a phone. Stretch puts it back to the screen width. */
+@media (max-width:1000px){.cu-cols{flex-direction:column;align-items:stretch}.cu-side{width:100%}}
 </style>
 
 <?php else:

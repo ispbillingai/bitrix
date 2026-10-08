@@ -581,6 +581,11 @@ a.tel:hover{text-decoration:underline;}
 .cm-form{border:1px dashed var(--line2);border-radius:10px;padding:12px;margin-top:12px;}
 .cm-form .fld{margin-bottom:10px;}
 .cm-chips{display:flex;gap:8px;flex-wrap:wrap;margin:6px 0 14px;}
+/* contract_devices: the machines one contract covers, tickable and searchable */
+.ct-devs{display:flex;flex-wrap:wrap;gap:8px;max-height:230px;overflow-y:auto;padding:10px;
+  border:1px solid var(--line);border-radius:10px;background:var(--surface2);}
+.ct-devs .cm-chip{display:flex;align-items:center;gap:8px;margin:0;cursor:pointer;}
+.ct-devs .cm-chip[hidden]{display:none;}
 .cm-chip{padding:6px 12px;border:1px solid var(--line);border-radius:999px;font-size:13px;color:var(--txt);text-decoration:none;background:var(--surface);}
 .cm-chip.on{border-color:var(--accent);color:var(--accent);}
 .cm-acc{border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:14px;}
