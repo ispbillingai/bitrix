@@ -70,6 +70,131 @@ if ($ov !== null):
   <?php stat_card($h, 'tickets', $t('cu_open_tickets'), (string)$openTickets, $openTickets === 0); ?>
 </div>
 
+<?php // ---- the machines this customer has (081) ---------------------------
+      // Typed in by the office: brand, model, serial. Not the LAN devices the
+      // monitoring pings — "le macchine non sono queste" — and not a technician's
+      // report, though a report is where the serial can be lifted from.
+      $mcs    = \Glue\Crm\Machines::forContact($custId);
+      $mcEdit = (int)($_GET['mc'] ?? 0);
+      $mcOne  = $mcEdit > 0 ? \Glue\Crm\Machines::find($mcEdit) : null;
+      $mcOpen = isset($_GET['mc_new']) || $mcOne !== null;
+      $mcSugg = $mcOpen && !$mcOne ? \Glue\Crm\Machines::fromReports($custId) : []; ?>
+<div class="card" id="machines">
+  <h3><?= svg('devices') ?> <?= $h($t('mc_h')) ?>
+    <?php $mcLive = count(array_filter($mcs, fn($m) => $m['status'] === 'active')); ?>
+    <?php if ($mcLive): ?><span class="pill pill-up"><?= (int)$mcLive ?></span><?php endif; ?>
+  </h3>
+  <p class="muted small" style="margin:0 0 12px"><?= $h($t('mc_h_sub')) ?></p>
+
+  <?php if ($mcs): ?>
+    <table><thead><tr>
+      <th><?= $h($t('mc_what')) ?></th><th><?= $h($t('mc_brand')) ?></th><th><?= $h($t('mc_model')) ?></th>
+      <th><?= $h($t('mc_serial')) ?></th><th><?= $h($t('mc_where')) ?></th><th><?= $h($t('th_status')) ?></th><th></th>
+    </tr></thead><tbody>
+    <?php foreach ($mcs as $mc): ?>
+      <tr<?= $mc['status'] === 'dismissed' ? ' style="opacity:.55"' : '' ?>>
+        <td><a href="?tab=customers&amp;id=<?= (int)$custId ?>&amp;mc=<?= (int)$mc['id'] ?>#machines">
+            <b><?= $h($mc['label'] ?: ($mc['kind'] ? $t('mc_k_' . $mc['kind']) : $t('mc_unnamed'))) ?></b></a>
+          <?php if (!empty($mc['label']) && !empty($mc['kind'])): ?><br><span class="muted small"><?= $h($t('mc_k_' . $mc['kind'])) ?></span><?php endif; ?></td>
+        <td><?= $h($mc['brand'] ?? '') ?: $dash ?></td>
+        <td><?= $h($mc['model'] ?? '') ?: $dash ?></td>
+        <td class="small"><?= $mc['serial'] ? '<code>' . $h($mc['serial']) . '</code>' : $dash ?></td>
+        <td class="small"><?= $h($mc['location'] ?? '') ?: $dash ?>
+          <?php if (!empty($mc['installed_on'])): ?><br><span class="muted"><?= $h($t('mc_since')) ?> <?= $h(date('d/m/Y', strtotime((string)$mc['installed_on']))) ?></span><?php endif; ?></td>
+        <td><span class="pill" style="color:<?= $mc['status'] === 'active' ? 'var(--green)' : 'var(--muted)' ?>">
+          <?= $h($t('mc_st_' . $mc['status'])) ?></span></td>
+        <td class="small"><a class="btn ghost tiny" href="?tab=customers&amp;id=<?= (int)$custId ?>&amp;mc=<?= (int)$mc['id'] ?>#machines"><?= svg('pen') ?></a></td>
+      </tr>
+    <?php endforeach; ?>
+    </tbody></table>
+  <?php else: ?>
+    <p class="muted small"><?= $h($t('mc_none')) ?></p>
+  <?php endif; ?>
+
+  <?php if (!$mcOpen): ?>
+    <a class="btn tiny" href="?tab=customers&amp;id=<?= (int)$custId ?>&amp;mc_new=1#machines"><?= $h($t('mc_add')) ?></a>
+  <?php else: ?>
+    <?php if ($mcSugg): ?>
+      <div class="warn" style="margin-top:14px">
+        <?= $h($t('mc_from_reports')) ?>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">
+          <?php foreach ($mcSugg as $sg): ?>
+            <a class="btn tiny ghost" href="?tab=customers&amp;id=<?= (int)$custId ?>&amp;mc_new=1&amp;from=<?= (int)$sg['report_id'] ?>#machines">
+              <?= $h($sg['model'] ?: $t('mc_unnamed')) ?> · <?= $h($sg['serial']) ?></a>
+          <?php endforeach; ?>
+        </div>
+      </div>
+    <?php endif; ?>
+    <?php
+    // Picking one of those fills the form with what the technician wrote, so a
+    // serial is read off the record instead of typed a second time.
+    $mcPre = ['model' => '', 'serial' => '', 'report' => 0];
+    if (!$mcOne && (int)($_GET['from'] ?? 0) > 0) {
+        foreach (\Glue\Crm\Machines::fromReports($custId) as $sg) {
+            if ($sg['report_id'] === (int)$_GET['from']) {
+                $mcPre = ['model' => $sg['model'], 'serial' => $sg['serial'], 'report' => $sg['report_id']];
+            }
+        }
+    }
+    $mcV = fn(string $k, string $alt = '') => $h($mcOne[$k] ?? ($alt !== '' ? $alt : '')); ?>
+    <form method="post" class="card" style="margin:14px 0 0">
+      <input type="hidden" name="do" value="machine_save">
+      <input type="hidden" name="id" value="<?= (int)$custId ?>">
+      <input type="hidden" name="machine_id" value="<?= (int)($mcOne['id'] ?? 0) ?>">
+      <input type="hidden" name="install_report_id" value="<?= (int)$mcPre['report'] ?>">
+      <b class="small"><?= $h($t($mcOne ? 'mc_edit' : 'mc_add')) ?></b>
+      <div class="row" style="margin-top:10px">
+        <label class="fld" style="max-width:220px"><span><?= $h($t('mc_kind')) ?></span>
+          <select name="kind">
+            <option value=""><?= $h($t('mc_kind_pick')) ?></option>
+            <?php foreach (\Glue\Crm\Machines::KINDS as $kk): ?>
+              <option value="<?= $h($kk) ?>"<?= ($mcOne['kind'] ?? '') === $kk ? ' selected' : '' ?>><?= $h($t('mc_k_' . $kk)) ?></option>
+            <?php endforeach; ?>
+          </select></label>
+        <label class="fld"><span><?= $h($t('mc_brand')) ?></span>
+          <input name="brand" maxlength="60" list="mc-brands" value="<?= $mcV('brand') ?>" placeholder="<?= $h($t('mc_brand_ph')) ?>"></label>
+        <label class="fld"><span><?= $h($t('mc_model')) ?></span>
+          <input name="model" maxlength="80" value="<?= $mcV('model', $mcPre['model']) ?>" placeholder="<?= $h($t('mc_model_ph')) ?>"></label>
+      </div>
+      <div class="row">
+        <label class="fld"><span><?= $h($t('mc_serial')) ?></span>
+          <input name="serial" maxlength="80" value="<?= $mcV('serial', $mcPre['serial']) ?>" placeholder="<?= $h($t('mc_serial_ph')) ?>">
+          <small class="muted"><?= $h($t('mc_serial_h')) ?></small></label>
+        <label class="fld"><span><?= $h($t('mc_label')) ?></span>
+          <input name="label" maxlength="80" value="<?= $mcV('label') ?>" placeholder="<?= $h($t('mc_label_ph')) ?>"></label>
+        <label class="fld"><span><?= $h($t('mc_where')) ?></span>
+          <input name="location" maxlength="120" value="<?= $mcV('location') ?>" placeholder="<?= $h($t('mc_where_ph')) ?>"></label>
+      </div>
+      <div class="row">
+        <label class="fld" style="max-width:200px"><span><?= $h($t('mc_installed')) ?></span>
+          <input type="date" name="installed_on" value="<?= $mcV('installed_on') ?>"></label>
+        <label class="fld"><span><?= $h($t('f_notes')) ?></span>
+          <input name="notes" maxlength="500" value="<?= $mcV('notes') ?>" placeholder="<?= $h($t('mc_notes_ph')) ?>"></label>
+      </div>
+      <?php if ($mcOne): ?>
+        <label class="cm-chip" style="margin:4px 0 0">
+          <input type="checkbox" name="status" value="dismissed" style="width:auto"<?= ($mcOne['status'] ?? '') === 'dismissed' ? ' checked' : '' ?>>
+          <span><?= $h($t('mc_dismissed')) ?></span></label>
+      <?php endif; ?>
+      <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:14px">
+        <button class="btn"><?= svg('check') ?> <?= $h($t('save')) ?></button>
+        <a class="btn ghost" href="?tab=customers&amp;id=<?= (int)$custId ?>#machines"><?= $h($t('cancel')) ?></a>
+        <?php if ($mcOne): ?>
+          <button class="btn ghost" style="color:var(--red);margin-left:auto" formnovalidate
+                  name="do" value="machine_delete"
+                  onclick="return confirm(<?= $h(json_encode($t('mc_del_confirm'), JSON_UNESCAPED_UNICODE)) ?>)">
+            <?= $h($t('delete')) ?></button>
+        <?php endif; ?>
+      </div>
+    </form>
+    <datalist id="mc-brands">
+      <?php foreach (['Cashmatic', 'Epson', 'Berkel', 'Olivetti', 'RCH', 'Custom', 'Ditron', 'Zucchetti'] as $bb): ?>
+        <option value="<?= $h($bb) ?>">
+      <?php endforeach; ?>
+    </datalist>
+  <?php endif; ?>
+</div>
+
 <?php // ---- the contracts this customer holds (080) -------------------------
       // Plural, and independent of each other: an H24 on the two Cashmatic
       // machines paid by SDD, and a basic one on the fiscal printer paid by
@@ -79,8 +204,8 @@ if ($ov !== null):
       $ctOne   = $ctEdit > 0 ? \Glue\Crm\Contracts::find($ctEdit) : null;
       $ctNew   = isset($_GET['ct_new']) || ($ctEdit > 0 && !$ctOne);
       $ctOpen  = $ctOne !== null || $ctNew;
-      $ctPick  = $ctOpen ? \Glue\Crm\Contracts::devicePicker($custId) : [];
-      $ctHas   = array_column($ctOne['devices'] ?? [], 'id');
+      $ctPick  = $ctOpen ? \Glue\Crm\Contracts::machinePicker($custId) : [];
+      $ctHas   = array_column($ctOne['machines'] ?? [], 'id');
       $ctState = ['active' => 'var(--green)', 'expired' => 'var(--amber)', 'cancelled' => 'var(--muted)']; ?>
 <div class="card" id="contracts">
   <h3><?= svg('documents') ?> <?= $h($t('ct_h')) ?>
@@ -100,9 +225,10 @@ if ($ov !== null):
         <td><a href="?tab=customers&amp;id=<?= (int)$custId ?>&amp;ct=<?= (int)$c["id"] ?>#contracts"><b><?= $h($c["name"]) ?></b></a>
           <?php if (!empty($c['notes'])): ?><br><span class="muted small"><?= $h($c['notes']) ?></span><?php endif; ?></td>
         <td class="small">
-          <?php if ($c['devices']): ?>
-            <?php foreach ($c['devices'] as $dv): ?>
-              <span class="pill" title="<?= $h(trim((string)($dv['area'] ?? '') . ' ' . (string)($dv['ip'] ?? ''))) ?>"><?= $h($dv['name']) ?></span>
+          <?php if ($c['machines']): ?>
+            <?php foreach ($c['machines'] as $dv): ?>
+              <span class="pill" title="<?= $h(trim((string)($dv['serial'] ?? '') . ' ' . (string)($dv['location'] ?? ''))) ?>">
+                <?= $h(\Glue\Crm\Machines::title($dv)) ?></span>
             <?php endforeach; ?>
           <?php else: ?><?= $dash ?><?php endif; ?></td>
         <td><?= $c['amount_cents'] !== null ? $eurC($c['amount_cents'], $c['currency']) : $dash ?></td>
@@ -161,16 +287,17 @@ if ($ov !== null):
       <?php if ($ctPick): ?>
         <input type="search" id="ct-dev-q" placeholder="<?= $h($t('ct_devices_find')) ?>" style="margin-bottom:8px">
         <div class="ct-devs">
-          <?php foreach ($ctPick as $dv): ?>
-            <label class="cm-chip ct-dev" data-k="<?= $h(mb_strtolower((string)$dv['name'] . ' ' . (string)($dv['area'] ?? '') . ' ' . (string)($dv['ip'] ?? ''))) ?>">
-              <input type="checkbox" name="device_ids[]" value="<?= (int)$dv['id'] ?>" style="width:auto"
+          <?php foreach ($ctPick as $dv): $dvT = \Glue\Crm\Machines::title($dv); ?>
+            <label class="cm-chip ct-dev" data-k="<?= $h(mb_strtolower($dvT . ' ' . (string)($dv['serial'] ?? '') . ' ' . (string)($dv['location'] ?? ''))) ?>">
+              <input type="checkbox" name="machine_ids[]" value="<?= (int)$dv['id'] ?>" style="width:auto"
                      <?= in_array((int)$dv['id'], array_map('intval', $ctHas), true) ? 'checked' : '' ?>>
-              <span><?= $h($dv['name']) ?><?php if (!empty($dv['area'])): ?> <span class="muted small">· <?= $h($dv['area']) ?></span><?php endif; ?></span>
+              <span><?= $h($dvT) ?><?php if (!empty($dv['serial'])): ?> <span class="muted small">· <?= $h($dv['serial']) ?></span><?php endif; ?></span>
             </label>
           <?php endforeach; ?>
         </div>
       <?php else: ?>
-        <p class="muted small"><?= $h($t('ct_devices_none')) ?></p>
+        <p class="muted small"><?= $h($t('ct_devices_none')) ?>
+          <a href="?tab=customers&amp;id=<?= (int)$custId ?>&amp;mc_new=1#machines"><?= $h($t('mc_add')) ?></a></p>
       <?php endif; ?>
 
       <?php if ($ctOne): ?>

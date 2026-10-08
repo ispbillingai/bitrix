@@ -24,9 +24,10 @@ use PDO;
  * passes, or until somebody cancels it, and both are facts rather than
  * opinions ([[status]]).
  *
- * The devices are the real ones (`devices`, the machines the CRM already
- * monitors per shop: CASHMATIC, PC CASSA, STAMPANTE FISCALE…), not free text,
- * so "which contract covers this till" has an answer.
+ * What a contract covers are the customer's own machines (Crm\Machines,
+ * migration 081) — a Cashmatic 1060 with its serial, not a hostname on the
+ * shop's LAN. The first version of this hung them on `devices`, the monitoring
+ * side, and the office said so plainly: "le macchine non sono queste".
  *
  * See Crm\Maintenance, which asks this first when it decides whether a customer
  * is covered at all.
@@ -39,7 +40,7 @@ final class Contracts
     /** How it is paid — the list the office asked for, "ecc." included. */
     public const METHODS = ['sdd', 'transfer', 'card', 'cash', 'other'];
 
-    /** Every contract of one customer, the live and nearest first, each with its devices. */
+    /** Every contract of one customer, the live and nearest first, each with its machines. */
     public static function forContact(int $contactId): array
     {
         if ($contactId <= 0) {
@@ -58,10 +59,10 @@ final class Contracts
         if (!$rows) {
             return [];
         }
-        $devices = self::devicesOf(array_column($rows, 'id'));
+        $machines = self::machinesOf(array_column($rows, 'id'));
         foreach ($rows as &$r) {
-            $r['devices'] = $devices[(int)$r['id']] ?? [];
-            $r['state']   = self::state($r);
+            $r['machines'] = $machines[(int)$r['id']] ?? [];
+            $r['state']    = self::state($r);
         }
         return $rows;
     }
@@ -74,7 +75,7 @@ final class Contracts
         if (!$r) {
             return null;
         }
-        $r['devices'] = self::devicesOf([(int)$r['id']])[(int)$r['id']] ?? [];
+        $r['machines'] = self::machinesOf([(int)$r['id']])[(int)$r['id']] ?? [];
         $r['state']   = self::state($r);
         return $r;
     }
@@ -106,7 +107,7 @@ final class Contracts
 
     /**
      * Save one contract — a new one when $id is 0, otherwise the one by that id.
-     * The devices come as a list of ids; whatever is not in it stops being
+     * The machines come as a list of ids; whatever is not in it stops being
      * covered.
      *
      * @return array{ok:bool, id:int, error:?string}
@@ -154,27 +155,35 @@ final class Contracts
             $id = (int)$db->lastInsertId();
         }
 
-        self::setDevices($id, (array)($d['device_ids'] ?? []));
+        self::setMachines($id, (array)($d['machine_ids'] ?? []));
         Log::write('crm', $id > 0 ? 'contract_saved' : 'contract_created', 'contact', $contactId,
             ['contract' => $id, 'name' => $name, 'by' => $userId]);
         return ['ok' => true, 'id' => $id, 'error' => null];
     }
 
-    /** Which machines this contract covers, from here on. */
-    public static function setDevices(int $contractId, array $deviceIds): void
+    /**
+     * Which machines this contract covers, from here on. Only machines of the
+     * customer the contract belongs to: a stale form must not make one shop's
+     * contract cover another shop's till.
+     */
+    public static function setMachines(int $contractId, array $machineIds): void
     {
-        $ids = array_values(array_unique(array_filter(array_map('intval', $deviceIds), fn($i) => $i > 0)));
+        $ids = array_values(array_unique(array_filter(array_map('intval', $machineIds), fn($i) => $i > 0)));
         $db  = Db::pdo();
-        $db->prepare('DELETE FROM contract_devices WHERE contract_id = ?')->execute([$contractId]);
+        $db->prepare('DELETE FROM contract_machines WHERE contract_id = ?')->execute([$contractId]);
         if (!$ids) {
             return;
         }
-        // Only devices that exist: a stale form must not invent coverage.
+        $owner = (int)($db->query('SELECT contact_id FROM contracts WHERE id = ' . (int)$contractId)->fetchColumn() ?: 0);
+        if ($owner <= 0) {
+            return;
+        }
         $in   = implode(',', $ids);
-        $real = $db->query("SELECT id FROM devices WHERE id IN ($in)")->fetchAll(PDO::FETCH_COLUMN) ?: [];
-        $ins  = $db->prepare('INSERT IGNORE INTO contract_devices (contract_id, device_id) VALUES (?, ?)');
-        foreach ($real as $did) {
-            $ins->execute([$contractId, (int)$did]);
+        $real = $db->query("SELECT id FROM customer_machines WHERE id IN ($in) AND contact_id = $owner")
+            ->fetchAll(PDO::FETCH_COLUMN) ?: [];
+        $ins  = $db->prepare('INSERT IGNORE INTO contract_machines (contract_id, machine_id) VALUES (?, ?)');
+        foreach ($real as $mid) {
+            $ins->execute([$contractId, (int)$mid]);
         }
     }
 
@@ -198,38 +207,21 @@ final class Contracts
             return false;
         }
         $db = Db::pdo();
-        $db->prepare('DELETE FROM contract_devices WHERE contract_id = ?')->execute([$id]);
+        $db->prepare('DELETE FROM contract_machines WHERE contract_id = ?')->execute([$id]);
         $db->prepare('DELETE FROM contracts WHERE id = ?')->execute([$id]);
         Log::write('crm', 'contract_deleted', 'contact', (int)$c['contact_id'],
             ['contract' => $id, 'name' => (string)$c['name'], 'by' => $userId]);
         return true;
     }
 
-    /**
-     * The machines, with the shop they stand in, for the picker.
-     * The customer's own first when the CRM knows which area is theirs, since
-     * that is nearly always what is being covered.
-     *
-     * @return array<int,array> devices, each with 'area' and 'mine'
-     */
-    public static function devicePicker(int $contactId): array
+    /** What there is to tick: this customer's machines, the live ones first. */
+    public static function machinePicker(int $contactId): array
     {
-        $rows = Db::pdo()->query(
-            'SELECT d.id, d.name, d.ip, d.active, a.name AS area, a.contact_id
-               FROM devices d LEFT JOIN network_areas a ON a.id = d.area_id
-              ORDER BY a.name IS NULL, a.name, d.sort_order, d.id'
-        )->fetchAll() ?: [];
-        foreach ($rows as &$r) {
-            $r['mine'] = $contactId > 0 && (int)($r['contact_id'] ?? 0) === $contactId;
-        }
-        unset($r);
-        usort($rows, static fn(array $a, array $b): int
-            => ($b['mine'] <=> $a['mine']) ?: strcasecmp((string)$a['area'] . $a['name'], (string)$b['area'] . $b['name']));
-        return $rows;
+        return Machines::forContact($contactId);
     }
 
-    /** @return array<int,array<int,array>> contract id => its devices */
-    private static function devicesOf(array $contractIds): array
+    /** @return array<int,array<int,array>> contract id => the machines it covers */
+    private static function machinesOf(array $contractIds): array
     {
         $ids = array_values(array_filter(array_map('intval', $contractIds)));
         if (!$ids) {
@@ -237,12 +229,11 @@ final class Contracts
         }
         $in   = implode(',', $ids);
         $rows = Db::pdo()->query(
-            "SELECT cd.contract_id, d.id, d.name, d.ip, d.status, a.name AS area
-               FROM contract_devices cd
-               JOIN devices d ON d.id = cd.device_id
-               LEFT JOIN network_areas a ON a.id = d.area_id
-              WHERE cd.contract_id IN ($in)
-              ORDER BY a.name, d.sort_order, d.id"
+            "SELECT cm.contract_id, m.*
+               FROM contract_machines cm
+               JOIN customer_machines m ON m.id = cm.machine_id
+              WHERE cm.contract_id IN ($in)
+              ORDER BY m.status = 'dismissed', m.label IS NULL, m.label, m.brand, m.model, m.id"
         )->fetchAll() ?: [];
         $out = [];
         foreach ($rows as $r) {

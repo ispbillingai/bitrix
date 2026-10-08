@@ -3230,6 +3230,28 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     : [$t('cm_err_' . $cmRes['error']), 'err'];
                 header('Location: ?tab=' . ($do === 'cm_invoice' ? 'my_commissions' : 'commissions') . '&st=' . $cmId . '#cm-' . $cmId);
                 exit;
+            // ---- the customer's own machines (081) ----
+            // Typed in by the office, serial and all: office only, like the
+            // contracts that cover them.
+            case 'machine_save':
+            case 'machine_delete': {
+                $mcCust = (int)($_POST['id'] ?? 0);
+                $mcId   = (int)($_POST['machine_id'] ?? 0);
+                if ($do === 'machine_delete') {
+                    $mcWhat = $mcId > 0 ? \Glue\Crm\Machines::remove($mcId, $uid ? (int)$uid : null) : 'not_found';
+                    $_SESSION['dash_flash'] = $mcWhat === 'not_found'
+                        ? [$t('mc_err_not_found'), 'err']
+                        : [$t($mcWhat === 'dismissed' ? 'mc_dismissed_flash' : 'mc_deleted'), 'ok'];
+                } else {
+                    $mcRes = \Glue\Crm\Machines::save($mcId, $mcCust, $_POST, $uid ? (int)$uid : null);
+                    $_SESSION['dash_flash'] = $mcRes['ok']
+                        ? [$t($mcId > 0 ? 'mc_saved' : 'mc_created'), 'ok']
+                        : [$t('mc_err_' . $mcRes['error']), 'err'];
+                }
+                header('Location: ?tab=customers&id=' . $mcCust . '#machines');
+                exit;
+            }
+
             // ---- the contracts on a customer's record (080) ----
             // Office only: customers is not an agent view, and what a customer
             // pays for assistance is not a seller's to rewrite.
