@@ -26,6 +26,18 @@ return [
     'fp_sent'        => 'If the account exists we have sent a link by WhatsApp and email. It is good for one hour and can be used once. Check your spam folder too.',
 
     // nav
+    // the groups of the left-hand menu (086)
+    'nav_find' => 'Search the menu…',
+    'nav_find_none' => 'Nothing by that name.',
+    'navg_work' => 'Today',
+    'navg_sales' => 'Sales',
+    'navg_people' => 'Customers',
+    'navg_field' => 'Field & installs',
+    'navg_stock' => 'Warehouse & price lists',
+    'navg_money' => 'Money',
+    'navg_reach' => 'Messaging',
+    'navg_system' => 'System',
+    'navg_other' => 'Other',
     'nav_overview'     => 'Overview',
     'nav_leads'        => 'Leads',
     'nav_deals'        => 'Deals',

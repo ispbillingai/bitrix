@@ -26,6 +26,18 @@ return [
     'fp_sent'        => 'Se l’account esiste, ti abbiamo inviato un link su WhatsApp e per email. Vale un’ora e si può usare una volta sola. Controlla anche lo spam.',
 
     // nav
+    // i gruppi del menu di sinistra (086)
+    'nav_find' => 'Cerca nel menu…',
+    'nav_find_none' => 'Nessuna voce con questo nome.',
+    'navg_work' => 'Giornata',
+    'navg_sales' => 'Vendite',
+    'navg_people' => 'Clienti',
+    'navg_field' => 'Tecnici e impianti',
+    'navg_stock' => 'Magazzino e listini',
+    'navg_money' => 'Soldi',
+    'navg_reach' => 'Comunicazioni',
+    'navg_system' => 'Sistema',
+    'navg_other' => 'Altro',
     'nav_overview'     => 'Panoramica',
     'nav_leads'        => 'Lead',
     'nav_deals'        => 'Trattative',

@@ -11,6 +11,50 @@ declare(strict_types=1);
  * the session: it is markup and CSS only.
  */
 
+/**
+ * The menu, cut into the jobs people actually do.
+ *
+ * Thirty-three tabs in one column is a list to scroll, and the office said so:
+ * "il menu di sinistra è diventato troppo lungo". The order inside a group is
+ * the order of the menu it came from, so nothing moves about; a tab that is not
+ * listed here falls into the last group rather than disappearing, which is what
+ * must happen when somebody adds a feature and forgets this function.
+ *
+ * @param array<string,string> $nav tab key => label key, already cut to the role
+ * @return array<string,array<string,string>> group key => its part of $nav
+ */
+/** Below this many entries a menu is read at a glance; above it, it is scrolled. */
+const NAV_GROUP_FROM = 18;
+
+function nav_groups(array $nav): array {
+    $plan = [
+        'work'    => ['overview', 'tasks', 'appointments', 'calendar', 'team'],
+        'sales'   => ['leads', 'deals', 'quotes', 'offers'],
+        'people'  => ['customers', 'contacts', 'tickets', 'support', 'documents'],
+        'field'   => ['installations', 'inspections', 'inspections_archive', 'devices', 'network_areas'],
+        'stock'   => ['articles', 'pricelists'],
+        'money'   => ['invoices', 'payments', 'commissions', 'my_commissions', 'finance'],
+        'reach'   => ['campaigns', 'messages', 'outbound', 'reminders', 'templates'],
+        'system'  => ['events', 'agents', 'partners', 'instructions', 'settings'],
+    ];
+    $out  = [];
+    $seen = [];
+    foreach ($plan as $g => $keys) {
+        foreach ($keys as $k) {
+            if (isset($nav[$k])) {
+                $out[$g][$k] = $nav[$k];
+                $seen[$k] = true;
+            }
+        }
+    }
+    foreach ($nav as $k => $label) {   // anything added later, never lost
+        if (!isset($seen[$k])) {
+            $out['other'][$k] = $label;
+        }
+    }
+    return $out;
+}
+
 function svg(string $name): string {
     $p = [
         'overview'    => '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
@@ -25,6 +69,7 @@ function svg(string $name): string {
         'users'       => '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/>',
         'reminders'   => '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
         'clock'       => '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+        'search'      => '<circle cx="11" cy="11" r="7"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>',
         'messages'    => '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
         'chat'        => '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
         'campaigns'   => '<path d="M3 11l18-5v12L3 14v-3z"/><path d="M11.6 16.8a3 3 0 1 1-5.8-1.6"/>',
@@ -343,6 +388,27 @@ nav a svg{width:18px;height:18px;flex:0 0 auto;}
    without an explicit size some browsers scale the viewBox to the container
    and render them screen-wide (seen on the customer page). */
 h2 svg,h3 svg,summary svg{width:17px;height:17px;flex:0 0 auto;vertical-align:-3px;}
+/* The menu is grouped (nav_groups) and searchable: a heading per job, only the
+   group you are in open, and a box that filters the lot. */
+.navfind{display:flex;align-items:center;gap:8px;margin:0 2px 10px;padding:0 10px;
+  background:var(--surface2);border:1px solid var(--line);border-radius:8px;}
+.navfind svg{width:15px;height:15px;flex:0 0 auto;color:var(--muted);}
+.navfind input{border:0;background:transparent;padding:8px 0;font-size:13px;color:var(--txt);width:100%;}
+.navfind input:focus{outline:none;}
+.navgrp{margin-bottom:2px;}
+.navgrp>summary{display:flex;align-items:center;gap:8px;padding:7px 12px;border-radius:8px;cursor:pointer;
+  color:var(--muted);font-size:11.5px;font-weight:700;text-transform:uppercase;letter-spacing:.06em;
+  list-style:none;user-select:none;}
+.navgrp>summary::-webkit-details-marker{display:none;}
+.navgrp>summary::after{content:'';margin-left:auto;width:6px;height:6px;flex:0 0 auto;
+  border-right:1.6px solid currentColor;border-bottom:1.6px solid currentColor;
+  transform:rotate(-45deg);transition:transform .15s;opacity:.65;}
+.navgrp[open]>summary::after{transform:rotate(45deg);}
+.navgrp>summary:hover{background:var(--surface2);color:var(--txt);}
+.navgrp>summary .nav-n.grp{margin-left:auto;}
+.navgrp>summary .nav-n.grp+::after{margin-left:8px;}
+.navgrp[hidden]{display:none;}
+.navnone{color:var(--muted);font-size:12.5px;padding:8px 12px;}
 nav a:hover{background:var(--surface2);color:var(--txt);}
 nav a.active{background:var(--accent);color:#fff;}
 nav a .nav-n{margin-left:auto;min-width:19px;height:19px;padding:0 6px;border-radius:10px;background:var(--accent);color:#fff;font-size:11px;font-weight:700;display:inline-flex;align-items:center;justify-content:center;}

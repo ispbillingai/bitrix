@@ -3642,11 +3642,57 @@ function render_head(callable $t, callable $h, string $lang, string $tab, ?strin
   <aside class="sidebar" id="sidebar">
     <div class="brand"><div class="logo"><?= $h(strtoupper(substr($brand, 0, 1)) ?: 'C') ?></div>
       <div><strong><?= $h($brand) ?></strong><span class="muted small"><?= $h($t('app_subtitle')) ?></span></div></div>
-    <nav>
-      <?php foreach ($nav as $key => $label): ?>
-        <a class="<?= $tab === $key ? 'active' : '' ?>" href="?tab=<?= $h($key) ?>"><?= svg($key) ?><span><?= $h($t($label)) ?></span><?php if ($key === 'team' && $teamUnread > 0): ?><span class="nav-n"><?= $teamUnread ?></span><?php endif; ?><?php if (($key === 'commissions' || $key === 'my_commissions') && $cmBadge > 0): ?><span class="nav-n"><?= $cmBadge ?></span><?php endif; ?><?php if ($key === 'finance' && $finBadge > 0): ?><span class="nav-n"><?= $finBadge ?></span><?php endif; ?><?php if ($key === 'offers' && $offBadge > 0): ?><span class="nav-n"><?= $offBadge ?></span><?php endif; ?></a>
+    <?php
+    // Thirty-three entries is not a menu, it is a list to scroll. They are
+    // grouped by the job being done, only the group you are in is open, and
+    // the box at the top searches all of them at once — which is how you reach
+    // a tab you use twice a month without remembering where it lives.
+    $navBadge = static function (string $key) use ($teamUnread, $cmBadge, $finBadge, $offBadge): int {
+        return match (true) {
+            $key === 'team' => $teamUnread,
+            $key === 'commissions' || $key === 'my_commissions' => $cmBadge,
+            $key === 'finance' => $finBadge,
+            $key === 'offers' => $offBadge,
+            default => 0,
+        };
+    };
+    // A seller sees sixteen entries and reads them; the office sees thirty-five
+    // and scrolls. Only the long menu is filed into groups — and only then is
+    // there anything to search.
+    $navGroups = count($nav) >= NAV_GROUP_FROM ? nav_groups($nav) : null;
+    ?>
+    <?php if ($navGroups === null): ?>
+      <nav>
+        <?php foreach ($nav as $key => $label): $b = $navBadge($key); ?>
+          <a class="<?= $tab === $key ? 'active' : '' ?>" href="?tab=<?= $h($key) ?>"><?= svg($key) ?><span><?= $h($t($label)) ?></span><?php if ($b > 0): ?><span class="nav-n"><?= (int)$b ?></span><?php endif; ?></a>
+        <?php endforeach; ?>
+      </nav>
+    <?php else: ?>
+    <label class="navfind">
+      <?= svg('search') ?>
+      <input type="search" id="navFind" autocomplete="off" placeholder="<?= $h($t('nav_find')) ?>"
+             aria-label="<?= $h($t('nav_find')) ?>">
+    </label>
+    <nav id="navList">
+      <?php foreach ($navGroups as $gkey => $items): ?>
+        <?php
+        $gHas   = array_key_exists($tab, $items);
+        $gCount = 0;
+        foreach (array_keys($items) as $ik) { $gCount += $navBadge($ik); }
+        ?>
+        <details class="navgrp" data-g="<?= $h($gkey) ?>"<?= $gHas ? ' open' : '' ?>>
+          <summary><span><?= $h($t('navg_' . $gkey)) ?></span>
+            <?php if ($gCount > 0): ?><span class="nav-n grp"><?= (int)$gCount ?></span><?php endif; ?>
+          </summary>
+          <?php foreach ($items as $key => $label): $b = $navBadge($key); ?>
+            <a class="<?= $tab === $key ? 'active' : '' ?>" href="?tab=<?= $h($key) ?>"
+               data-k="<?= $h(mb_strtolower($t($label))) ?>"><?= svg($key) ?><span><?= $h($t($label)) ?></span><?php if ($b > 0): ?><span class="nav-n"><?= (int)$b ?></span><?php endif; ?></a>
+          <?php endforeach; ?>
+        </details>
       <?php endforeach; ?>
+      <p class="navnone" id="navNone" hidden><?= $h($t('nav_find_none')) ?></p>
     </nav>
+    <?php endif; ?>
   </aside>
   <main>
     <header class="topbar">
@@ -3677,6 +3723,76 @@ function openNav(){document.getElementById('sidebar').classList.add('open');
 function closeNav(){document.getElementById('sidebar').classList.remove('open');
   document.getElementById('navBackdrop').classList.remove('show');}
 document.addEventListener('keydown',e=>{if(e.key==='Escape')closeNav();});
+
+// ---- the menu: groups that remember themselves, and one box that finds a tab ----
+(function () {
+  var box = document.getElementById('navFind'), list = document.getElementById('navList');
+  if (!list) { return; }
+  var groups = Array.prototype.slice.call(list.querySelectorAll('.navgrp'));
+  var none = document.getElementById('navNone');
+  var KEY = 'crm.nav.open';
+
+  // The page arrives with only the group you are in open. On top of that, the
+  // groups this person left open stay open — somebody who lives in Soldi should
+  // not reopen it every morning. Kept per browser; losing it costs one click.
+  function openSet() {
+    try { return JSON.parse(localStorage.getItem(KEY) || '[]') || []; } catch (e) { return []; }
+  }
+  var restoring = false;   // putting the menu back after a search is not a choice
+  var keep = openSet();
+  groups.forEach(function (g) {
+    if (keep.indexOf(g.getAttribute('data-g')) >= 0) { g.open = true; }
+  });
+  groups.forEach(function (g) {
+    g.addEventListener('toggle', function () {
+      if (restoring || (box && box.value.trim() !== '')) { return; }
+      var k = g.getAttribute('data-g'), s = openSet(), i = s.indexOf(k);
+      if (g.open && i < 0) { s.push(k); }
+      if (!g.open && i >= 0) { s.splice(i, 1); }
+      try { localStorage.setItem(KEY, JSON.stringify(s)); } catch (e) {}
+    });
+  });
+
+  if (!box) { return; }
+  // Typing searches every group at once: the groups that have a hit open, the
+  // rest get out of the way. Empty again and the menu goes back as it was.
+  var before = null;
+  function filter() {
+    var v = box.value.trim().toLowerCase();
+    if (v === '' && before !== null) {
+      restoring = true;
+      groups.forEach(function (g, i) { g.hidden = false; g.open = before[i]; });
+      Array.prototype.forEach.call(list.querySelectorAll('a'), function (a) { a.hidden = false; });
+      before = null; none.hidden = true;
+      // 'toggle' is queued, not immediate: let this round of them go by first.
+      setTimeout(function () { restoring = false; }, 0);
+      return;
+    }
+    if (v === '') { none.hidden = true; return; }
+    if (before === null) { before = groups.map(function (g) { return g.open; }); }
+    var hits = 0;
+    groups.forEach(function (g) {
+      var any = 0;
+      Array.prototype.forEach.call(g.querySelectorAll('a'), function (a) {
+        var on = (a.getAttribute('data-k') || '').indexOf(v) >= 0;
+        a.hidden = !on;
+        any += on ? 1 : 0;
+      });
+      g.hidden = any === 0;
+      g.open = any > 0;
+      hits += any;
+    });
+    none.hidden = hits > 0;
+  }
+  box.addEventListener('input', filter);
+  box.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { box.value = ''; filter(); return; }
+    if (e.key === 'Enter') {                       // one hit and Enter goes there
+      var open = list.querySelector('a:not([hidden])');
+      if (open) { e.preventDefault(); window.location = open.getAttribute('href'); }
+    }
+  });
+})();
 // Double-submit guard: once a form is actually submitting, disable its submit
 // button so a second click can't fire the same POST twice (e.g. creating a
 // duplicate lead). The 'submit' event fires only after native validation and any
